@@ -33,6 +33,9 @@ msgstr "点击任意位置继续"
 msgid "Skip"
 msgstr "跳过"
 
+msgid "Time-Limited Package"
+msgstr "限时礼包"
+
 # From skip_dialogs: self.find_boxes(boxes, match='今日不再提示')
 msgid "Do not remind me again today"
 msgstr "今日不再提示"

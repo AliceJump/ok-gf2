@@ -42,6 +42,16 @@ config = {
     'analytics': {
         'report_url': 'http://report.ok-script.cn:8080/report',
     },
+    'links': {
+        'default': {
+            'github': 'https://github.com/ok-oldking/ok-gf2',
+            'discord': 'https://discord.gg/vVyCatEBgA',
+            'qq_group': 'https://qm.qq.com/q/oKHdK7P8lO',
+            'sponsor': 'https://afdian.com/a/ok-oldking',
+            'share': 'OK-GF2 夸克网盘下载：https://pan.quark.cn/s/75b55ef72a34 GitHub下载: https://github.com/ok-oldking/ok-gf2/releases/latest',
+            'faq': 'https://cnb.cool/ok-oldking/ok-gf2/-/blob/main/README.md',
+        },
+    },
     'git_update': {'sources': [
         {
             'name': 'Global',

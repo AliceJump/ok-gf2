@@ -18,7 +18,7 @@ class DailyTask(BaseGfTask):
             '活动自律': True,
             '公共区/调度室': True,
             '购买免费礼包': True,
-            '购买调度商店': True,
+            '购买调度商店': False,
             '自动刷体力': True,
             '刷钱本': False,
             '竞技场': True,
@@ -107,7 +107,7 @@ class DailyTask(BaseGfTask):
 
     def activity(self):
         self.info_set('current_task', 'activity')
-        if self.wait_click_ocr(match=['限时开启'], box='top_right', after_sleep=0.5, raise_if_not_found=False,
+        if self.wait_click_ocr(match=re.compile('限时开启'), box='top_right', after_sleep=0.5, raise_if_not_found=False,
                                time_out=4):
             if latest_activity := self.find_latest_activity():
                 self.click(latest_activity)
