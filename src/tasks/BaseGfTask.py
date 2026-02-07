@@ -393,3 +393,53 @@ class BaseGfTask(BaseTask):
                 self.send_key(key)
             if i < len(keys) - 1 or sleep_after_last:
                 self.sleep(sleep_between)
+
+
+    def run_steps_with_retry_and_rollback(self, steps):
+        """
+        执行带重试与回退机制的步骤序列。
+
+        参数:
+            steps: List[List[Callable, bool, bool]]
+                每个元素为 [func, retry_on_fail, rollback_on_fail]
+                - func: 无参可调用对象，成功返回 True，失败返回 False
+                - retry_on_fail: 是否允许重试（最多尝试 2 次）
+                - rollback_on_fail: 失败且未达重试上限时，是否回退到上一步
+
+        返回:
+            bool: 全部成功返回 True，中途失败返回 False
+        """
+        if not steps:
+            return True
+
+        retries = [0] * len(steps)
+        i = 0
+
+        while 0 <= i < len(steps):
+            func, retry_on_fail, rollback_on_fail = steps[i]
+
+            # 执行当前步骤
+            try:
+                success = func()
+            except Exception as e:
+                success = False
+
+            if success:
+                retries[i] = 0
+                i += 1
+                continue
+
+            # === 处理失败 ===
+            if retry_on_fail:
+                retries[i] += 1
+                if retries[i] >= 2:
+                    return False
+            else:
+                return False
+
+            # 决定是否回退
+            if rollback_on_fail and i > 0:
+                i -= 1
+            # 否则：留在当前步，下一轮重试（因 i 未变）
+
+        return True

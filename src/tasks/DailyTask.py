@@ -330,7 +330,7 @@ class DailyTask(BaseGfTask):
         return longest
 
     def gongongqu(self):
-        self.info_set('current_task', 'public area')
+        self.info_set('current_task', 'gongongqu')
         self.wait_click_ocr(match=['委托'], box='right', after_sleep=2.5, raise_if_not_found=True)
         buttons = self.find_feature(feature_name='ggq_can_button', box='left')
         if not self.config.get('自主循环'):
@@ -346,15 +346,95 @@ class DailyTask(BaseGfTask):
         if len(buttons) > 2:
             self.click(buttons[2], after_sleep=2)
             self.wait_click_ocr(match=['再次派遣'], box='bottom', after_sleep=2, raise_if_not_found=False)
-        if self.config.get('自主循环') and \
-                self.wait_click_ocr(match=[re.compile('自主循环')], box='bottom_left', time_out=5, after_sleep=2,
-                                    log=True) and \
-                self.wait_click_ocr(match='开始循环', box='bottom_left', time_out=5, after_sleep=2, log=True) and \
-                self.wait_click_ocr(match=['确认'], after_sleep=2) and \
-                self.wait_click_ocr(match=['循环结束'], time_out=600, box='top', after_sleep=2):
-            self.wait_click_ocr(match=['确认'], after_sleep=2)
+        if self.config.get("自主循环"):
+            self.auto_loop()
         self.ensure_main()
+        steps = [
+            lambda: self.wait_click_ocr(
+                match=[re.compile("自主循环")],
+                box="bottom_left",
+                time_out=5,
+                after_sleep=2,
+                log=True,
+            ),
+            lambda: self.wait_click_ocr(
+                match="开始循环", box="bottom_left", time_out=5, after_sleep=2, log=True
+            ),
+            lambda: self.wait_click_ocr(match=["确认"], after_sleep=2),
+            lambda: self.wait_click_ocr(
+                match=["循环结束"], time_out=600, box="top", after_sleep=2
+            ),
+            lambda: self.wait_click_ocr(match=["确认"], after_sleep=2),
+        ]
 
+        if self.config.get("自主循环"):
+
+            retries = [0] * len(steps)
+            i = 0
+
+            while 0 <= i < len(steps):
+
+                if steps[i]():
+                    retries[i] = 0
+                    i += 1
+                    continue
+
+                # 失败
+                retries[i] += 1
+
+                if retries[i] >= 2:
+                    print(f"步骤{i}失败两次，终止流程")
+                    break
+
+                # 回退上一层
+                if i > 0:
+                    i -= 1
+    def auto_loop(self):
+        steps = [
+            [
+                lambda: self.wait_click_ocr(
+                    match=[re.compile("自主循环")],
+                    box="bottom_left",
+                    time_out=5,
+                    after_sleep=2,
+                    log=True,
+                ),
+                True,
+                True,  # retry_on_fail, rollback_on_fail
+            ],
+            [
+                lambda: self.wait_click_ocr(
+                    match="开始循环",
+                    box="bottom_left",
+                    time_out=5,
+                    after_sleep=2,
+                    log=True,
+                ),
+                True,
+                True,  # retry_on_fail, rollback_on_fail
+            ],
+            [
+                lambda: self.wait_click_ocr(match=["确认"], after_sleep=2),
+                True,
+                True,  # retry_on_fail, rollback_on_fail
+            ],
+            [
+                lambda: self.wait_click_ocr(
+                    match=["循环结束"], time_out=600, box="top", after_sleep=2
+                ),
+                True,
+                False,  # retry_on_fail, rollback_on_fail (关键：失败时不回退)
+            ],
+            [
+                lambda: self.wait_click_ocr(match=["确认"], after_sleep=2),
+                True,
+                False,  # retry_on_fail, rollback_on_fail
+            ],
+        ]
+        # 执行
+        success = self.run_steps_with_retry_and_rollback(steps)
+        if not success:
+            raise Exception("自主循环失败")
     def shopping(self):
         self.info_set('current_task', 'shopping')
         self.wait_click_ocr(match=['商城'], box='bottom_right', after_sleep=1.5, raise_if_not_found=True)
