@@ -302,8 +302,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             self.ensure_main()
 
     def activity(self):
-        activity_wuzi_names = str(self.config.get('当前物资关卡名称')).split(
-            "-")
+        activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
         self.info_set('current_task', 'activity')
         if to_activity_page := self.wait_click_ocr(match=['限时开启'], box=self.box.top_right, after_sleep=2,
                                                    raise_if_not_found=False,
