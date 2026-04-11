@@ -1,5 +1,4 @@
 import re
-from os import remove
 from ok import Logger
 from src.tasks.BaseGfTask import BaseGfTask, map_re
 from src.image.hsv_config import HSVRange as hR
@@ -12,15 +11,25 @@ class ClearMapTask(BaseGfTask):
         super().__init__(*args, **kwargs)
         self.name = "推图"
         self.description = "从要推的图的最左边开始"
-        # self.default_config.update({"识别模式": "除杂色ocr1"})
-        # self.config_description.update({
-        #     '识别模式':'推图时使用的OCR预处理方式\n可尝试普通ocr, 除杂色ocr1(标准白色), 除杂色ocr2(更宽松的白色+部分灰色)\n使用场景分别是:背景和关卡卡片非白色系、关卡卡片非白色系，关卡卡片非白灰色系',
-        # })
-        # self.stamina_options = ["普通ocr", "除杂色ocr1","除杂色ocr2"]
-        # self.config_type["识别模式"] = {
-        #     "type": "drop_down",
-        #     "options": self.stamina_options,
-        # }
+        self.default_config.update({
+            '普通OCR': True,
+            '除杂色OCR1': True,
+            '除杂色OCR2': True,
+        })
+        self.config_description.update({
+            '普通OCR': (
+                '普通OCR：不做任何图像预处理，直接识别关卡名称\n'
+                '适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨'
+            ),
+            '除杂色OCR1': (
+                '除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n'
+                '适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别'
+            ),
+            '除杂色OCR2': (
+                '除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n'
+                '适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时'
+            ),
+        })
 
     def run(self):
         count = 0
@@ -29,7 +38,19 @@ class ClearMapTask(BaseGfTask):
         last_failed_name = None  # 用来保存上次进入 if not text 分支的关卡名
         last_failed_flag = False  # 标记上次循环是否进入过 if not text 分支
         map_ocr_box = self.box_of_screen(x=0, y=323 / 1080, to_x=1.0, to_y=727 / 1080)
-        processors = [None, self.make_hsv_isolator(hR.WHITE), self.make_hsv_isolator(hR.WHITE_GRAY)]
+
+        # 根据用户配置动态组合要使用的帧处理器，保持顺序：普通OCR → 除杂色OCR1 → 除杂色OCR2
+        # 至少保留一个，若全部关闭则回退到全部开启
+        processors = []
+        if self.config.get('普通OCR', True):
+            processors.append(None)  # None 表示不做预处理，直接识别
+        if self.config.get('除杂色OCR1', True):
+            processors.append(self.make_hsv_isolator(hR.WHITE))  # 标准白色过滤
+        if self.config.get('除杂色OCR2', True):
+            processors.append(self.make_hsv_isolator(hR.WHITE_GRAY))  # 宽松白灰色过滤
+        if not processors:
+            processors = [None, self.make_hsv_isolator(hR.WHITE), self.make_hsv_isolator(hR.WHITE_GRAY)]
+
         while True:
             last_clicked = None
             self.sleep(2)
