@@ -36,8 +36,8 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 '（设置 → 其他 → 自动战斗设置），开启后勾选本项'
             ),
             '当前物资关卡名称': (
-                '活动自律中物资关卡的名称，多个关卡用 - 分隔\n'
-                '例：铸碑者的黎明，或 铸碑者的黎明-暗影回廊'
+                '活动自律中当前大活动的名称\n'
+                '例：铸碑者的黎明'
             ),
             '用户名': '社区每日任务的登录账号，留空则跳过社区每日',
             '密码': '社区每日任务的登录密码',
@@ -71,19 +71,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             "尘烟": '需开启班组项',
             '领任务': '自动领取委托中的每日任务奖励',
             '大月卡': '自动领取巡录（大月卡）的每日沿途行动奖励',
-            '探索领取': '自动领取边界推进探索区域的采集与派遣奖励',
-            '普通OCR': (
-                '普通OCR：不做任何图像预处理，直接识别关卡名称\n'
-                '适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨'
-            ),
-            '除杂色OCR1': (
-                '除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n'
-                '适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别'
-            ),
-            '除杂色OCR2': (
-                '除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n'
-                '适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时'
-            ),
+            '探索领取': '自动领取边界推进探索区域的采集与派遣奖励'
         })
         self.default_config.update({
             '已确认启用游戏内全局自动功能': False,
@@ -110,10 +98,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             '尘烟': True,
             '领任务': True,
             '大月卡': True,
-            '探索领取': True,
-            '普通OCR': True,
-            '除杂色OCR1': True,
-            '除杂色OCR2': True,
+            '探索领取': True
         })
 
     def _init_stamina_options(self):
@@ -394,21 +379,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                         self.sleep(2)
                         if wu_zi := self.ocr(match=re.compile('物资'), box=self.box.bottom_right):
                             self.click(wu_zi, after_sleep=0.5)
-                        # 根据配置动态组合帧处理器，逐个尝试直到找到关卡
-                        processors = []
-                        if self.config.get('普通OCR', True):
-                            processors.append(None)  # None 表示不做预处理，直接识别
-                        if self.config.get('除杂色OCR1', True):
-                            processors.append(self.make_hsv_isolator(hR.WHITE))  # 标准白色过滤
-                        if self.config.get('除杂色OCR2', True):
-                            processors.append(self.make_hsv_isolator(hR.WHITE_GRAY))  # 宽松白灰色过滤
-                        if not processors:
-                            processors = [None, self.make_hsv_isolator(hR.WHITE), self.make_hsv_isolator(hR.WHITE_GRAY)]
-                        battles = []
-                        for p in processors:
-                            battles = self.ocr(match=map_re, log=True, frame_processor=p)
-                            if battles:
-                                break
+                        battles = self.wait_ocr(match=map_re, time_out=4)
                         if battles:
                             self.click(battles[-1])
                             self.fast_combat(set_cost=1, battle_max=6, activity=True)

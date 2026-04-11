@@ -71,7 +71,7 @@ class ClearMapTask(BaseGfTask):
                     maps=[maps[0]]  # 只保留第一个，避免重复点击
                     maps[0].name = "before_one_" + maps[0].name
                     maps[0].x = int(maps[0].x - 80 / 256 * self.width)  # 往左扩展一些识别区域，增加找到的概率
-                    map_name_groups = [set([maps[0].name])]
+                    map_name_groups = [{maps[0].name}]
                 else:
                     map_name_groups = []
                 last_failed_flag = False
@@ -162,6 +162,6 @@ def merge_maps(maps, x_threshold=40, y_threshold=40):
                 break
         else:
             merged.append(m)
-            merged_names.append(set([m.name]))  # 新组，名字放入 set
+            merged_names.append({m.name})  # 新组，名字放入 set
 
     return merged, merged_names
