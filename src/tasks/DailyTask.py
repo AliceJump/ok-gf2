@@ -3,6 +3,7 @@ import time
 from ok import Logger, find_boxes_by_name, Box
 from src.tasks.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
 from src.tasks.CommunityClient import CommunityMixin
+from src.image.hsv_config import HSVRange as hR
 
 logger = Logger.get_logger(__name__)
 
@@ -29,7 +30,21 @@ class DailyTask(CommunityMixin, BaseGfTask):
         """
         auto_loop_skip_list = ['体力本', '自动刷体力', '刷钱本', '竞技场']
         auto_loop_skip_dict = {i: "开启自主循环后会跳过该项" for i in auto_loop_skip_list}
-        self.config_description.update(auto_loop_skip_dict | {"尘烟": '需开启班组项'})
+        self.config_description.update(auto_loop_skip_dict | {
+            "尘烟": '需开启班组项',
+            '普通OCR': (
+                '普通OCR：不做任何图像预处理，直接识别关卡名称\n'
+                '适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨'
+            ),
+            '除杂色OCR1': (
+                '除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n'
+                '适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别'
+            ),
+            '除杂色OCR2': (
+                '除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n'
+                '适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时'
+            ),
+        })
         self.default_config.update({
             '已确认启用游戏内全局自动功能': False,
             '当前物资关卡名称': '铸碑者的黎明',
@@ -56,6 +71,9 @@ class DailyTask(CommunityMixin, BaseGfTask):
             '领任务': True,
             '大月卡': True,
             '探索领取': True,
+            '普通OCR': True,
+            '除杂色OCR1': True,
+            '除杂色OCR2': True,
         })
 
     def _init_stamina_options(self):
@@ -336,7 +354,21 @@ class DailyTask(CommunityMixin, BaseGfTask):
                         self.sleep(2)
                         if wu_zi := self.ocr(match=re.compile('物资'), box=self.box.bottom_right):
                             self.click(wu_zi, after_sleep=0.5)
-                        battles = self.wait_ocr(match=map_re, time_out=4)
+                        # 根据配置动态组合帧处理器，逐个尝试直到找到关卡
+                        processors = []
+                        if self.config.get('普通OCR', True):
+                            processors.append(None)  # None 表示不做预处理，直接识别
+                        if self.config.get('除杂色OCR1', True):
+                            processors.append(self.make_hsv_isolator(hR.WHITE))  # 标准白色过滤
+                        if self.config.get('除杂色OCR2', True):
+                            processors.append(self.make_hsv_isolator(hR.WHITE_GRAY))  # 宽松白灰色过滤
+                        if not processors:
+                            processors = [None, self.make_hsv_isolator(hR.WHITE), self.make_hsv_isolator(hR.WHITE_GRAY)]
+                        battles = []
+                        for p in processors:
+                            battles = self.ocr(match=map_re, log=True, frame_processor=p)
+                            if battles:
+                                break
                         if battles:
                             self.click(battles[-1])
                             self.fast_combat(set_cost=1, battle_max=6, activity=True)
