@@ -21,6 +21,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self._init_default_config()
         self._init_stamina_options()
         self.add_exit_after_config()
+        self.add_text_fix(text_fix)
 
     def _init_default_config(self):
         """
