@@ -58,30 +58,6 @@ class BaseGfTask(BaseTask):
         """
         return partial(self.isolate_by_hsv_ranges, ranges=ranges)
 
-    def ocr(self, *args, **kwargs):
-        boxes = super().ocr(*args, **kwargs)
-        return self._apply_substring_text_fix(boxes)
-
-    def _apply_substring_text_fix(self, boxes):
-        text_fix = getattr(getattr(self, "executor", None), "text_fix", None)
-        if not boxes or not text_fix:
-            return boxes
-
-        for box in boxes:
-            name = getattr(box, "name", None)
-            if not isinstance(name, str) or not name:
-                continue
-
-            fixed_name = name
-            for wrong, corrected in text_fix.items():
-                if wrong and wrong in fixed_name:
-                    fixed_name = fixed_name.replace(wrong, corrected)
-
-            if fixed_name != name:
-                box.name = fixed_name
-
-        return boxes
-
     def get_role_by_name(self, name):
         return next((k for k, v in self.roles_dict.items() if name in v), None)
 

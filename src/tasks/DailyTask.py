@@ -21,7 +21,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self._init_default_config()
         self._init_stamina_options()
         self.add_exit_after_config()
-        self.add_text_fix(text_fix)
 
     def _init_default_config(self):
         """
@@ -359,13 +358,14 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     self.click(activity)
                     if activity_count >= len(activity_wuzi_names):
                         activity_count -= 1
-                    if to_clicks := self.wait_ocr(match=[f"{activity_wuzi_names[activity_count]}·上篇",
-                                                         f"{activity_wuzi_names[activity_count]}·下篇"],
+                    name_re = re.escape(activity_wuzi_names[activity_count])
+                    if to_clicks := self.wait_ocr(match=[re.compile(f"{name_re}[·・：]上[篇筒]"),
+                                                         re.compile(f"{name_re}[·・：]下[篇筒]")],
                                                   raise_if_not_found=False, time_out=6, settle_time=2, log=True):
                         activity_count += 1
                         to_clicks2 = None
                         for click in to_clicks:
-                            if "下篇" in click.name:
+                            if re.search('下[篇筒]', click.name):
                                 self.click(click)
                                 break
                             else:
@@ -435,7 +435,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 self.wait_pop_up(count=1)
             if buttons and len(buttons) > 2:
                 self.click(buttons[2], after_sleep=2)
-                self.wait_click_ocr(match=['再次派遣'], box=self.box.bottom, after_sleep=2, raise_if_not_found=False)
+                self.wait_click_ocr(match=[re.compile('再次派[遣造]')], box=self.box.bottom, after_sleep=2, raise_if_not_found=False)
             if self.config.get("自主循环"):
                 self.auto_loop()
 
@@ -890,16 +890,3 @@ def find_boxes_within_boundary(
 
     return result
 
-
-text_fix = {
-    '再次派造': '再次派遣',
-    # 简繁统一
-    '鏡': '镜',
-    '別': '别',
-    # 分隔符统一
-    '・': '·',
-    '：': '·',
-    # OCR错字修正
-    '上筒': '上篇',
-    '下筒': '下篇',
-}
