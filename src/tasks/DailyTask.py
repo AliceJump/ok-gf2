@@ -458,44 +458,76 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if self.config.get("自主循环"):
                 self.auto_loop()
 
+    def _auto_loop_step_with_retry(self, step_num, match, box=None, time_out=5, after_sleep=2, **kwargs):
+        """
+        点击OCR匹配元素，等待点击特征在 3s 内消失。
+        若特征未消失则重试，最多尝试 3 次。
+        """
+        for attempt in range(3):
+            result = self.wait_click_ocr(
+                match=match, box=box, time_out=time_out, after_sleep=0, log=True, **kwargs
+            )
+            if not result:
+                self.log_info(f"自主循环步骤{step_num}未完成，退出循环", notify=True)
+                return False
+            # 等待最多 3s，检测点击特征是否消失
+            start = time.time()
+            while time.time() - start < 3:
+                self.next_frame()
+                if not self.ocr(box=box, match=match):
+                    self.sleep(after_sleep)
+                    return result
+                self.sleep(0.3)
+            if attempt < 2:
+                self.log_info(f"自主循环步骤{step_num}点击后特征未消失，重试 ({attempt + 2}/3)", notify=True)
+        self.log_info(f"自主循环步骤{step_num}未完成，退出循环", notify=True)
+        return False
+
     def auto_loop(self):
-        steps = [
-            [
-                lambda: self.wait_click_ocr(
-                    match=[re.compile("自主循环")],
-                    box=self.box.bottom_left,
-                    time_out=5,
-                    after_sleep=2,
-                    log=True,
-                ),
-            ],
-            [
-                lambda: self.wait_click_ocr(
-                    match="开始循环",
-                    box=self.box.bottom_left,
-                    time_out=5,
-                    after_sleep=2,
-                    log=True,
-                ),
-            ],
-            [
-                lambda: self.wait_click_ocr(match=["确认"], settle_time=2, after_sleep=2, log=True),
-            ],
-            [
-                lambda: self.wait_click_ocr(
-                    match=re.compile("循环结束"), time_out=600, box=self.box.top, after_sleep=2, log=True
-                ),
-            ],
-            [
-                lambda: self.wait_click_ocr(match=["确认"], settle_time=2, after_sleep=2, log=True),
-            ],
-        ]
-        # 执行
-        for i in range(len(steps)):
-            for step in steps[i]:
-                if not step():
-                    self.log_info(f"自主循环步骤{i + 1}未完成，退出循环", notify=True)
-                    return
+        # 步骤 1: 点击"自主循环"，带重试
+        if not self._auto_loop_step_with_retry(
+            step_num=1,
+            match=[re.compile("自主循环")],
+            box=self.box.bottom_left,
+            time_out=5,
+            after_sleep=2,
+        ):
+            return
+
+        # 步骤 2: 点击"开始循环"，带重试
+        if not self._auto_loop_step_with_retry(
+            step_num=2,
+            match="开始循环",
+            box=self.box.bottom_left,
+            time_out=5,
+            after_sleep=2,
+        ):
+            return
+
+        # 步骤 3: 点击"确认"，带重试
+        if not self._auto_loop_step_with_retry(
+            step_num=3,
+            match=["确认"],
+            settle_time=2,
+            after_sleep=2,
+        ):
+            return
+
+        # 步骤 4: 等待"循环结束"出现并点击（仅作为一次识别完成的角色，不需要重试）
+        if not self.wait_click_ocr(
+            match=re.compile("循环结束"), time_out=600, box=self.box.top, after_sleep=2, log=True
+        ):
+            self.log_info("自主循环步骤4未完成，退出循环", notify=True)
+            return
+
+        # 步骤 5: 点击"确认"，带重试
+        if not self._auto_loop_step_with_retry(
+            step_num=5,
+            match=["确认"],
+            settle_time=2,
+            after_sleep=2,
+        ):
+            return
 
     def shopping(self):
         self.info_set('current_task', 'shopping')
