@@ -295,9 +295,9 @@ class BaseGfTask(BaseTask):
                 self.wait_ocr(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
                 return 0
             self.click(plus_x, plus_y)
-            self.wait_click_ocr(match=["确认"], after_sleep=0, raise_if_not_found=False)
-            self.wait_click_ocr(match=["取消"], time_out=2, raise_if_not_found=False)
-            self.wait_pop_up(count=1)
+            self.wait_click_ocr(match=["确认"], after_sleep=1, raise_if_not_found=False)
+            if not self.wait_click_ocr(match=["取消"], time_out=2, raise_if_not_found=False):   
+                self.wait_pop_up(count=1)
             self.back_if_not_ocr_match(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
             return 0
 
