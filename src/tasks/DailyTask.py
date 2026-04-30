@@ -250,7 +250,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
     def free_time_layer(self):
         self.info_set('current_task', 'free_time_layer')
-        for i in range(4):
+        for i in range(3):
             self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
                 if i == 0:
@@ -263,7 +263,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                         need_extra_confirm=False
                     )
 
-                elif i != 3:
+                elif i != 2:
                     self.do_food_flow(
                         enter_func=self.go_eat,
                         entry_match=re.compile('美味烹调'),
@@ -380,18 +380,18 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     )
                     up = None
                     down = None
+                    if to_clicks:
+                        for click in to_clicks:
+                            if re.search("下[篇筒]", click.name):
+                                down = click
+                            elif re.search("上[篇筒]", click.name):
+                                up = click
 
-                    for click in to_clicks:
-                        if re.search("下[篇筒]", click.name):
-                            down = click
-                        elif re.search("上[篇筒]", click.name):
-                            up = click
+                        if down:
+                            self.click(down)
 
-                    if down:
-                        self.click(down)
-
-                    if up:
-                        self.click(up)
+                        if up:
+                            self.click(up)
                     elif to_clicks := self.wait_ocr(match=['活动战役', re.compile('物资')], box=self.box.bottom,
                                                     raise_if_not_found=False, time_out=4, settle_time=2, log=True):
                         self.click(to_clicks, after_sleep=2)

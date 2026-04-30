@@ -2,7 +2,7 @@ import re
 
 from ok import Logger
 from src.tasks.BaseGfTask import BaseGfTask, stamina_re
-
+from src.image.hsv_config import HSVRange as hR
 logger = Logger.get_logger(__name__)
 pattern_kt = re.compile(r'^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$')
 
@@ -108,5 +108,7 @@ class WeeklyTask(BaseGfTask):
                 if result == results[-1]:
                     self.wait_pop_up(count=1)
                     self.wait_click_ocr(match='当期实练奖励', box='bottom_right', after_sleep=2)
-                    self.wait_click_ocr(match='一键领取', box='bottom_right', after_sleep=2)
+                    if self.wait_until(self.ocr(match="一键领取",frame_processor=self.make_hsv_isolator(hR.WHITE)),time_out=2):
+                        if result:= self.ocr(match="一键领取", frame_processor=self.make_hsv_isolator(hR.WHITE)):
+                            self.click(result[0], after_sleep=2)
         self.ensure_main()
