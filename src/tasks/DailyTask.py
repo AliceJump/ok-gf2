@@ -161,7 +161,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
         failed_tasks = []
         for key, func in tasks:
-            keys = [key] if isinstance(key, str) else list(key)
+            keys = [key] if isinstance(key, str) else key
             if not any(self.config.get(k) for k in keys):
                 continue
             self.ensure_main(
@@ -169,6 +169,10 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 time_out=self.ENSURE_MAIN_TIMEOUT
             )
             result = func()  # 不捕获异常，异常自然向上传递
+            self.ensure_main(
+                recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
+                time_out=self.ENSURE_MAIN_TIMEOUT
+            )
             if result is False:
                 self.log_info(f"任务 {key} 执行失败或未完成")
                 failed_tasks.append(key)
@@ -293,7 +297,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     self.wait_pop_up()
             else:
                 self.log_error('没检测到活动层页面')
-            self.ensure_main(time_out=60)
 
     def activities(self):
         self.info_set('current_task', 'activity_stamina')
@@ -306,26 +309,20 @@ class DailyTask(CommunityMixin, BaseGfTask):
                                           after_sleep=1):
                     self.wait_pop_up(time_out=6)
         if not self.config.get('闪耀星愿'):
-            self.ensure_main()
             return
         if not self.wait_click_ocr(match=[re.compile("闪耀星愿")], box=self.box.left, time_out=3, settle_time=2):
-            self.ensure_main()
             return
 
         if not self.wait_click_ocr(match=['前往'], box=self.box.right, time_out=3, settle_time=2):
-            self.ensure_main()
             return
         if not self.wait_click_ocr(match=['开始作战'], box=self.box.bottom_right, time_out=3, settle_time=2,
                                    after_sleep=2):
-            self.ensure_main()
             return
         if self.wait_click_ocr(match=['取消'], time_out=1, after_sleep=2):
-            self.ensure_main()
             return
         self.auto_battle(need_click_auto=True)
         self.wait_click_ocr(match=['自律'], box=self.box.bottom_right, after_sleep=2, settle_time=2)
         self.fast_combat(click_all=True, set_cost=1)
-        self.ensure_main()
 
     def claim_quest(self):
         self.info_set('current_task', 'claim_quest')
@@ -345,7 +342,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     self.log_error("未知的领取状态")
             else:
                 self.log_error("委托未领取")
-        self.ensure_main()
 
     def mail(self):
         self.info_set('current_task', 'mail')
@@ -355,7 +351,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
             self.click(0.06, 0.7)
         self.wait_click_ocr(match=['领取全部'], box=self.box.bottom_left, time_out=4, after_sleep=2,
                             raise_if_not_found=False)
-        self.ensure_main()
 
     def xunlu(self):
         self.info_set('current_task', 'xunlu')
@@ -366,7 +361,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                                 raise_if_not_found=True, after_sleep=1)
             self.wait_click_ocr(match=[re.compile('领取')], box=self.box_of_screen(1423/1920,939/1080,1,1), time_out=4,
                                 raise_if_not_found=False, after_sleep=1)
-            self.ensure_main()
 
     def activity(self):
         activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
@@ -418,7 +412,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                             self.fast_combat(set_cost=1, battle_max=6, activity=True)
             else:
                 self.log_info("找不到开启的活动")
-        self.ensure_main()
 
     def find_activities(self):
         return self.wait_ocr(match=[re.compile(r'^\d+天\d+小时')], box=self.box.bottom_left,
@@ -576,7 +569,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 self.sleep(1)
         if self.config.get('商店心愿单购买'):
             self.buy_others()
-        self.ensure_main()
 
     def buy_others(self):
         self.info_set('current_task', '心愿单购买')
@@ -593,7 +585,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
     def arena(self):
         if self.config.get('自主循环'):
-            self.ensure_main()
             return
         self.info_set('current_task', 'arena')
         self.wait_click_ocr(match=re.compile('战役推进'), box=self.box.top_right, after_sleep=1,
@@ -616,11 +607,9 @@ class DailyTask(CommunityMixin, BaseGfTask):
         #         self.wait_pop_up(time_out=4)
         if self.wait_click_ocr(match=['周期奖励'], box=self.box.left, after_sleep=1, raise_if_not_found=True):
             self.wait_click_ocr(match=[re.compile('键领取')], after_sleep=1, raise_if_not_found=False)
-        self.ensure_main()
 
     def bingqi(self):
         if self.config.get('自主循环'):
-            self.ensure_main()
             return
         self.info_set('current_task', 'bingqi')
         self.wait_click_ocr(match=re.compile('战役推进'), box=self.box.top_right, after_sleep=1,
@@ -636,7 +625,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
             self.wait_click_ocr(match=['匹配'], box=self.box.bottom, after_sleep=0.5, raise_if_not_found=True)
             self.auto_battle(end_match='匹配')
             self.sleep(2)
-        self.ensure_main()
 
     def guild(self):
         self.info_set('current_task', 'guild')
@@ -664,7 +652,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 self.wait_pop_up()
             self.back()
             self.sleep(1)
-        self.ensure_main()
 
     def chenyan(self):
         if not self.config.get('尘烟'):
@@ -861,7 +848,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
     def battle(self):
         if self.config.get('自主循环'):
-            self.ensure_main()
             return
         self.info_set('current_task', 'battle')
         self.wait_click_ocr(match=re.compile('战役推进'), box=self.box.top_right, after_sleep=0.5,
@@ -895,7 +881,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     remaining = self.fast_combat(plus_x=0.69, plus_y=0.59, set_cost=cost_dict[target])
                 else:
                     remaining = self.fast_combat(set_cost=cost_dict.get(target, None))
-        self.ensure_main()
 
 
 def sort_characters_by_priority(chars, priority):

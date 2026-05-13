@@ -8,6 +8,8 @@ pattern_kt = re.compile(r'^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之�
 
 
 class WeeklyTask(BaseGfTask):
+    ENSURE_MAIN_RECHECK_TIME = 2
+    ENSURE_MAIN_TIMEOUT = 90
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -21,7 +23,6 @@ class WeeklyTask(BaseGfTask):
         }) 
 
     def run(self):
-        self.ensure_main(recheck_time=2, time_out=90)
         tasks = [
             ('首领挑战', self.boss_fast),
             ('峰值推定', self.peak_estimate_tion),
@@ -30,7 +31,15 @@ class WeeklyTask(BaseGfTask):
         for key, func in tasks:
             if self.config.get(key):
                 if func:
+                    self.ensure_main(
+                        recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
+                        time_out=self.ENSURE_MAIN_TIMEOUT
+                    )
                     func()
+                    self.ensure_main(
+                        recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
+                        time_out=self.ENSURE_MAIN_TIMEOUT
+                    )
         self.log_info("周常完成!", notify=True)
 
     def boss_fast(self):
@@ -39,7 +48,6 @@ class WeeklyTask(BaseGfTask):
         self.wait_click_ocr(match=re.compile('模拟作战'), box='top_right', raise_if_not_found=True)
         self.wait_click_ocr(match=re.compile('首领挑战'), raise_if_not_found=True)
         self.fast_combat(set_cost=1, click_all=True)
-        self.ensure_main()
 
     def peak_estimate_tion(self):
         self.info_set('current_task', 'peak_estimate_tion')
@@ -78,7 +86,6 @@ class WeeklyTask(BaseGfTask):
                                 self.back(after_sleep=2)
                 break
             self.back()
-        self.ensure_main()
 
     def deep_battle(self):
         self.info_set('current_task', 'deep_battle')
@@ -111,4 +118,3 @@ class WeeklyTask(BaseGfTask):
                     if self.wait_until(self.ocr(match="一键领取",frame_processor=self.make_hsv_isolator(hR.WHITE)),time_out=2):
                         if result:= self.ocr(match="一键领取", frame_processor=self.make_hsv_isolator(hR.WHITE)):
                             self.click(result[0], after_sleep=2)
-        self.ensure_main()
