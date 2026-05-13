@@ -170,7 +170,8 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 # or 规则：任一为 True 即执行
                 if not any(self.config.get(k) for k in keys):
                     continue
-            self.ensure_main(recheck_time=2, time_out=90)
+            if key != "ensure_main":
+                self.ensure_main(recheck_time=2, time_out=90)
             result = func()  # 不捕获异常，异常自然向上传递
             if result is False:
                 self.log_info(f"任务 {key} 执行失败或未完成")
