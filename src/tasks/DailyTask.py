@@ -9,7 +9,6 @@ logger = Logger.get_logger(__name__)
 
 
 class DailyTask(CommunityMixin, BaseGfTask):
-    ENSURE_MAIN_KEY = "ensure_main"
     ENSURE_MAIN_RECHECK_TIME = 2
     ENSURE_MAIN_TIMEOUT = 90
 
@@ -146,10 +145,6 @@ class DailyTask(CommunityMixin, BaseGfTask):
             self.confirm_auto_battle_up()
         tasks = [
             ("社区每日", self.community_daily),
-            (self.ENSURE_MAIN_KEY, lambda: self.ensure_main(
-                recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
-                time_out=self.ENSURE_MAIN_TIMEOUT
-            )),
             ('邮件', self.mail),
             (['情报补给', '闪耀星愿'], self.activities),
             ('活动自律', self.activity),
@@ -166,19 +161,13 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
         failed_tasks = []
         for key, func in tasks:
-            # -------- 关键逻辑开始 --------
-            if key != self.ENSURE_MAIN_KEY:
-                # 统一转为列表
-                keys = [key] if isinstance(key, str) else list(key)
-
-                # or 规则：任一为 True 即执行
-                if not any(self.config.get(k) for k in keys):
-                    continue
-            if key != self.ENSURE_MAIN_KEY:
-                self.ensure_main(
-                    recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
-                    time_out=self.ENSURE_MAIN_TIMEOUT
-                )
+            keys = [key] if isinstance(key, str) else list(key)
+            if not any(self.config.get(k) for k in keys):
+                continue
+            self.ensure_main(
+                recheck_time=self.ENSURE_MAIN_RECHECK_TIME,
+                time_out=self.ENSURE_MAIN_TIMEOUT
+            )
             result = func()  # 不捕获异常，异常自然向上传递
             if result is False:
                 self.log_info(f"任务 {key} 执行失败或未完成")

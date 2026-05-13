@@ -26,6 +26,8 @@ def parse_time_option(option: str) -> list[float]:
 
 
 class BaseGfTask(BaseTask):
+    ENSURE_MAIN_DEDUP_WINDOW = 1
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.roles_dict = {
@@ -40,6 +42,11 @@ class BaseGfTask(BaseTask):
         }
         self.box = ScreenPosition(self)
         self.default_config_group = {}
+        # 用于避免在没有任何 UI 交互时连续重复执行 ensure_main
+        self._ui_action_serial = 0
+        self._last_ensure_main_serial = -1
+        self._last_ensure_main_at = 0.0
+        self._ensure_main_verified = False
 
     def isolate_by_hsv_ranges(self, frame, ranges, invert=True, kernel_size=2):
         """
@@ -63,11 +70,25 @@ class BaseGfTask(BaseTask):
     def get_role_by_name(self, name):
         return next((k for k, v in self.roles_dict.items() if name in v), None)
 
+    def _mark_ui_interaction(self):
+        self._ui_action_serial += 1
+        self._ensure_main_verified = False
+
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):
         self.info_set('current_task', 'go_to_main')
+        now = time.monotonic()
+        if (self._ensure_main_verified
+                and self._last_ensure_main_serial == self._ui_action_serial
+                and now - self._last_ensure_main_at <= self.ENSURE_MAIN_DEDUP_WINDOW):
+            self.log_debug('skip duplicate ensure_main without UI interaction')
+            return
+        self._ensure_main_verified = False
         if not self.wait_until(lambda: self.is_main(recheck_time=recheck_time, esc=esc),
                                time_out=time_out):
             raise Exception("请从游戏主页进入")
+        self._last_ensure_main_serial = self._ui_action_serial
+        self._last_ensure_main_at = time.monotonic()
+        self._ensure_main_verified = True
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
         self.info_set('current_task', 'skip_dialogs')
@@ -190,11 +211,28 @@ class BaseGfTask(BaseTask):
     def click(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False, name=None,
               interval=-1, move=True,
               down_time=0.01, after_sleep=0, key="left"):
+        self._mark_ui_interaction()
         frame = self.frame
         super().click(x, y, move_back=move_back, name=name, move=move, down_time=0.04, after_sleep=after_sleep,
                       interval=interval, key=key)
         if self.debug:
             self.screenshot('click', frame=frame)
+
+    def click_relative(self, *args, **kwargs):
+        self._mark_ui_interaction()
+        return super().click_relative(*args, **kwargs)
+
+    def send_key(self, *args, **kwargs):
+        self._mark_ui_interaction()
+        return super().send_key(*args, **kwargs)
+
+    def send_key_down(self, *args, **kwargs):
+        self._mark_ui_interaction()
+        return super().send_key_down(*args, **kwargs)
+
+    def send_key_up(self, *args, **kwargs):
+        self._mark_ui_interaction()
+        return super().send_key_up(*args, **kwargs)
 
     def back(self, after_sleep=0):
         frame = self.frame
