@@ -1,0 +1,116 @@
+name: Bug 反馈 / Bug Report
+description: 创建一个报告以帮助我们修复问题 / Create a report to help us fix issues
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - AliceJump
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 提交前必读 / Read Before Submitting
+        请务必先搜索现有 ISSUE 和查阅常见问题，避免重复汇报。
+        Please search existing issues and check the FAQ to avoid duplicates.
+
+        - 🔍 **搜索现有 ISSUE / Search Issues:** [点击搜索 / Click Here](https://github.com/AliceJump/ok-gf2/issues)
+        - 📖 **常见问题 FAQ:** [点击查看 / Click Here](https://github.com/AliceJump/ok-gf2?tab=readme-ov-file#-%E7%96%91%E9%9A%BE%E8%A7%A3%E7%AD%94-troubleshooting)
+        - 💬 **讨论区 / Discussions:** [前往讨论 / Go to Discussions](https://github.com/AliceJump/ok-gf2/discussions)
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述这个问题 / Description
+      description: 清晰简洁地描述发生的情况。 / A clear and concise description of what happened.
+      placeholder: 请在此处详细描述 Bug... / Describe the bug here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: game_screenshot
+    attributes:
+      label: 当前游戏截图 / Current Game Screenshot
+      description: |
+        **请提供出现 Bug 时的游戏截图（必填）。** / **Please provide a screenshot of the game when the bug occurred (Required).**
+
+        **上传方式 / How to upload:**
+        1. 请使用 ok-gf2 自带的截图功能截取游戏画面。
+        2. 将截图文件直接 **拖拽** 到下方文本框中，或使用剪贴板粘贴 (Ctrl+V)。
+
+        **English Instructions:**
+        1. Please use the built-in screenshot feature of 'ok-gf2'.
+        2. **Drag & Drop** the screenshot image into the text area below, or paste directly (Ctrl+V).
+      placeholder: 请将游戏截图拖放到此处... / Drag and drop the game screenshot here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 如何复现 / How to reproduce
+      description: 请详细列出复现步骤。 / Please list the steps to reproduce.
+      placeholder: |
+        1. 打开软件 / Open the software...
+        2. 点击设置 / Click settings...
+        3. 看到错误提示 / See error message...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: probability
+    attributes:
+      label: 是否必现 / Is it reproducible?
+      options:
+        - 是 (Always)
+        - 否 (Once)
+        - 大概率 (Often)
+        - 小概率 (Rarely)
+    validations:
+      required: true
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: 截图、日志与录屏 / Screenshots, Logs & Recordings
+      description: |
+        **上传方式 / How to upload:**
+        1. 将图片、视频或 `.log` 文件直接 **拖拽** 到下方文本框中。
+        2. 也可以使用剪贴板粘贴 (Ctrl+V)。
+
+        **English Instructions:**
+        1. **Drag & Drop** images, videos, or `.log` files into the text area below, or paste directly (Ctrl+V).
+      placeholder: 请将截图、屏幕录像或日志文件拖放到此处... / Drag and drop screenshots, recordings, or logs here...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ok-gf2 出现 bug 的版本 / Buggy Version
+      placeholder: e.g. v2.8.1
+    validations:
+      required: true
+
+  - type: input
+    id: last_working_version
+    attributes:
+      label: ok-gf2 最近未出现 bug 的版本 / Last Working Version
+      placeholder: e.g. v2.8.0
+    validations:
+      required: false
+
+  - type: input
+    id: os_version
+    attributes:
+      label: Windows 操作系统版本 / Windows OS Version
+      placeholder: e.g. Windows 11 Pro 23H2 22631.3593
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他补充内容 / Additional Context
+      placeholder: 在这里添加关于该问题的任何其他背景信息... / Add any other context about the problem here...
+    validations:
+      required: false
