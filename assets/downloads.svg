@@ -2,65 +2,65 @@
 <rect width="100%" height="100%" rx="16" fill="#0b1220"/>
 <rect x="1" y="1" width="518" height="560" rx="15" fill="none" stroke="#1f2937"/>
 <text x="24" y="38" fill="#e5e7eb" font-size="20" font-weight="700" font-family="Segoe UI, Arial">Monthly Downloads</text>
-<text x="24" y="56" fill="#94a3b8" font-size="12" font-family="Segoe UI, Arial">15 months · 13,910 total downloads</text>
+<text x="24" y="56" fill="#94a3b8" font-size="12" font-family="Segoe UI, Arial">15 months · 14,036 total downloads</text>
 <text x="24" y="88" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-03</text>
 <text x="500" y="88" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,221</text>
 <rect x="110" y="78" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="78" width="185" height="10" rx="5" fill="#2563eb"/>
+<rect x="106" y="78" width="177" height="10" rx="5" fill="#2563eb"/>
 <text x="24" y="120" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-04</text>
 <text x="500" y="120" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">703</text>
 <rect x="110" y="110" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="110" width="106" height="10" rx="5" fill="#0ea5e9"/>
+<rect x="106" y="110" width="102" height="10" rx="5" fill="#0ea5e9"/>
 <text x="24" y="152" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-05</text>
 <text x="500" y="152" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">512</text>
 <rect x="110" y="142" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="142" width="77" height="10" rx="5" fill="#06b6d4"/>
+<rect x="106" y="142" width="74" height="10" rx="5" fill="#06b6d4"/>
 <text x="24" y="184" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-06</text>
 <text x="500" y="184" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">795</text>
 <rect x="110" y="174" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="174" width="120" height="10" rx="5" fill="#14b8a6"/>
+<rect x="106" y="174" width="115" height="10" rx="5" fill="#14b8a6"/>
 <text x="24" y="216" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-07</text>
-<text x="500" y="216" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,606</text>
+<text x="500" y="216" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,608</text>
 <rect x="110" y="206" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="206" width="243" height="10" rx="5" fill="#22c55e"/>
+<rect x="106" y="206" width="233" height="10" rx="5" fill="#22c55e"/>
 <text x="24" y="248" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-08</text>
 <text x="500" y="248" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,135</text>
 <rect x="110" y="238" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="238" width="172" height="10" rx="5" fill="#84cc16"/>
+<rect x="106" y="238" width="164" height="10" rx="5" fill="#84cc16"/>
 <text x="24" y="280" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-09</text>
 <text x="500" y="280" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,053</text>
 <rect x="110" y="270" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="270" width="159" height="10" rx="5" fill="#2563eb"/>
+<rect x="106" y="270" width="152" height="10" rx="5" fill="#2563eb"/>
 <text x="24" y="312" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-11</text>
 <text x="500" y="312" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">352</text>
 <rect x="110" y="302" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="302" width="53" height="10" rx="5" fill="#0ea5e9"/>
+<rect x="106" y="302" width="51" height="10" rx="5" fill="#0ea5e9"/>
 <text x="24" y="344" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-12</text>
 <text x="500" y="344" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">936</text>
 <rect x="110" y="334" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="334" width="142" height="10" rx="5" fill="#06b6d4"/>
+<rect x="106" y="334" width="135" height="10" rx="5" fill="#06b6d4"/>
 <text x="24" y="376" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-01</text>
 <text x="500" y="376" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">460</text>
 <rect x="110" y="366" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="366" width="69" height="10" rx="5" fill="#14b8a6"/>
+<rect x="106" y="366" width="66" height="10" rx="5" fill="#14b8a6"/>
 <text x="24" y="408" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-02</text>
 <text x="500" y="408" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">647</text>
 <rect x="110" y="398" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="398" width="98" height="10" rx="5" fill="#22c55e"/>
+<rect x="106" y="398" width="93" height="10" rx="5" fill="#22c55e"/>
 <text x="24" y="440" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-03</text>
 <text x="500" y="440" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">388</text>
 <rect x="110" y="430" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="430" width="58" height="10" rx="5" fill="#84cc16"/>
+<rect x="106" y="430" width="56" height="10" rx="5" fill="#84cc16"/>
 <text x="24" y="472" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-04</text>
-<text x="500" y="472" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">629</text>
+<text x="500" y="472" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">632</text>
 <rect x="110" y="462" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="462" width="95" height="10" rx="5" fill="#2563eb"/>
+<rect x="106" y="462" width="91" height="10" rx="5" fill="#2563eb"/>
 <text x="24" y="504" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-05</text>
-<text x="500" y="504" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,233</text>
+<text x="500" y="504" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,252</text>
 <rect x="110" y="494" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="494" width="187" height="10" rx="5" fill="#0ea5e9"/>
+<rect x="106" y="494" width="181" height="10" rx="5" fill="#0ea5e9"/>
 <text x="24" y="536" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-06</text>
-<text x="500" y="536" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">2,240</text>
+<text x="500" y="536" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">2,342</text>
 <rect x="110" y="526" width="340" height="10" rx="5" fill="#1f2937"/>
 <rect x="106" y="526" width="340" height="10" rx="5" fill="#06b6d4"/>
 </svg>
