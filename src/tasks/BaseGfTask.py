@@ -205,21 +205,21 @@ class BaseGfTask(BaseTask):
             end_match.append('确认结算')
             end_match.append('继续前进')
             while True:
-                match = self.wait_ocr(match=end_match, box=end_box, raise_if_not_found=True, time_out=30)
+                match = self.skip_dialogs(end_match=end_match, end_box=end_box,
+                                          time_out=30, has_dialog=has_dialog,
+                                          raise_if_not_found=True)
                 if match[0].name in pop_ups:
                     self.back(after_sleep=2)
                     continue
-                if match:
-                    self.log_info(f'battle end matched: {match}')
-                    if match[0].name == '继续前进':
-                        self.log_info('最后阶段检测到继续前进，点击后开启新一轮自动战斗', notify=True)
-                        self.click_box(match, after_sleep=2)
-                        self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                                         need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
-                        return
-                    if match[0].name in ("确认", "确认结算"):
-                        self.click_box(match, after_sleep=8)
-                    break
+                if match[0].name == '继续前进':
+                    self.log_info('最后阶段检测到继续前进，点击后开启新一轮自动战斗', notify=True)
+                    self.click_box(match, after_sleep=2)
+                    self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
+                                     need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+                    return
+                if match[0].name in ("确认", "确认结算"):
+                    self.click_box(match, after_sleep=8)
+                break
         self.sleep(2)
 
     def is_main(self, recheck_time=0.0, esc=True):
