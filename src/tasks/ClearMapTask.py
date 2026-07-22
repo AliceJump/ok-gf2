@@ -38,7 +38,7 @@ class ClearMapTask(BaseGfTask):
         last_fallback_name = None
         last_failed_name = None  # 用来保存上次进入 if not text 分支的关卡名
         last_failed_flag = False  # 标记上次循环是否进入过 if not text 分支
-        map_ocr_box = self.box_of_screen(x=0, y=323 / 1080, to_x=1.0, to_y=727 / 1080)
+        map_ocr_box = self.box_of_screen(x=0, y=100 / 1080, to_x=1.0, to_y=980 / 1080)
 
         # 根据用户配置动态组合要使用的帧处理器，保持顺序：普通OCR → 除杂色OCR1 → 除杂色OCR2
         # 至少保留一个，若全部关闭则回退到全部开启
@@ -83,7 +83,7 @@ class ClearMapTask(BaseGfTask):
                     maps.extend(self.ocr(match=map_re, log=True, frame_processor=p))
                 maps.extend(self.find_feature(feature_name=fL.not_clear_one, box=map_ocr_box))
                 now_icon_y_offset = 0.489-0.380
-                now_icon=[self.wait_feature(feature=fL.now_icon, box=map_ocr_box)]
+                now_icon=[self.wait_feature(feature=fL.now_icon, box=map_ocr_box, time_out=1)]
                 if now_icon[0]:
                     for i in range(len(now_icon)):
                         now_icon[i].y=int(now_icon[i].y+now_icon_y_offset*self.height)
