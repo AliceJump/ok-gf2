@@ -147,7 +147,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 time_out=90
             )),
             ('邮件', self.mail),
-            (['情报补给', '闪耀星愿'], self.activities),
+            ('情报补给', self.activities),
             ('活动自律', self.activity),
             ('活动层', self.free_time_layer),
             ('公共区/调度室', self.gongongqu),
@@ -158,6 +158,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             ('领任务', self.claim_quest),
             ('大月卡', self.xunlu),
             ('探索领取', self.explore_claim),
+            ('闪耀星愿', self.star_wish),
         ]
 
         failed_tasks = []
@@ -301,32 +302,35 @@ class DailyTask(CommunityMixin, BaseGfTask):
     def activities(self):
         self.info_set('current_task', 'activity_stamina')
         self.wait_click_ocr(match=['活动'], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
-        if self.config.get("情报补给"):
-            if self.wait_click_ocr(match=['情报补给'], box=self.box.left, time_out=3, raise_if_not_found=False,
-                                   after_sleep=1):
-                while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
-                                          raise_if_not_found=False,
-                                          after_sleep=1):
-                    self.wait_pop_up(time_out=6)
-        if not self.config.get('闪耀星愿'):
-            self.ensure_main()
-            return
-        if not self.wait_click_ocr(match=[re.compile("闪耀星愿")], box=self.box.left, time_out=3, settle_time=2):
+        if self.wait_click_ocr(match=['情报补给'], box=self.box.left, time_out=3, raise_if_not_found=False):
+            while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
+                                      raise_if_not_found=False,
+                                      after_sleep=0.2):
+                self.wait_pop_up(time_out=6)
+        self.ensure_main()
+
+    def star_wish(self):
+        self.info_set('current_task', 'star_wish')
+        self.wait_click_ocr(match=['活动'], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
+        if not self.wait_click_ocr(match=[re.compile("闪耀星愿")], box=self.box_of_screen(0.036, 0.185, 0.229, 0.819), time_out=3, settle_time=0.5):
             self.ensure_main()
             return
 
-        if not self.wait_click_ocr(match=['前往'], box=self.box.right, time_out=3, settle_time=2):
+        if not self.wait_click_ocr(match=['前往'], box=self.box.right, time_out=3, settle_time=0.5):
             self.ensure_main()
             return
-        if not self.wait_click_ocr(match=['开始作战'], box=self.box.bottom_right, time_out=3, settle_time=2,
-                                   after_sleep=2):
+        if not self.wait_click_ocr(match=['开始作战'], box=self.box.bottom_right, time_out=3, settle_time=0.5,
+                                   after_sleep=0.5):
+            if self.wait_click_ocr(match=re.compile("一{0,1}键领取"), box=self.box.bottom_right, time_out=3, settle_time=0.5,
+                                   after_sleep=0.5):
+                self.wait_pop_up()
             self.ensure_main()
             return
-        if self.wait_click_ocr(match=['取消'], time_out=1, after_sleep=2):
+        if self.wait_click_ocr(match=['取消'], time_out=1, after_sleep=0.5):
             self.ensure_main()
             return
         self.auto_battle(need_click_auto=True)
-        self.wait_click_ocr(match=['自律'], box=self.box.bottom_right, after_sleep=2, settle_time=2)
+        self.wait_click_ocr(match=['自律'], box=self.box.bottom_right, after_sleep=0.5, settle_time=0.5)
         self.fast_combat(click_all=True, set_cost=1)
         self.ensure_main()
 
