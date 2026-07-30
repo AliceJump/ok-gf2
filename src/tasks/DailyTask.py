@@ -7,6 +7,8 @@ from src.image.hsv_config import HSVRange as hR
 
 logger = Logger.get_logger(__name__)
 
+activity_time_re = re.compile(r'^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)', re.I)
+
 
 class DailyTask(CommunityMixin, BaseGfTask):
     def wait_ocr_until_count(self, match, box=None, min_count=2, timeout=5, interval=0.5, **kwargs):
@@ -471,14 +473,14 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self.ensure_main()
 
     def find_activities(self):
-        return self.wait_ocr(match=[re.compile(r'^\d+天\d+小时')], box=self.box.bottom_left,
+        return self.wait_ocr(match=[activity_time_re], box=self.box.bottom_left,
                              raise_if_not_found=False, time_out=4)
 
     def find_latest_activity(self):
         boxs = self.find_activities()
 
         def parse_time(name):
-            match = re.match(r'^(\d+)天(\d+)小时', name)
+            match = activity_time_re.match(name)
             if match:
                 days = int(match.group(1))
                 hours = int(match.group(2))

@@ -56,7 +56,11 @@ jobs:
       - name: Run tests
         timeout-minutes: 5
         run: |
-          python -u -m unittest discover -s tests -p "Test*.py" -v
+          Get-ChildItem -LiteralPath tests -Filter "Test*.py" | Sort-Object Name | ForEach-Object {
+            $module = "tests.$([System.IO.Path]::GetFileNameWithoutExtension($_.Name))"
+            python -u -m unittest $module -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
   sync:
     needs: test
