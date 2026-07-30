@@ -375,6 +375,37 @@ class DailyTask(CommunityMixin, BaseGfTask):
                                 raise_if_not_found=False, after_sleep=1)
             self.ensure_main()
 
+    def _box_center_ratio(self, box):
+        return (
+            (box.x + box.width / 2) / self.width,
+            (box.y + box.height / 2) / self.height,
+        )
+
+    def _filter_boxes_near_candidates(
+            self, row_boxes, candidate_boxes, max_x_distance=0.15, max_y_distance=0.06
+    ):
+        filtered = []
+        for row_box in row_boxes:
+            row_x, row_y = self._box_center_ratio(row_box)
+            for candidate in candidate_boxes:
+                candidate_x, candidate_y = self._box_center_ratio(candidate)
+                x_distance = abs(row_x - candidate_x)
+                y_distance = abs(row_y - candidate_y)
+                if x_distance <= max_x_distance and y_distance <= max_y_distance:
+                    filtered.append(row_box)
+                    break
+
+        return filtered
+
+    def _chapter_click_order(self, box):
+        if re.search("下[篇筒]", box.name):
+            return 0
+        if re.search("中[篇筒]", box.name):
+            return 1
+        if re.search("上[篇筒]", box.name):
+            return 2
+        return 3
+
     def activity(self):
         activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
         self.info_set('current_task', 'activity')
@@ -390,8 +421,9 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     if activity_count >= len(activity_wuzi_names):
                         activity_count -= 1
                     name_re = activity_wuzi_names[activity_count]
+                    chapter_re = re.compile(rf"{re.escape(name_re)}[·・：][上下中][篇筒]")
                     to_clicks = self.wait_ocr_until_count(
-                        match=[re.compile(f"{name_re}[·・：][上下中][篇筒]")],
+                        match=[chapter_re],
                         box=None,
                         min_count=2,
                         timeout=5,
@@ -410,10 +442,19 @@ class DailyTask(CommunityMixin, BaseGfTask):
                             elif re.search("下[篇筒]", click.name):
                                 down = click
 
-                        # 根据游戏需要决定点击顺序
-                        for chapter in (down, middle, up):
-                            if chapter:
-                                self.click(chapter)
+                        chapter_boxes = [box for box in (up, middle, down) if box]
+                        wuzi_boxes = self.wait_ocr(
+                            match=re.compile('物资'), box=None, time_out=4, settle_time=2, log=True
+                        )
+                        click_boxes = self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
+
+                        if not click_boxes:
+                            click_boxes = chapter_boxes
+
+                        click_boxes = sorted(click_boxes, key=self._chapter_click_order)
+
+                        for chapter in click_boxes:
+                            self.click(chapter, after_sleep=0.2)
                     elif to_clicks := self.wait_ocr(match=['活动战役', re.compile('物资')], box=self.box.bottom,
                                                     raise_if_not_found=False, time_out=4, settle_time=2, log=True):
                         self.click(to_clicks, after_sleep=2)
