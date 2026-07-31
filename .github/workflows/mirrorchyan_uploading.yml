@@ -2,6 +2,10 @@ name: mirrorchyan_uploading
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        default: ''
+        required: false
 
 jobs:
 
@@ -11,8 +15,9 @@ jobs:
       - uses: MirrorChyan/uploading-action@v1
         with:
           filetype: latest-release
-          filename: "ok-gf2-win32-china-setup.exe"
+          filename: "ok-gf2-win32-china-setup-${{ inputs.tag }}.exe"
           mirrorchyan_rid: okgf2
+          tag: ${{ inputs.tag }}
 
           github_token: ${{ secrets.GITHUB_TOKEN }}
           owner: ok-oldking

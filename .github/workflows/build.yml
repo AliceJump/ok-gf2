@@ -176,10 +176,18 @@ jobs:
         id: build-app
         uses: ok-oldking/pyappify-action@master #使用pyappify打包exe
 
+      - name: Add version to build filenames
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          Get-ChildItem -Path pyappify_dist -File | ForEach-Object {
+            Rename-Item -LiteralPath $_.FullName -NewName "$($_.BaseName)-$version$($_.Extension)"
+          }
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pyappify_dist
+          name: pyappify_dist-${{ github.ref_name }}
           path: pyappify_dist/*
 
   release:
@@ -192,7 +200,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pyappify_dist
+          name: pyappify_dist-${{ github.ref_name }}
           path: pyappify_dist
 
       - name: Release
@@ -203,9 +211,9 @@ jobs:
             ###  更新日志 ${{ needs.sync.outputs.start_tag }} -> ${{ needs.sync.outputs.end_tag }}:
               ${{ needs.sync.outputs.changes_with_asterisk }}
             ### 下载包说明 / Download Packages
-              * [ok-gf2-win32-china-setup.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-china-setup.exe) 完整安装包（内含全部依赖，推荐国内用户或网络受限环境）/ Full installer (all dependencies included, recommended for users in China or with limited internet)
-              * [ok-gf2-win32-global-setup.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-global-setup.exe) Github 源完整安装包（适合全球用户，依赖从GitHub下载）/ Github source whole setup (for global users, dependencies from GitHub)
-              * [ok-gf2-win32-online-setup.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-online-setup.exe) 在线安装包（体积小，需联网下载依赖，建议先使用完整安装包）/ Online installer (small size, downloads dependencies online, recommended to use the full installer first)
+              * [ok-gf2-win32-china-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-china-setup-${{ github.ref_name }}.exe) 完整安装包（内含全部依赖，推荐国内用户或网络受限环境）/ Full installer (all dependencies included, recommended for users in China or with limited internet)
+              * [ok-gf2-win32-global-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-global-setup-${{ github.ref_name }}.exe) Github 源完整安装包（适合全球用户，依赖从GitHub下载）/ Github source whole setup (for global users, dependencies from GitHub)
+              * [ok-gf2-win32-online-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-online-setup-${{ github.ref_name }}.exe) 在线安装包（体积小，需联网下载依赖，建议先使用完整安装包）/ Online installer (small size, downloads dependencies online, recommended to use the full installer first)
               * 不要下载SourceCode, Do Not Download the SourceCode
             ### 如果无法下载可以使用, 其他下载源 / Alternative download sources
               * [Mirror酱下载渠道](https://mirrorchyan.com/zh/projects?rid=okgf&source=ok-gf-release), 国内网页直链, 下载需要购买CD-KEY, 已有Mirror酱CD-KEY可免费下载 / Mainland China direct link, requires CD-KEY (free for existing Mirror users)
@@ -223,7 +231,7 @@ jobs:
       - name: Trigger MirrorChyanUploading
         shell: bash
         run: |
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_uploading.yml
+          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_uploading.yml -f tag=${{ github.ref_name }}
           gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
