@@ -326,8 +326,15 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if self.wait_click_ocr(match=re.compile("一{0,1}键领取"), box=self.box.bottom_right, time_out=3, settle_time=0.5,
                                    after_sleep=0.5):
                 self.wait_pop_up()
-            self.ensure_main()
-            return
+                self.ensure_main()
+                return
+            self.log_info('闪耀星愿未找到开始作战和一键领取，尝试跳过对话框后重试', notify=True)
+            result = self.skip_dialogs(end_match=['开始作战'], end_box=self.box.bottom_right, time_out=30,
+                                       has_dialog=True, raise_if_not_found=False)
+            if not result:
+                self.ensure_main()
+                return
+            self.click_box(result, after_sleep=1)
         if self.wait_click_ocr(match=['取消'], time_out=1, after_sleep=0.5):
             self.ensure_main()
             return
