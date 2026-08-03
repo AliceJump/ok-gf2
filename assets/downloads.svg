@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="520" height="594" viewBox="0 0 520 594">
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="626" viewBox="0 0 520 626">
 <rect width="100%" height="100%" rx="16" fill="#0b1220"/>
-<rect x="1" y="1" width="518" height="592" rx="15" fill="none" stroke="#1f2937"/>
+<rect x="1" y="1" width="518" height="624" rx="15" fill="none" stroke="#1f2937"/>
 <text x="24" y="38" fill="#e5e7eb" font-size="20" font-weight="700" font-family="Segoe UI, Arial">Monthly Downloads</text>
-<text x="24" y="56" fill="#94a3b8" font-size="12" font-family="Segoe UI, Arial">16 months · 14,769 total downloads</text>
+<text x="24" y="56" fill="#94a3b8" font-size="12" font-family="Segoe UI, Arial">17 months · 14,815 total downloads</text>
 <text x="24" y="88" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2025-03</text>
 <text x="500" y="88" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">1,221</text>
 <rect x="110" y="78" width="340" height="10" rx="5" fill="#1f2937"/>
@@ -64,7 +64,11 @@
 <rect x="110" y="526" width="340" height="10" rx="5" fill="#1f2937"/>
 <rect x="106" y="526" width="340" height="10" rx="5" fill="#06b6d4"/>
 <text x="24" y="568" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-07</text>
-<text x="500" y="568" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">441</text>
+<text x="500" y="568" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">484</text>
 <rect x="110" y="558" width="340" height="10" rx="5" fill="#1f2937"/>
-<rect x="106" y="558" width="57" height="10" rx="5" fill="#14b8a6"/>
+<rect x="106" y="558" width="63" height="10" rx="5" fill="#14b8a6"/>
+<text x="24" y="600" fill="#e2e8f0" font-size="13" font-family="Segoe UI, Arial">2026-08</text>
+<text x="500" y="600" fill="#cbd5e1" font-size="13" text-anchor="end" font-family="Segoe UI, Arial">3</text>
+<rect x="110" y="590" width="340" height="10" rx="5" fill="#1f2937"/>
+<rect x="106" y="590" width="2" height="10" rx="5" fill="#22c55e"/>
 </svg>
