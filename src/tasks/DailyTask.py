@@ -313,14 +313,10 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
     def star_wish(self):
         self.info_set('current_task', 'star_wish')
-        self.wait_click_ocr(match=['活动'], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
         if not self.wait_click_ocr(match=[re.compile("闪耀星愿")], box=self.box_of_screen(0.036, 0.185, 0.229, 0.819), time_out=3, settle_time=0.5):
             self.ensure_main()
             return
 
-        if not self.wait_click_ocr(match=['前往'], box=self.box.right, time_out=3, settle_time=0.5):
-            self.ensure_main()
-            return
         if not self.wait_click_ocr(match=['开始作战'], box=self.box.bottom_right, time_out=3, settle_time=0.5,
                                    after_sleep=0.5):
             if self.wait_click_ocr(match=re.compile("一{0,1}键领取"), box=self.box.bottom_right, time_out=3, settle_time=0.5,

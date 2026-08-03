@@ -152,10 +152,11 @@ class BaseGfTask(BaseTask):
                         self.wait_click_ocr(match='取消', after_sleep=2)
                 if start_result and need_click_auto:
                     self.sleep(0.5)
-                    if self.is_adb():
-                        self.click_relative(0.85, 0.05, after_sleep=1)
-                    else:
-                        self.click_relative(0.88, 0.04, after_sleep=1)
+                    while self.ocr(match="行动结束", box=self.box.bottom_right):
+                        if self.is_adb():
+                            self.click_relative(0.85, 0.05, after_sleep=1)
+                        else:
+                            self.click_relative(0.88, 0.04, after_sleep=1)
 
         clicked_continue = False
         while results := self.skip_dialogs(
