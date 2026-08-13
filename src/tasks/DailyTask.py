@@ -294,7 +294,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     )
                 else:
                     self.send_key("f2", after_sleep=2)
-                    self.wait_click_ocr(match=re.compile('领取'), box=self.box_of_screen(1155 / 1920, 824 / 1080, 1, 1),
+                    self.wait_click_ocr(match=re.compile('领取'), box=self.box_of_screen(0.151, 0.772, 0.385, 0.883),
                                         time_out=10, raise_if_not_found=False, log=True)
                     self.wait_pop_up()
             else:
