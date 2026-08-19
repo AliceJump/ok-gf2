@@ -13,7 +13,7 @@ COMMISSIONS = re.compile(r'Commissions', re.I)
 LOOP_ICON = (0.213, 0.896)
 LOOP_SCREEN = re.compile(r'Dispatch Room|Start\s*Loop', re.I)
 START_LOOP = re.compile(r'Start\s*Loop', re.I)
-LOOP_ENDED = re.compile(r'Loop\s*(Ended|Complete|Finished)|End of Loop', re.I)
+LOOP_ENDED = re.compile(r'Loop\s*ended', re.I)
 
 # How long to wait for the in-game Loop to finish, and how often to look.
 LOOP_TIME_OUT = 600
@@ -105,11 +105,10 @@ class GlobalDailyTask(BaseGlobalTask):
         self.log_info('Loop started, waiting for it to finish.', notify=True)
         if self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
             self.log_info('Loop finished.', notify=True)
+            # The summary lists everything the Loop collected, behind a single Confirm at the bottom.
+            self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=10, after_sleep=2)
         else:
             self.log_info(f'Loop did not report finishing within {LOOP_TIME_OUT}s.', notify=True)
-        # The finished state has not been observed yet, so clear overlays generically rather than
-        # aiming at a specific button, and let ensure_main back out of whatever is left.
-        self.wait_pop_up(time_out=10)
         self.ensure_main()
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
