@@ -1,3 +1,5 @@
+import os
+
 from PySide6.QtCore import QObject
 
 from ok import Logger
@@ -23,6 +25,9 @@ def widen_settings_text_column():
     """
     global _settings_layout_patched
     if _settings_layout_patched:
+        return
+    if os.environ.get('OK_GF2_NO_LAYOUT_PATCH'):
+        logger.info('OK_GF2_NO_LAYOUT_PATCH set, leaving the stock layout alone')
         return
     try:
         from ok.gui.tasks.LabelAndWidget import LabelAndWidget
