@@ -267,6 +267,26 @@ ok-gf2.exe -t 1 -e
 python -m unittest tests/TestMain.py
 ```
 
+### Translations
+
+UI strings live in `i18n/<locale>/LC_MESSAGES/ok.po`. The app loads only the compiled `.mo`, so
+a `.po` edit does nothing until you compile it. Commit both files.
+
+```bash
+# Install the dev dependency (polib)
+pip install -r requirements-dev.txt
+
+# Compile every .po into its .mo
+python scripts/compile_i18n.py
+
+# Verify without writing, exits non-zero if any .mo is stale (this is what CI runs)
+python scripts/compile_i18n.py --check
+```
+
+See [docs/glossary.md](docs/glossary.md) for the Chinese to Global/Steam term mapping. Note that
+`ocr.po` is a different thing entirely: it rewrites English game text into the Chinese tokens the
+task code matches against, so never put UI strings there.
+
 ### Developer Documentation
 
 | Document | Description |
