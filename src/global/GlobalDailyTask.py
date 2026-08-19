@@ -1,15 +1,7 @@
 import re
 
-from ok import Logger
+from .BaseGlobalTask import CONFIRM, CREW_DECK, SHOP, BaseGlobalTask
 
-from .BaseGlobalTask import BaseGlobalTask
-
-logger = Logger.get_logger(__name__)
-
-# Home screen entry points. Scoped to a screen region at each call site rather than anchored, so a label OCR merged with its neighbour still
-# matches and click_ocr_word can aim inside the merged box.
-CREW_DECK = re.compile(r'Public Area|Crew Deck', re.I)
-SHOP = re.compile(r'\bShop\b', re.I)
 COMMISSIONS = re.compile(r'Commissions', re.I)
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
@@ -17,7 +9,10 @@ COMMISSIONS = re.compile(r'Commissions', re.I)
 AUTO_LOOP = re.compile(r'Auto\s*Loop', re.I)
 START_LOOP = re.compile(r'Start\s*Loop', re.I)
 LOOP_ENDED = re.compile(r'Loop\s*(Ended|Complete|Finished)|End of Loop', re.I)
-CONFIRM = re.compile(r'Confirm', re.I)
+
+# How long to wait for the in-game Loop to finish, and how often to look.
+LOOP_TIME_OUT = 600
+LOOP_POLL_INTERVAL = 5
 
 # Shop. Free packs live under the quality tab, split across a periodic and a standing list.
 QUALITY = re.compile(r'Quality', re.I)
@@ -30,7 +25,7 @@ PURCHASE = re.compile(r'Purchase|Buy', re.I)
 WISHLIST_SHOPS = [
     re.compile(r'Furniture', re.I),
     re.compile(r'Platoon Shop', re.I),
-    re.compile(r'Dispatch', re.I),
+    re.compile(r'Dispatch Shop', re.I),
     re.compile(r'Battlelog', re.I),
     re.compile(r'Neural Integration', re.I),
     re.compile(r'Growth Stack', re.I),
@@ -66,6 +61,9 @@ class GlobalDailyTask(BaseGlobalTask):
             'Buy Wishlist Items': 'Runs the bulk-buy button in each sub-shop that has one.',
             'Claim Boundary Push Rewards': 'Collects the Breakthrough rewards under Commissions.',
         })
+        self.config_type.update({
+            'Claim Free Packs': {'sub_configs': {True: ['Buy Wishlist Items']}},
+        })
 
     def run(self):
         self.ensure_main(recheck_time=2, time_out=90)
@@ -86,7 +84,8 @@ class GlobalDailyTask(BaseGlobalTask):
     def start_loop(self):
         """Open the Crew Deck, start the in-game Loop, and wait for it to report back.
 
-        The Loop can run for a long time, so the wait is generous. Anything it covers is deliberately not automated here.
+        The Loop runs for minutes at a time against a static screen, so the wait is a throttled poll rather than a tight one. Anything the Loop covers is
+        deliberately not automated here.
         """
         self.info_set('current_task', 'start_loop')
         self.click_ocr_word(CREW_DECK, box=self.box.right, after_sleep=3, raise_if_not_found=True)
@@ -100,11 +99,11 @@ class GlobalDailyTask(BaseGlobalTask):
             return
         self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=10, settle_time=2, after_sleep=2)
         self.log_info('Loop started, waiting for it to finish.', notify=True)
-        if not self.wait_click_ocr(match=LOOP_ENDED, box=self.box.top, time_out=600, after_sleep=2, log=True):
-            self.log_info('Loop did not report finishing within 10 minutes.', notify=True)
-            self.ensure_main()
-            return
-        self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=10, settle_time=2, after_sleep=2)
+        if ended := self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
+            self.click(ended[0], after_sleep=2)
+            self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=10, settle_time=2, after_sleep=2)
+        else:
+            self.log_info(f'Loop did not report finishing within {LOOP_TIME_OUT}s.', notify=True)
         self.ensure_main()
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,7 +129,7 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         if not self.wait_click_ocr(match=tabs, box=self.box.top, time_out=3, after_sleep=1):
             return
-        if not self.wait_click_ocr(match=FREE, time_out=2, after_sleep=0.5):
+        if not self.wait_click_ocr(match=FREE, box=self.box.bottom, time_out=2, after_sleep=0.5):
             return
         self.log_info('found a free pack to claim')
         if self.wait_click_ocr(match=PURCHASE, box=self.box.bottom, time_out=5, after_sleep=1.5):
@@ -141,11 +140,11 @@ class GlobalDailyTask(BaseGlobalTask):
         """Run the bulk-buy button in each sub-shop that offers one. Sub-shops without one are skipped."""
         self.info_set('current_task', 'buy_wishlist')
         for shop in WISHLIST_SHOPS:
-            if not self.wait_click_ocr(match=shop, time_out=2, after_sleep=1):
+            if not self.wait_click_ocr(match=shop, box=self.box.left, time_out=2, after_sleep=1):
                 continue
             if not self.wait_click_ocr(match=PURCHASE, box=self.box.bottom_right, time_out=2, after_sleep=1):
                 continue
-            if self.wait_click_ocr(match=CONFIRM, time_out=2, after_sleep=1):
+            if self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=2, after_sleep=1):
                 self.wait_pop_up(time_out=5, count=1)
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +154,7 @@ class GlobalDailyTask(BaseGlobalTask):
     def claim_boundary_push(self):
         """Collect the Breakthrough rewards under Commissions -> Boundary Push."""
         self.info_set('current_task', 'claim_boundary_push')
-        self.click_ocr_word(COMMISSIONS, box=self.box.bottom, after_sleep=2, raise_if_not_found=True)
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
         if not self.wait_click_ocr(match=BOUNDARY_PUSH, box=self.box.top_right, time_out=5, after_sleep=3):
             self.log_info('Boundary Push is not available, skipping.', notify=True)
             self.ensure_main()

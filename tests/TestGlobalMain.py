@@ -8,7 +8,7 @@ from src.config import config
 
 # src/global/ cannot be imported statically because `global` is a Python keyword, so the class is
 # resolved the same way the framework resolves it - by name, through importlib.
-GlobalDailyTask = getattr(importlib.import_module('src.global.GlobalDailyTask'), 'GlobalDailyTask')
+GlobalDailyTask = importlib.import_module('src.global.GlobalDailyTask').GlobalDailyTask
 
 
 class TestGlobalMain(TaskTestCase):

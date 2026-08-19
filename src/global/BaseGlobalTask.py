@@ -1,41 +1,48 @@
 import re
 import time
 
-from ok import Logger
+from ok import Box
 from src.data.FeatureList import FeatureList as fL
 from src.tasks.BaseGfTask import BaseGfTask
 
-logger = Logger.get_logger(__name__)
+# Shared on-screen vocabulary. Every pattern here is compiled with re.I, so no pattern needs its own
+# character classes for case. Anything referenced by more than one module in this package belongs here
+# rather than being restated, because the Global client does rename labels - Public Area became Crew Deck.
+CONFIRM = re.compile(r'Confirm', re.I)
+CANCEL = re.compile(r'Cancel', re.I)
+CLICK_ANYWHERE = re.compile(r'(Click|Tap) anywhere', re.I)
+CAMPAIGN = re.compile(r'Campaign', re.I)
+CREW_DECK = re.compile(r'Public Area|Crew Deck', re.I)
+SHOP = re.compile(r'\bShop\b', re.I)
+SKIP = re.compile(r'Skip', re.I)
+DO_NOT_REMIND = re.compile(r'not remind|remind me', re.I)
 
-# Dismissable overlays that sit on top of whatever screen we actually want. Matched as regexes so a stray OCR character or a line break does not stop them
-# being recognised.
+# Dismissable overlays that sit on top of whatever screen we actually want.
 POP_UPS = [
-    re.compile(r'[Cc]lick anywhere', re.I),
-    re.compile(r'[Tt]ap anywhere', re.I),
+    CLICK_ANYWHERE,
     re.compile(r'anywhere to (exit|close|continue)', re.I),
-    re.compile(r'[Nn]ew [Cc]ycle', re.I),
+    re.compile(r'New Cycle', re.I),
 ]
 
 # Labels down the right edge of the home screen. Anchored on single distinctive words because English OCR splits multi-word labels into separate boxes far
-# more often than Chinese does. Public Area was renamed Crew Deck at some point, so both spellings are accepted.
+# more often than Chinese does.
 MAIN_SCREEN_LABELS = [
-    re.compile(r'Campaign', re.I),
+    CAMPAIGN,
     re.compile(r'Refitting', re.I),
-    re.compile(r'Public|Crew', re.I),
+    CREW_DECK,
     re.compile(r'Recruitment', re.I),
-    re.compile(r'Shop', re.I),
+    SHOP,
 ]
 
 # Buttons that clear a blocking dialog on the way back to the home screen.
 MAIN_SCREEN_BLOCKERS = [
-    re.compile(r'Click to [Ss]tart', re.I),
-    re.compile(r'[Cc]lick anywhere', re.I),
-    re.compile(r'Cancel', re.I),
+    re.compile(r'Click to Start', re.I),
+    CLICK_ANYWHERE,
+    CANCEL,
 ]
 
-SKIP = re.compile(r'Skip', re.I)
-DO_NOT_REMIND = re.compile(r'not remind|remind me', re.I)
-CONFIRM = re.compile(r'Confirm', re.I)
+# Vertical extent of the bottom navigation bar, as a fraction of frame height.
+NAV_STRIP_TOP = 0.86
 
 
 class BaseGlobalTask(BaseGfTask):
@@ -44,10 +51,6 @@ class BaseGlobalTask(BaseGfTask):
     Inherits the language-independent machinery from `BaseGfTask` - HSV isolation, the numeric regexes, screenshot and debug plumbing - and replaces every
     method that compares against hardcoded Simplified Chinese with one that matches English on-screen text directly.
     """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.pop_ups = POP_UPS
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +88,18 @@ class BaseGlobalTask(BaseGfTask):
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # Clicking
 
+    @property
+    def nav_strip(self):
+        """Full-width box covering just the bottom navigation bar.
+
+        Kept full width on purpose. OCR often returns two adjacent nav buttons as a single box (`Voyage Formation`), and clipping horizontally would cut the
+        merged label that `click_ocr_word` needs in order to aim. Trimming vertically is free and drops most of the pixels.
+
+        Returns:
+            A `Box` spanning the frame width across the nav bar's height.
+        """
+        return Box(x=0, y=int(self.height * NAV_STRIP_TOP), to_x=self.width, to_y=self.height)
+
     def click_ocr_word(self, match, box=None, time_out=5, after_sleep=0, raise_if_not_found=False):
         """Click a word, even when OCR merged it into a box with its neighbour.
 
@@ -107,6 +122,29 @@ class BaseGlobalTask(BaseGfTask):
             return None
         self.click_box_by_match_position(result, match, after_sleep=after_sleep)
         return result[0]
+
+    def poll_ocr(self, match, box=None, time_out=60, interval=5):
+        """Watch for text over a long stretch without pinning the CPU.
+
+        `wait_ocr` re-captures and re-OCRs with no gap between attempts, which is right for a button that should already be there and wasteful for something
+        minutes away - the in-game Loop finishing, for instance. This trades a little latency for roughly two orders of magnitude fewer OCR calls.
+
+        Args:
+            match: Pattern to look for.
+            box: Region to search in.
+            time_out: Seconds to keep watching.
+            interval: Seconds between checks.
+
+        Returns:
+            The matching boxes, or None if the text never appeared.
+        """
+        deadline = time.time() + time_out
+        while time.time() < deadline:
+            if found := self.ocr(match=match, box=box):
+                return found
+            self.sleep(min(interval, max(0, deadline - time.time())))
+            self.next_frame()
+        return None
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -168,18 +206,16 @@ class BaseGlobalTask(BaseGfTask):
         """
         if box is None:
             box = self.box.bottom
-        check = list(self.pop_ups)
+        check = list(POP_UPS)
         if other:
             check += other if isinstance(other, list) else [other]
-        start = time.time()
-        found_count = 0
-        while found_count < count:
-            remaining = int(time_out - (time.time() - start))
+        deadline = time.time() + time_out
+        for _ in range(count):
+            remaining = int(deadline - time.time())
             if remaining <= 0:
                 break
             if not self.wait_ocr(match=check, box=box, settle_time=2, time_out=remaining, raise_if_not_found=False):
                 break
-            found_count += 1
             self.back(after_sleep=3)
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
@@ -217,7 +253,7 @@ class BaseGlobalTask(BaseGfTask):
             elif result := self.find_boxes(boxes, match=end_match, boundary=end_box):
                 self.sleep(1)
                 return result
-            elif self.find_boxes(boxes, match=self.pop_ups):
+            elif self.find_boxes(boxes, match=POP_UPS):
                 self.back()
                 self.sleep(1)
             else:
