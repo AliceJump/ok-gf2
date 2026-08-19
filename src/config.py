@@ -74,3 +74,9 @@ config = {
         ["ok", "DiagnosisTask"],
     ],
 }
+
+# Imported down here rather than at the top so this stays a single append-at-EOF hunk, which keeps merges
+# from upstream clean. apply_region swaps onetime_tasks to match the selected game client.
+from src.region import apply_region
+
+apply_region(config)

@@ -1,0 +1,103 @@
+import importlib
+
+from qfluentwidgets import FluentIcon
+
+from ok import ConfigOption
+from ok.util.file import get_relative_path, read_json_file
+
+REGION_CONFIG_NAME = "Region"
+REGION_CONFIG_KEY = "Game Client"
+REGION_GLOBAL = "Global"
+REGION_CN = "CN"
+REGION_DEFAULT = REGION_GLOBAL
+
+# Tasks that drive the CN client. Matches what upstream registers, in upstream's order.
+CN_TASKS = [
+    ["src.tasks.DailyTask", "DailyTask"],
+    ["src.tasks.WeeklyTask", "WeeklyTask"],
+    ["src.tasks.ClearMapTask", "ClearMapTask"],
+    ["src.tasks.TestStartGame", "TestStartGame"],
+    ["src.tasks.TestTask", "TestTask"],
+]
+
+# Tasks that drive the Global client. These live in src/global/ and match English on-screen text
+# directly instead of going through the reverse ocr.po translation.
+GLOBAL_TASKS = [
+    ["src.global.GlobalDailyTask", "GlobalDailyTask"],
+    ["src.global.GlobalWeeklyTask", "GlobalWeeklyTask"],
+]
+
+# Framework-supplied tasks that are useful in either region.
+SHARED_TASKS = [
+    ["ok", "DiagnosisTask"],
+]
+
+# Every task from both regions is always registered, in a fixed order, and the ones that do not belong
+# to the selected region are merely hidden. Registration order matters: desktop shortcuts and Windows
+# scheduled tasks store a positional index into this list ("-t N"), so a list that changed shape with
+# the region would silently repoint them at the wrong task.
+ALL_TASKS = CN_TASKS + GLOBAL_TASKS + SHARED_TASKS
+
+region_option = ConfigOption(
+    REGION_CONFIG_NAME,
+    {REGION_CONFIG_KEY: REGION_DEFAULT},
+    config_type={REGION_CONFIG_KEY: {"type": "drop_down", "options": [REGION_GLOBAL, REGION_CN]}},
+    config_description={REGION_CONFIG_KEY: "Which game client to automate. Restart the app to apply."},
+    icon=FluentIcon.GLOBE,
+)
+
+
+def current_region():
+    """Read the selected region straight off disk.
+
+    The task list has to be built while `src/config.py` is still being imported, which is before the framework instantiates its own `Config` objects. Both
+    paths resolve the same `configs/Region.json`, so reading it directly here stays in sync with whatever the settings tab writes.
+
+    Returns:
+        Either `REGION_GLOBAL` or `REGION_CN`. Falls back to `REGION_DEFAULT` when the file is missing or holds an unknown value.
+    """
+    saved = read_json_file(get_relative_path("configs", f"{REGION_CONFIG_NAME}.json")) or {}
+    region = saved.get(REGION_CONFIG_KEY, REGION_DEFAULT)
+    return region if region in (REGION_GLOBAL, REGION_CN) else REGION_DEFAULT
+
+
+def _hide_tasks_from_other_region(task_entries):
+    """Mark the given task classes hidden.
+
+    The framework builds every registered task and then filters the sidebar on each instance's `visible` attribute, so hiding has to happen per instance,
+    after construction. `post_init` is the one hook that runs at that point. Patching it here keeps the CN task files untouched, which matters because they
+    are upstream's and get merged in regularly.
+
+    Args:
+        task_entries: `[module_path, class_name]` pairs to hide.
+    """
+    for module_path, class_name in task_entries:
+        try:
+            task_class = getattr(importlib.import_module(module_path), class_name)
+        except (ImportError, AttributeError):
+            continue
+        original_post_init = task_class.post_init
+
+        def post_init(self, _original=original_post_init):
+            _original(self)
+            self.visible = False
+
+        task_class.post_init = post_init
+
+
+def apply_region(config):
+    """Register the Region setting and hide whichever region's tasks are not selected.
+
+    Mutates `config` in place so `src/config.py` only needs one call, leaving the upstream dict literal untouched for clean merges.
+
+    Args:
+        config: The app config dict from `src/config.py`.
+
+    Returns:
+        The region that was applied.
+    """
+    config.setdefault("global_configs", []).append(region_option)
+    config["onetime_tasks"] = list(ALL_TASKS)
+    region = current_region()
+    _hide_tasks_from_other_region(CN_TASKS if region == REGION_GLOBAL else GLOBAL_TASKS)
+    return region
