@@ -1,6 +1,27 @@
 import re
 
+from src.tasks.BaseGfTask import map_re
+
 from .BaseGlobalTask import CONFIRM, SHOP, BaseGlobalTask
+
+# Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
+# running its banner appears directly below this one - not supported, since two at once is rare.
+EVENT_BANNER = (0.104, 0.157)
+EVENT_PAGE = re.compile(r'Challenge|Supply|Story', re.I)
+SUPPLY = re.compile(r'\bSupply\b', re.I)
+# Anchored so it cannot match the "Auto Mode Preparation" dialog title that follows it.
+AUTO = re.compile(r'^Auto$', re.I)
+AUTO_DIALOG = re.compile(r'Number of Auto Battles', re.I)
+ITEMS_OBTAINED = re.compile(r'Items Obtained', re.I)
+
+# Sets the battle count to the most the remaining Expenditure allows. Unlabelled, so clicked by position.
+MAX_BATTLES = (0.653, 0.518)
+
+# Stage nodes sit in a horizontal band across the middle of the Supply map. Scanning a band rather than
+# the whole frame keeps the repeated scroll-and-look cheap.
+STAGE_BAND = (0.0, 0.38, 1.0, 0.62)
+STAGE_SWIPES = 5
+EVENT_BATTLE_TIME_OUT = 900
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
@@ -50,11 +71,13 @@ class GlobalDailyTask(BaseGlobalTask):
         self.default_config.update({
             'Start Loop': True,
             'Claim Free Packs': True,
+            'Run Event Supply': True,
             'Claim Boundary Push Rewards': True,
         })
         self.config_description.update({
             'Start Loop': 'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.',
             'Claim Free Packs': 'Claims the shop supply boxes that are currently free.',
+            'Run Event Supply': 'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.',
             'Claim Boundary Push Rewards': 'Collects the Breakthrough rewards under Commissions.',
         })
 
@@ -63,6 +86,7 @@ class GlobalDailyTask(BaseGlobalTask):
         steps = [
             ('Start Loop', self.start_loop),
             ('Claim Free Packs', self.shopping),
+            ('Run Event Supply', self.run_event_supply),
             ('Claim Boundary Push Rewards', self.claim_boundary_push),
         ]
         for key, func in steps:
@@ -131,6 +155,75 @@ class GlobalDailyTask(BaseGlobalTask):
             return False
         self.wait_pop_up(time_out=5, count=2)
         return True
+
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # Event Supply
+
+    def run_event_supply(self):
+        """Auto-battle the current event's last Supply stage.
+
+        Every event has the same shape behind a differently-named banner, so nothing here matches the event's own title.
+        """
+        self.info_set('current_task', 'run_event_supply')
+        self.click_relative(*EVENT_BANNER, after_sleep=3)
+        if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=10, log=True):
+            self.log_info('No event banner on the home screen, skipping.', notify=True)
+            self.go_home()
+            return
+        if not self.wait_click_ocr(match=SUPPLY, box=self.box.bottom_right, time_out=5, after_sleep=3):
+            self.log_info('This event has no Supply mode, skipping.', notify=True)
+            self.go_home()
+            return
+        stage = self.last_supply_stage()
+        if not stage:
+            self.log_info('Found no Supply stages on the map, skipping.', notify=True)
+            self.go_home()
+            return
+        self.log_info(f'running event supply stage {stage.name}')
+        self.click(stage, after_sleep=2)
+        if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info('Found no Auto button on the stage panel, skipping.', notify=True)
+            self.go_home()
+            return
+        if not self.wait_ocr(match=AUTO_DIALOG, box=self.box.center, time_out=5):
+            self.log_info('The Auto Mode dialog did not open, skipping.', notify=True)
+            self.go_home()
+            return
+        # Take the maximum the remaining Expenditure allows. Missing this button costs a smaller run,
+        # not a wrong one, so it is not worth failing over.
+        self.click_relative(*MAX_BATTLES, after_sleep=1)
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5, after_sleep=3):
+            self.log_info('Could not confirm the auto battles, skipping.', notify=True)
+            self.go_home()
+            return
+        if self.poll_ocr(ITEMS_OBTAINED, box=self.box.top, time_out=EVENT_BATTLE_TIME_OUT, interval=5):
+            self.wait_pop_up(time_out=10, count=2)
+        else:
+            self.log_info(f'Auto battles did not finish within {EVENT_BATTLE_TIME_OUT}s.', notify=True)
+        self.go_home()
+
+    def last_supply_stage(self):
+        """Scroll the Supply map to its right end and return the furthest-right stage node.
+
+        The map opens part way along, and the last stage is the one worth running. Swiping stops early once a scroll reveals nothing new, so a short map
+        costs no extra passes.
+
+        Returns:
+            The rightmost stage `Box`, or None when the map showed no stage codes.
+        """
+        band = self.box_of_screen(*STAGE_BAND)
+        previous = None
+        for _ in range(STAGE_SWIPES):
+            stages = self.ocr(match=map_re, box=band)
+            names = tuple(sorted(box.name for box in stages))
+            if names and names == previous:
+                break
+            previous = names
+            self.swipe_relative(0.8, 0.5, 0.2, 0.5, duration=0.5, settle_time=1)
+            self.next_frame()
+        stages = self.ocr(match=map_re, box=band, log=True)
+        return max(stages, key=lambda box: box.x) if stages else None
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
