@@ -10,126 +10,165 @@
 <h1 align="center">ok-gf2</h1>
 
 <p>
-基于图像识别的少前2（Girls' Frontline 2）自动化程序，部分功能支持后台运行，基于 <a href="https://github.com/ok-oldking/ok-script">ok-script</a> 开发。
-<br />
-An image-recognition-based automation tool for Girls' Frontline 2, with background mode support, developed with <a href="https://github.com/ok-oldking/ok-script">ok-script</a>.
+An image-recognition-based automation tool for Girls' Frontline 2: Exilium, with background mode support, developed with <a href="https://github.com/ok-oldking/ok-script">ok-script</a>.
 </p>
 
-<p><i>通过模拟 Windows 用户接口进行操作，无内存读取、无文件修改</i></p>
+<p><i>Operates by simulating Windows user input. No memory reading, no file modification.</i></p>
 
 
 <!-- Badges -->
 <div align="center">
 
-![平台](https://img.shields.io/badge/platform-Windows-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-blue)
 [![GitHub release](https://img.shields.io/github/v/release/alicejump/ok-gf2)](https://github.com/alicejump/ok-gf2/releases)
-[![总下载量](https://img.shields.io/github/downloads/alicejump/ok-gf2/total)](https://github.com/alicejump/ok-gf2/releases)
+[![Total downloads](https://img.shields.io/github/downloads/alicejump/ok-gf2/total)](https://github.com/alicejump/ok-gf2/releases)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AliceJump/ok-gf2)
 
 </div>
 
-### 中文说明 | [English Readme](README_en.md)
+> Game terms in this document use the wording shown by the **Global / Steam** client, and the
+> feature list reflects what the program actually ships. See [docs/glossary.md](docs/glossary.md)
+> for the full term mapping.
 
 ---
 
-## ⚠️ 免责声明
+## ⚠️ Disclaimer
 
-本软件为外部辅助工具，旨在自动化《少前2：追放》的部分游戏流程。它完全通过模拟常规用户界面与游戏交互，遵循相关法律法规。本项目旨在简化用户的重复性操作，不会破坏游戏平衡或提供不公平优势，也绝不会修改任何游戏文件或数据。
+This software is an external assistance tool intended to automate parts of Girls' Frontline 2: Exilium. It interacts with the game by
+simulating normal user interface operations and complies with relevant laws and regulations. The project aims to reduce
+repetitive actions, does not break game balance or provide unfair advantages, and never modifies any game files or data.
 
-本软件开源、免费，仅供个人学习与交流使用，请勿用于任何商业或营利性目的。开发者团队拥有本项目的最终解释权。因使用本软件而产生的任何问题，均与本项目及开发者无关。
+This software is open-source and free for personal learning and communication only. Commercial or profit-oriented use is
+prohibited. The development team reserves the right of final interpretation. Any issues arising from use of this
+software are unrelated to the project or its developers.
 
-**使用本软件即表示您已阅读、理解并同意以上声明，并自愿承担一切潜在风险。**
+**By using this software, you acknowledge that you have read, understood, and agreed to the above statement and assume
+all potential risks.**
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-1. **下载安装包**：从下方的"下载渠道"中选择一个，下载最新的 `ok-gf2` 压缩包。
-2. **解压运行**：解压后双击 `ok-gf2.exe` 即可运行，下载后可应用内更新。
-3. **配置任务**：根据需求在软件界面配置任务参数并执行。
+1. **Download the package**: Choose a source below and download the latest `ok-gf2` archive.
+2. **Extract and run**: Extract the archive and double-click `ok-gf2.exe`. The app can update itself from then on.
+3. **Configure tasks**: Set up task parameters in the software interface as needed.
 
-## 📥 下载渠道
+## 📥 Download Sources
 
-* **[GitHub](https://github.com/alicejump/ok-gf2/releases)**: 官方发布页，全球访问速度快。（**请下载 `7z` 压缩包，而不是 `Source Code` 源码压缩包**）
-* **[Mirror酱](https://mirrorchyan.com/zh/projects?rid=okgf2&source=okgf2readme)**: 国内镜像，下载可能需要购买其平台的 CD-KEY。
-* **[夸克网盘](https://pan.quark.cn/s/a1052cec4d13)**: 免费下载（需注册并下载夸克网盘客户端）
+* **[GitHub](https://github.com/alicejump/ok-gf2/releases)**: Official release page with fast global access. (**Download the `7z` archive, not the `Source Code` archive**)
+* **[Mirrorchyan](https://mirrorchyan.com/zh/projects?rid=okgf2&source=okgf2readme)**: China mirror (may require a CD-KEY purchase).
+* **[Quark Drive](https://pan.quark.cn/s/a1052cec4d13)**: Free download (requires registration and the Quark Drive client).
 
-## 运行要求与推荐设置
+## Runtime Requirements & Recommendations
 
-- 系统：Windows
-- 游戏：直接使用 PC 版少前2，可原生后台运行
-- 分辨率：支持所有 16:9 分辨率
-- 帧率：推荐 120 FPS，帧率越高越好
-- 语言：支持简体中文 / 英文（英文可能有不少问题）
-- 显示：Windows 自动 HDR 必须关闭，可以使用 RTX HDR
-- 背景：主页背景需要使用**暗色**，不能用白色背景，不然识别不到文字
-- 运行权限：建议管理员权限运行（源码模式必须）
-- 路径：安装/运行路径尽量使用纯英文
-
----
-
-## 🎮 功能一览
-
-### 一次性任务
-
-- **[日常任务](docs/日常任务.md)**：一键长草，完成每日例行的各项操作
-- **[清图任务](docs/清图任务.md)**：自动清理地图关卡
-- **[兵棋推演](docs/兵棋推演.md)**：自动进行兵棋推演玩法
-- **活动体力扫荡**：自动扫荡活动关卡消耗体力
-- **竞技场**：自动进行竞技场战斗
-- **尘烟前线**：自动完成尘烟玩法
-- **要务**：自动完成要务任务
-- **[周常任务](docs/周常任务.md)**：自动完成每周例行任务
-- **诊断**：框架内置诊断任务的简单封装
-
-### 触发任务（后台运行）
-
-- **自动战斗**：检测战斗状态并按技能序列自动释放
-- **自动拾取**：自动拾取关卡中掉落的物品
-- **自动交互**：自动跳过剧情对话
-
-### 定时任务
-
-- 支持将一次性任务加入 Windows 任务计划，按设定时间自动启动执行
-
-### 辅助能力
-
-- OCR 识别、模板匹配、HSV 颜色识别
-- UI 自动化、按键模拟
-- 日志、异常处理、流程调度
+- OS: Windows
+- Game: PC version of Girls' Frontline 2: Exilium, supports native background mode
+- Resolution: All 16:9 resolutions supported, minimum 1280x720
+- Frame rate: 120 FPS recommended, higher is better
+- Language: Simplified Chinese / English (English may have issues)
+- Display: Windows Auto HDR must be disabled. RTX HDR is acceptable
+- Background: Your home screen background must be **dark**. A white background breaks text recognition
+- Privilege: Run as Administrator recommended, and required when running from source
+- Path: Prefer an install path with no non-English characters
 
 ---
 
-## ⚙️ 部分参数说明
+## 🎮 Feature Overview
 
-### 1. 当前物资关卡名称
+### Tasks
 
-- 若为 **小活动**，物资关卡会显示为 **物资模式**，此时无需填写任何内容。
-- 若为 **大活动**，物资关卡会显示为 **铸碑者的黎明·上篇**，则需要填写物资关卡名为 **铸碑者的黎明**。
+These are the tasks you can select and run in the app. The number in front of each one is its
+index for the `-t` command-line flag (see [Command-line arguments](#command-line-arguments)).
 
-> ⚠️ 不正确填写可能会影响活动代理逻辑。
+| # | Task | What it does |
+|---|---|---|
+| 1 | **[One-Click Dailies](docs/en/daily-tasks.md)** | Runs the full daily routine top to bottom. Every step below can be toggled on or off individually |
+| 2 | **[Weekly](docs/en/weekly-tasks.md)** | Runs the weekly Combat Simulations: Boss Fight, Peak Value Assessment, Expansion Drills |
+| 3 | **[Auto-Clear Campaign Stages](docs/en/campaign-clear.md)** | Clears uncleared Campaign stages left to right |
+| 4 | Launch Game | Test task. Starts the game and closes it after 120 seconds |
+| 5 | Test | Test task, for development only |
+| 6 | Diagnosis | Thin wrapper around the ok-script framework's built-in diagnosis task |
+
+### What One-Click Dailies covers
+
+Each of these is a switch inside the Dailies task rather than a task of its own. Full details are in
+**[docs/en/daily-tasks.md](docs/en/daily-tasks.md)**.
+
+- Community daily check-in (needs your username and password)
+- Mail collection
+- Event reward track and event stage rewards
+- Auto-running the Event **Supply** stage
+- **Crew Deck** activities: Tea Time, Delicious Cuisine, and reward pickup
+- **Dispatch Room** assignments, dispatched and collected
+- Claiming free packs from the **Shop**
+- **Wishlist** purchases across Furniture Shop, Platoon Shop, Dispatch Shop, Battlelog Trading, Neural Integration, and Growth Stack
+- Farming **Supply Missions** with Intelligence Puzzle
+- **Combat Exercises**
+- **Platoon** tasks and **Gunsmoke Frontline**
+- Claiming **Commissions** rewards
+- Claiming daily **Voyage** rewards
+- Claiming **Boundary Push** gathering and dispatch rewards
+
+### Scheduled tasks
+
+Any task above can be added to the Windows Task Scheduler from inside the app, so it launches and
+runs on its own at a time you set.
+
+### Automatic in-battle behavior
+
+Combat handling is built into the tasks above rather than being something you start separately.
+While a task is running it detects the battle state and fires skills in order, picks up drops, and
+skips story dialogue on its own. The program captures the game window in the background, so you can
+keep using your computer while it works.
+
+### Under the hood
+
+- OCR text recognition, template matching, and HSV color detection
+- Windows UI automation and simulated key input
+- Logging, error handling, and task scheduling
+
+---
+
+## ⚙️ Parameter notes
+
+### 1. Current Supply stage name
+
+Every Event has a **Supply** stage, which is the one that costs Intelligence Puzzle.
+
+- In a **small event**, that stage is simply labelled **Supply**. Leave this field empty.
+- In a **large event**, the stage is renamed after the event and split into parts. Enter the event
+  name **without** the part suffix. For a stage shown as `铸碑者的黎明·上篇`, you would enter
+  `铸碑者的黎明`.
+
+> ⚠️ Filling this in incorrectly will break the event automation.
 
 ![image](https://github.com/user-attachments/assets/ed261840-449a-46d4-8a07-f58382f3a779)
 
 ---
 
-### 2. 已确认启用游戏内全局自动功能
+### 2. Confirm the in-game global auto-battle setting is enabled
 
-路径：**设置 → 其他 → 自动战斗设置**
-
----
-
-### 3. 喝水
-
-逻辑：进入活动层后先按 `A` 后按 `W` 再按 `D`，需自行调整。
-使用格式：`{A按住秒数}-{W按住秒数}-{D按住秒数}`
-示例：`1.44-1.56-1.38`
+Path: **Settings -> Other -> Auto-Battle Settings**
 
 ---
 
-### 4. 吃饭
+### 3. Tea Time
 
-逻辑：进入活动层后先按 `S` 后点按 `D`，需自行调整。
-使用格式：`{S按住秒数}`
-示例：`1.3`
+The Crew Deck is a walkable area, so this setting is how long to hold each movement key while
+walking your character over to the coffee machine. It presses `A`, then `W`, then `D`. You will need
+to tune the values yourself, since the right timings depend on where your character starts.
+
+Format: `{seconds holding A}-{seconds holding W}-{seconds holding D}`
+
+Example: `1.44-1.56-1.38`
+
+---
+
+### 4. Delicious Cuisine
+
+Same idea, walking to the kitchen instead. It presses `S`, then taps `D`.
+
+Format: `{seconds holding S}`
+
+Example: `1.3`
 
 ---
 
@@ -139,114 +178,119 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 
 ---
 
-## 🔧 疑难解答 (Troubleshooting)
+## 🔧 Troubleshooting
 
-如果遇到问题，请在提问前按以下步骤逐一排查：
+If you encounter issues, check the following in order:
 
-1. **安装路径**：请确保软件安装在**纯英文路径**下，避免包含中文字符的文件夹。
-2. **杀毒软件**：将软件的安装目录添加到您的杀毒软件（包括 Windows Defender）的**信任区或白名单**中，以防文件被误删或拦截。
-3. **显示设置**：
-   * 关闭 Windows 自动 HDR（必须），可以使用 RTX HDR。
-   * 使用游戏默认的亮度设置。
-   * 主页背景使用**暗色**，不能用白色背景。
-4. **游戏帧率**：推荐 **120 FPS**，帧率越高越好。
-5. **游戏语言**：优先使用简体中文，英文可能有部分问题。
-6. **软件版本**：检查并确保您使用的是最新版本。
-7. **寻求帮助**：如果以上步骤都无法解决您的问题，请通过 QQ 群提交详细的错误报告。
+1. **Install path**: Install under a path with no non-English characters.
+2. **Antivirus**: Add the install directory to your antivirus allow-list, including Windows Defender.
+3. **Display settings**:
+   * Disable Windows Auto HDR. This is required. RTX HDR is acceptable.
+   * Use the game's default brightness settings.
+   * Use a **dark** home screen background.
+4. **Game frame rate**: 120 FPS recommended, higher is better.
+5. **Game language**: Simplified Chinese works best. English may have issues.
+6. **Software version**: Make sure you are running the latest release.
+7. **Get help**: If none of the above helps, submit a detailed error report via the QQ group.
 
-## 💬 加入我们
+## 💬 Join Us
 
-* **QQ 交流群**：`1033950808`（入群答案：`老王同学OK`）
+* **QQ Group**: `1033950808` (join answer: `老王同学OK`)
 
-本项目基于 [ok-script](https://github.com/ok-oldking/ok-script) 框架开发，简单易维护。欢迎有兴趣的开发者使用 [ok-script](https://github.com/ok-oldking/ok-script) 开发您自己的自动化项目。
+This project is built on [ok-script](https://github.com/ok-oldking/ok-script), which is easy to maintain. Developers are
+welcome to build their own automation projects with ok-script.
 
-## 🔗 使用 ok-script 的项目
+## 🔗 Projects using ok-script
 
-* 终末地 [https://github.com/AliceJump/ok-end-field](https://github.com/AliceJump/ok-end-field)
-* 鸣潮 [https://github.com/ok-oldking/ok-wuthering-waves](https://github.com/ok-oldking/ok-wuthering-waves)
-* 鸣潮（日常一条龙-优化版）[https://github.com/zzc-tongji/ok-ww-enhanced](https://github.com/zzc-tongji/ok-ww-enhanced)
-* 原神（停止维护，后台过剧情可用）[https://github.com/ok-oldking/ok-genshin-impact](https://github.com/ok-oldking/ok-genshin-impact)
-* 少前2 [https://github.com/ok-oldking/ok-gf2](https://github.com/ok-oldking/ok-gf2)
-* 星铁 [https://github.com/Shasnow/ok-starrailassistant](https://github.com/Shasnow/ok-starrailassistant)
-* 星痕共鸣 [https://github.com/Sanheiii/ok-star-resonance](https://github.com/Sanheiii/ok-star-resonance)
-* 二重螺旋 [https://github.com/BnanZ0/ok-duet-night-abyss](https://github.com/BnanZ0/ok-duet-night-abyss)
-* 白荆回廊（停止更新）[https://github.com/ok-oldking/ok-baijing](https://github.com/ok-oldking/ok-baijing)
+* Arknights: Endfield [https://github.com/AliceJump/ok-end-field](https://github.com/AliceJump/ok-end-field)
+* Wuthering Waves [https://github.com/ok-oldking/ok-wuthering-waves](https://github.com/ok-oldking/ok-wuthering-waves)
+* Wuthering Waves (enhanced daily runner) [https://github.com/zzc-tongji/ok-ww-enhanced](https://github.com/zzc-tongji/ok-ww-enhanced)
+* Genshin Impact (no longer maintained, background dialogue skipping still works) [https://github.com/ok-oldking/ok-genshin-impact](https://github.com/ok-oldking/ok-genshin-impact)
+* Girls' Frontline 2: Exilium [https://github.com/ok-oldking/ok-gf2](https://github.com/ok-oldking/ok-gf2)
+* Honkai: Star Rail [https://github.com/Shasnow/ok-starrailassistant](https://github.com/Shasnow/ok-starrailassistant)
+* Star Resonance [https://github.com/Sanheiii/ok-star-resonance](https://github.com/Sanheiii/ok-star-resonance)
+* Duet Night Abyss [https://github.com/BnanZ0/ok-duet-night-abyss](https://github.com/BnanZ0/ok-duet-night-abyss)
+* Bai Jing Corridor (no longer maintained) [https://github.com/ok-oldking/ok-baijing](https://github.com/ok-oldking/ok-baijing)
 
 ---
 
-## 💻 开发者专区
+## 💻 Developer Zone
 
-### 从源码运行 (Python)
+### Run from source (Python)
 
-本项目仅支持 Python 3.12 版本，需以管理员权限启动 CMD / PyCharm / VSCode。
+This project supports **Python 3.12 only**. Run CMD, PyCharm, or VSCode as **Administrator**.
 
 ```bash
-# 如果首次 clone 未带子模块参数，请先执行
+# If your first clone did not include submodules, initialize them first
 git submodule update --init --recursive
 
-# CPU 版本，使用 OpenVINO
+# CPU version, using OpenVINO
 pip install -r requirements.txt --upgrade
 
-# 运行 Release 版本
+# Run Release version
 python main.py
 
-# 运行 Debug 版本
+# Run Debug version
 python main_debug.py
 ```
 
 ```bash
-# CUDA 版本，使用 paddle-gpu 加速，推荐 N 卡 30 系以上使用，速度飞快
+# CUDA version, using paddle-gpu, recommended for NVIDIA 30 series and above
 pip install -r requirements-dml.txt --upgrade
 
-# 运行 Release 版本
+# Run Release version
 python main_direct_ml.py
 
-# 运行 Debug 版本
+# Run Debug version
 python main_direct_ml_debug.py
 ```
 
-### 命令行参数
-
-您可以通过命令行参数实现自动化启动。
+### Command-line arguments
 
 ```pwsh
-# 启动后自动执行第1个任务，并在任务完成后退出程序
+# Start, automatically run task 1 (One-Click Dailies), then exit when it finishes
 ok-gf2.exe -t 1 -e
 ```
 
-- `-t` 或 `--task`：启动后自动执行第 N 个任务。
-- `-e` 或 `--exit`：任务执行完毕后自动退出程序。
+* `-t` or `--task`: Automatically run the Nth task. The numbering is the `#` column in
+  [Tasks](#tasks), so `-t 1` is One-Click Dailies, `-t 2` is Weekly, and `-t 3` is Auto-Clear
+  Campaign Stages.
+* `-e` or `--exit`: Exit automatically after the task completes.
 
-### 开发调试与测试
+### Development and testing
 
 ```bash
-# 执行 tests/ 下全部测试脚本（PowerShell）
+# Run every test script under tests/ (PowerShell)
 ./run_tests.ps1
 
-# 或逐个运行 unittest
+# Or run a single unittest
 python -m unittest tests/TestMain.py
 ```
 
-### 开发者文档
+### Developer Documentation
 
-| 文档 | 说明 |
-|------|------|
-| [快速开始（QUICKSTART.md）](docs/dev/QUICKSTART.md) | 从源码运行项目、启动软件、新建任务的最简流程 |
-| [开发指南（DEVELOPMENT.md）](docs/dev/DEVELOPMENT.md) | 架构总览、目录结构、开发流程、测试、CI/CD |
-| [API 参考（API.md）](docs/dev/API.md) | BaseGfTask、Mixin、ScreenPosition 等详细 API |
-| [i18n 与 OCR 配置流程](docs/dev/i18n_OCR配置流程.md) | runtime locale、语言 JSON、OCR 匹配与纠错配置流程 |
-| [键盘操作体系](docs/dev/键盘操作体系.md) | 热键映射、按键封装规范 |
+| Document | Description |
+|----------|-------------|
+| [Quick Start Guide (QUICKSTART.md)](docs/dev/QUICKSTART.md) | Minimal workflow to run from source, launch the software, and create tasks |
+| [Development Guide (DEVELOPMENT.md)](docs/dev/DEVELOPMENT.md) | Architecture overview, directory structure, development workflow, testing, CI/CD |
+| [API Reference (API.md)](docs/dev/API.md) | Detailed API docs for BaseGfTask, Mixin, ScreenPosition, and more |
+| [i18n & OCR Configuration](docs/dev/i18n_OCR配置流程.md) | Runtime locale, language JSON, OCR matching, and text-fix workflow |
+| [Keyboard System](docs/dev/键盘操作体系.md) | Hotkey mapping, key binding conventions |
+| [Terminology Glossary](docs/glossary.md) | Chinese to Global / Steam English term mapping, for anyone translating this project |
 
-## ❤️ 赞助与致谢
+Note that the developer docs above are still written in Chinese. Only the user-facing guides in
+[docs/en/](docs/en/) have been translated so far.
 
-### 赞助商 (Sponsors)
+## ❤️ Sponsors & Acknowledgements
 
-[![爱发电](https://img.shields.io/badge/爱发电-赞助-blue?style=flat-square)](https://afdian.com/a/AliceJump)
-[![爱发电](https://img.shields.io/badge/爱发电-赞助-blue?style=flat-square)](https://afdian.com/a/ok-oldking)
-[![Patreon](https://img.shields.io/badge/Patreon-支持-orange?style=flat-square)](https://patreon.com/ok_oldking)
-[![PayPal](https://img.shields.io/badge/PayPal-捐赠-blue?style=flat-square)](https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ)
+### Sponsors
 
-### 致谢
+[![Afdian](https://img.shields.io/badge/Afdian-Sponsor-blue?style=flat-square)](https://afdian.com/a/AliceJump)
+[![Afdian](https://img.shields.io/badge/Afdian-Sponsor-blue?style=flat-square)](https://afdian.com/a/ok-oldking)
+[![Patreon](https://img.shields.io/badge/Patreon-Support-orange?style=flat-square)](https://patreon.com/ok_oldking)
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?style=flat-square)](https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ)
+
+### Acknowledgements
 
 * [ok-oldking/OnnxOCR](https://github.com/ok-oldking/OnnxOCR)
 * [zhiyiYo/PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
