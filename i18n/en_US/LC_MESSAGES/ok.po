@@ -463,3 +463,54 @@ msgid "到达主页后停留的秒数，给游戏更新和公告弹窗留出时�
 msgstr ""
 "Seconds to stay on the home screen before closing, leaving time for updates "
 "and announcement popups."
+
+msgid "日常完成!"
+msgstr "Dailies complete!"
+
+msgid "周常完成!"
+msgstr "Weekly complete!"
+
+msgid "阵容没上满!"
+msgstr "Your squad is not full!"
+
+msgid "开局检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected at the start, clicking it to begin another auto-battle "
+"round."
+
+msgid "开局后检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected after the start, clicking it to begin another auto-battle "
+"round."
+
+msgid "开局二次检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected again at the start, clicking it to begin another auto-"
+"battle round."
+
+msgid "检测到继续前进，点击后开启新一轮自动战斗"
+msgstr "Continue detected, clicking it to begin another auto-battle round."
+
+msgid "结算后检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected after the results screen, clicking it to begin another "
+"auto-battle round."
+
+msgid "最后阶段检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected in the final phase, clicking it to begin another auto-"
+"battle round."
+
+msgid "未获取到 hwnd，无法终止游戏进程"
+msgstr "No window handle found, cannot stop the game process."
+
+msgid "未获取到 hwnd 属性，无法终止游戏进程"
+msgstr "No window handle attribute found, cannot stop the game process."
+
+msgid "闪耀星愿未找到开始作战和一键领取，尝试跳过对话框后重试"
+msgstr ""
+"Could not find Start Battle or Claim All in the event bonus stages, skipping"
+" dialogs and retrying."
+
+msgid "自主循环步骤4未完成，退出循环"
+msgstr "Start Loop step 4 did not finish, leaving the loop."

@@ -121,12 +121,46 @@ def size_cards_by_height_for_width():
     logger.info('expandable cards sized by height-for-width')
 
 
+def translate_notifications():
+    """Let toast notifications use the app translation catalog.
+
+    `MainWindow.show_notification` only runs its text through Qt's "app" context, which holds the
+    framework's own strings. Everything this project translates lives in the gettext catalog instead,
+    so task names and task messages reach the toast untranslated. Passing both through `og.app.tr`
+    first fixes that, and a string with no catalog entry comes back unchanged.
+    """
+    if os.environ.get('OK_GF2_NO_LAYOUT_PATCH'):
+        return
+    try:
+        from ok.gui.MainWindow import MainWindow
+    except ImportError:
+        logger.warning('could not import MainWindow, skipping notification translation')
+        return
+
+    original_show = MainWindow.show_notification
+
+    def patched_show(self, message, title=None, error=False, tray=False, show_tab=None, params=None):
+        from ok import og
+        try:
+            if message:
+                message = og.app.tr(message)
+            if title:
+                title = og.app.tr(title)
+        except Exception as e:
+            logger.warning(f'could not translate notification: {e}')
+        original_show(self, message, title, error, tray, show_tab, params)
+
+    MainWindow.show_notification = patched_show
+    logger.info('notifications routed through the translation catalog')
+
+
 class Globals(QObject):
 
     def __init__(self, exit_event):
         super().__init__()
         widen_settings_text_column()
         size_cards_by_height_for_width()
+        translate_notifications()
         # ok.og.executor.ocr_lib.add_text_fix({"a": "b"})
 
 
