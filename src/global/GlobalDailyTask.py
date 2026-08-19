@@ -1,12 +1,17 @@
 import re
 
-from .BaseGlobalTask import CONFIRM, CREW_DECK, SHOP, BaseGlobalTask
+from .BaseGlobalTask import CONFIRM, SHOP, BaseGlobalTask
 
 COMMISSIONS = re.compile(r'Commissions', re.I)
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
-AUTO_LOOP = re.compile(r'Auto\s*Loop', re.I)
+#
+# The entry point is the fourth of the small unlabelled icons along the bottom-left of the home screen,
+# so it has to be clicked by position. Everything after that is real text. Opening it lands on the
+# Dispatch Room page, which is what we check to confirm the click landed.
+LOOP_ICON = (0.213, 0.896)
+LOOP_SCREEN = re.compile(r'Dispatch Room|Start\s*Loop', re.I)
 START_LOOP = re.compile(r'Start\s*Loop', re.I)
 LOOP_ENDED = re.compile(r'Loop\s*(Ended|Complete|Finished)|End of Loop', re.I)
 
@@ -82,15 +87,15 @@ class GlobalDailyTask(BaseGlobalTask):
     # Loop automation
 
     def start_loop(self):
-        """Open the Crew Deck, start the in-game Loop, and wait for it to report back.
+        """Open the Dispatch Room, start the in-game Loop, and wait for it to report back.
 
         The Loop runs for minutes at a time against a static screen, so the wait is a throttled poll rather than a tight one. Anything the Loop covers is
         deliberately not automated here.
         """
         self.info_set('current_task', 'start_loop')
-        self.click_ocr_word(CREW_DECK, box=self.box.right, after_sleep=3, raise_if_not_found=True)
-        if not self.wait_click_ocr(match=AUTO_LOOP, box=self.box.bottom_left, time_out=10, after_sleep=2):
-            self.log_info('Could not find the Loop entry point, skipping.', notify=True)
+        self.click_relative(*LOOP_ICON, after_sleep=3)
+        if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=10, log=True):
+            self.log_info('Clicking the Loop icon did not open the Dispatch Room, skipping.', notify=True)
             self.ensure_main()
             return
         if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=10, after_sleep=2):
