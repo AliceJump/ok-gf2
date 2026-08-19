@@ -20,6 +20,9 @@ def widen_settings_text_column():
 
     The controls are unaffected because they set their own fixed width via `control_width`.
 
+    Must be paired with `size_cards_by_height_for_width`, otherwise cards keep reserving height for
+    the wrapping that no longer happens and leave a gap under their last row.
+
     This reaches into framework internals, so it is written to fail quietly. If a future ok-script
     release fixes the layout, no spacer is found and the patch does nothing.
     """
@@ -109,57 +112,12 @@ def size_cards_by_height_for_width():
     logger.info('expandable cards sized by height-for-width')
 
 
-def fix_collapsed_card_height():
-    """Snap an expandable card back to its header height once the collapse animation ends.
-
-    qfluentwidgets collapses a card by animating its scroll position and deriving the height from
-    `header + content - scrollValue`. That only lands on the header height when the content size hint
-    matches the laid-out size. Widening the text column breaks that assumption, so a card collapsed
-    after scrolling keeps several hundred pixels of dead space below it.
-
-    Forcing the height when the animation finishes leaves the animation itself intact and makes the
-    end state correct regardless of what the arithmetic produced.
-    """
-    if os.environ.get('OK_GF2_NO_LAYOUT_PATCH'):
-        return
-    try:
-        from qfluentwidgets import ExpandSettingCard
-    except ImportError:
-        logger.warning('could not import ExpandSettingCard, skipping collapse height fix')
-        return
-
-    original_init = ExpandSettingCard.__init__
-
-    def patched_init(self, *args, **kwargs):
-        original_init(self, *args, **kwargs)
-        try:
-            self.expandAni.finished.connect(lambda: _snap_collapsed(self))
-        except Exception as e:
-            logger.warning(f'could not hook collapse animation: {e}')
-
-    ExpandSettingCard.__init__ = patched_init
-
-
-def _snap_collapsed(card):
-    """Force a collapsed card down to its header height.
-
-    Args:
-        card: The `ExpandSettingCard` whose expand animation just finished.
-    """
-    try:
-        if not card.isExpand:
-            card.setFixedHeight(card.card.height())
-    except Exception as e:
-        logger.warning(f'collapse height fix failed: {e}')
-
-
 class Globals(QObject):
 
     def __init__(self, exit_event):
         super().__init__()
         widen_settings_text_column()
         size_cards_by_height_for_width()
-        fix_collapsed_card_height()
         # ok.og.executor.ocr_lib.add_text_fix({"a": "b"})
 
 
