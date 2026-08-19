@@ -434,3 +434,32 @@ msgstr ""
 
 msgid "开启自主循环后会跳过该项"
 msgstr "Skipped when Start Loop is enabled."
+
+msgid "自动完成班组的每日要务战斗、尘烟前线和补给领取"
+msgstr ""
+"Runs the daily Platoon Essential Tasks battle, then Gunsmoke Frontline, and "
+"claims Resupply."
+
+msgid "自动进入战役推进→模拟作战→首领挑战，打完并领取奖励"
+msgstr ""
+"Runs Boss Fight under Campaign -> Combat Simulations, clears it and claims "
+"the rewards."
+
+msgid ""
+"先领取常规峰值的周期报酬\n"
+"然后依次挑战极限峰值的各等级关卡，激化等级不足时跳过"
+msgstr ""
+"Claims the periodic rewards from Standard first.\n"
+"Then works through each Extreme tier in order, skipping any where your intensity level is too low."
+
+msgid ""
+"自动挑战扩编实练的特殊增强关卡并领取实练奖励\n"
+"体力已满时不会挑战特殊增强关卡"
+msgstr ""
+"Plays the special enhanced Expansion Drills stages and claims the drill rewards.\n"
+"The enhanced stages are skipped while your Intelligence Puzzle is still full."
+
+msgid "到达主页后停留的秒数，给游戏更新和公告弹窗留出时间"
+msgstr ""
+"Seconds to stay on the home screen before closing, leaving time for updates "
+"and announcement popups."

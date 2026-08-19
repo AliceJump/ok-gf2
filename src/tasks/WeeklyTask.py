@@ -14,11 +14,22 @@ class WeeklyTask(BaseGfTask):
         self.name = "周常"
         self.description = ""
         self.support_schedule_task = True
+        self.config_description.update({
+            '首领挑战': '自动进入战役推进→模拟作战→首领挑战，打完并领取奖励',
+            '峰值推定': (
+                '先领取常规峰值的周期报酬\n'
+                '然后依次挑战极限峰值的各等级关卡，激化等级不足时跳过'
+            ),
+            '扩编实练': (
+                '自动挑战扩编实练的特殊增强关卡并领取实练奖励\n'
+                '体力已满时不会挑战特殊增强关卡'
+            ),
+        })
         self.default_config.update({
             '首领挑战': True,
             '峰值推定': True,
             '扩编实练': False,
-        }) 
+        })
 
     def run(self):
         self.ensure_main(recheck_time=2, time_out=90)
