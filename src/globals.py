@@ -51,7 +51,16 @@ def widen_settings_text_column():
         except Exception as e:
             logger.warning(f'settings layout patch failed for this row: {e}')
 
+    original_add_widget = LabelAndWidget.add_widget
+
+    def patched_add_widget(self, widget, stretch=1):
+        # Subclasses add their control after __init__ returns, most of them with the default
+        # stretch=1, which would split the row evenly and undo the widening. Controls already size
+        # themselves through control_width, so they never need stretch.
+        original_add_widget(self, widget, 0)
+
     LabelAndWidget.__init__ = patched_init
+    LabelAndWidget.add_widget = patched_add_widget
     _settings_layout_patched = True
     logger.info('settings text column widened')
 
