@@ -19,22 +19,16 @@ LOOP_ENDED = re.compile(r'Loop\s*ended', re.I)
 LOOP_TIME_OUT = 600
 LOOP_POLL_INTERVAL = 5
 
-# Shop. Free packs live under the quality tab, split across a periodic and a standing list.
-QUALITY = re.compile(r'Quality', re.I)
-PACK_TABS = [re.compile(r'Periodic Pack', re.I), re.compile(r'Standard Package', re.I)]
-PREMIUM_TABS = [re.compile(r'Time-Limited Package', re.I), re.compile(r'Premium Pack', re.I)]
+# Shop. The supply boxes sit along the bottom-right of the landing page, each with its price where a
+# button would be - the claimable ones read "Free". Matching on the price rather than on a box name
+# covers the daily and the weekly box without hardcoding either, and a box on cooldown shows a timer
+# instead, so it simply stops matching once claimed.
 FREE = re.compile(r'^Free$', re.I)
-PURCHASE = re.compile(r'Purchase|Buy', re.I)
+PURCHASE = re.compile(r'Purchase', re.I)
 
-# Wishlist sub-shops, in the order they appear down the shop's left rail.
-WISHLIST_SHOPS = [
-    re.compile(r'Furniture', re.I),
-    re.compile(r'Platoon Shop', re.I),
-    re.compile(r'Dispatch Shop', re.I),
-    re.compile(r'Battlelog', re.I),
-    re.compile(r'Neural Integration', re.I),
-    re.compile(r'Growth Stack', re.I),
-]
+# Upper bound on free boxes to claim in one run. The loop normally ends when nothing reads Free any
+# more; this only stops it spinning if a dialog ever leaves "Free" on screen.
+MAX_FREE_BOXES = 3
 
 # Commissions -> Boundary Push -> Breakthrough.
 BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
@@ -57,17 +51,12 @@ class GlobalDailyTask(BaseGlobalTask):
         self.default_config.update({
             'Start Loop': True,
             'Claim Free Packs': True,
-            'Buy Wishlist Items': False,
             'Claim Boundary Push Rewards': True,
         })
         self.config_description.update({
-            'Start Loop': 'Opens the Crew Deck and starts the in-game Loop automation, then waits for it to finish.',
-            'Claim Free Packs': 'Claims the free periodic and time-limited shop packs.',
-            'Buy Wishlist Items': 'Runs the bulk-buy button in each sub-shop that has one.',
+            'Start Loop': 'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.',
+            'Claim Free Packs': 'Claims the shop supply boxes that are currently free.',
             'Claim Boundary Push Rewards': 'Collects the Breakthrough rewards under Commissions.',
-        })
-        self.config_type.update({
-            'Claim Free Packs': {'sub_configs': {True: ['Buy Wishlist Items']}},
         })
 
     def run(self):
@@ -116,41 +105,33 @@ class GlobalDailyTask(BaseGlobalTask):
     # Shop
 
     def shopping(self):
-        """Claim the free packs, and optionally run each sub-shop's bulk-buy button."""
+        """Open the shop and claim every supply box that is currently free."""
         self.info_set('current_task', 'shopping')
-        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=1.5, raise_if_not_found=True)
-        self.wait_click_ocr(match=QUALITY, box=self.box.top_left, after_sleep=1, raise_if_not_found=True)
-        self.claim_free_pack(PACK_TABS)
-        self.claim_free_pack(PREMIUM_TABS)
-        if self.config.get('Buy Wishlist Items'):
-            self.buy_wishlist()
+        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        claimed = 0
+        for _ in range(MAX_FREE_BOXES):
+            if not self.claim_free_box():
+                break
+            claimed += 1
+        self.log_info(f'claimed {claimed} free supply box(es)')
         self.ensure_main()
 
-    def claim_free_pack(self, tabs):
-        """Open a pack tab and take whatever is free on it.
+    def claim_free_box(self):
+        """Claim one supply box priced Free, if there is one.
 
-        Args:
-            tabs: Match patterns for the tab to open. The first one present wins.
+        Returns:
+            True when a box was claimed, False when none was free or the purchase did not go through.
         """
-        if not self.wait_click_ocr(match=tabs, box=self.box.top, time_out=3, after_sleep=1):
-            return
-        if not self.wait_click_ocr(match=FREE, box=self.box.bottom, time_out=2, after_sleep=0.5):
-            return
-        self.log_info('found a free pack to claim')
-        if self.wait_click_ocr(match=PURCHASE, box=self.box.bottom, time_out=5, after_sleep=1.5):
-            self.wait_pop_up(time_out=5, count=1)
+        free = self.wait_ocr(match=FREE, box=self.box.bottom_right, time_out=3)
+        if not free:
+            return False
+        self.click(free[0], after_sleep=1.5)
+        if not self.wait_click_ocr(match=PURCHASE, box=self.box.bottom, time_out=5, after_sleep=1.5):
+            self.log_info('opened a free supply box but found no Purchase button, backing out.')
             self.back(after_sleep=1)
-
-    def buy_wishlist(self):
-        """Run the bulk-buy button in each sub-shop that offers one. Sub-shops without one are skipped."""
-        self.info_set('current_task', 'buy_wishlist')
-        for shop in WISHLIST_SHOPS:
-            if not self.wait_click_ocr(match=shop, box=self.box.left, time_out=2, after_sleep=1):
-                continue
-            if not self.wait_click_ocr(match=PURCHASE, box=self.box.bottom_right, time_out=2, after_sleep=1):
-                continue
-            if self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=2, after_sleep=1):
-                self.wait_pop_up(time_out=5, count=1)
+            return False
+        self.wait_pop_up(time_out=5, count=2)
+        return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
