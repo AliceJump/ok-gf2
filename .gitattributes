@@ -1,0 +1,4 @@
+# Keep our English README when merging from upstream, which keeps it in Chinese.
+# Requires the "ours" merge driver, which is NOT built into git. Each clone must run once:
+#   git config merge.ours.driver true
+README.md merge=ours
