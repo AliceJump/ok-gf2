@@ -48,6 +48,11 @@ MAIN_SCREEN_BLOCKERS = [
 # Vertical extent of the bottom navigation bar, as a fraction of frame height.
 NAV_STRIP_TOP = 0.86
 
+# Most screens carry a home button in the top-left, immediately right of the Back arrow. It jumps
+# straight to the home screen, where backing out has to unwind one screen at a time. Unlabelled, so it
+# has to be clicked by position. On the home screen itself that spot is empty, so a stray press is safe.
+HOME_BUTTON = (0.076, 0.048)
+
 
 class BaseGlobalTask(BaseGfTask):
     """Base for tasks that drive the Global (English) client.
@@ -196,6 +201,25 @@ class BaseGlobalTask(BaseGfTask):
         self.next_frame()
         return None
 
+    def go_home(self, time_out=30):
+        """Return to the home screen, preferring the in-game home button.
+
+        One press gets there from anywhere that has the button, instead of unwinding screen by screen with Escape. Falls back to `ensure_main` when the
+        button is missing or did not take, so this is never worse than backing out.
+
+        Args:
+            time_out: Seconds the fallback gets to reach the home screen.
+
+        Raises:
+            Exception: The home screen was not reached, raised by the fallback.
+        """
+        self.info_set('current_task', 'go_home')
+        self.click_relative(*HOME_BUTTON, after_sleep=2)
+        if self.wait_until(lambda: self.is_main(esc=False), time_out=6):
+            return
+        self.log_info('home button did not land on the home screen, backing out instead')
+        self.ensure_main(time_out=time_out)
+
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):
         """Back out until the home screen is showing.
 
@@ -230,9 +254,15 @@ class BaseGlobalTask(BaseGfTask):
             remaining = int(deadline - time.time())
             if remaining <= 0:
                 break
-            if not self.wait_ocr(match=check, box=box, settle_time=2, time_out=remaining, raise_if_not_found=False):
+            found = self.wait_ocr(match=check, box=box, settle_time=2, time_out=remaining, raise_if_not_found=False)
+            if not found:
                 break
-            self.back(after_sleep=3)
+            # Overlays that say "click anywhere to exit" mean it. Clicking the instruction itself is the
+            # dismissal the screen advertises, and more reliable than Escape, which some of them ignore.
+            if clickable := [detected for detected in found if CLICK_ANYWHERE.search(detected.name)]:
+                self.click(clickable[0], after_sleep=3)
+            else:
+                self.back(after_sleep=3)
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
         """Click through story dialogue until one of `end_match` appears.

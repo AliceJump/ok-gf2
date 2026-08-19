@@ -45,14 +45,14 @@ class GlobalWeeklyTask(BaseGlobalTask):
         self.info_set('current_task', 'claim_peak_value')
         if not self.open_regular_commissions():
             self.log_info('Could not open Regular Commissions, skipping Peak Value.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if not self.wait_click_ocr(match=PEAK_VALUE, box=self.box.left, time_out=5, after_sleep=2):
             self.log_info('Peak Value Assessment is not available, skipping.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
         else:
             self.log_info('Found no claim button on the Peak Value panel.', notify=True)
-        self.ensure_main()
+        self.go_home()

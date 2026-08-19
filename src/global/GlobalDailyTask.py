@@ -84,11 +84,11 @@ class GlobalDailyTask(BaseGlobalTask):
         self.click_relative(*LOOP_ICON, after_sleep=3)
         if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=10, log=True):
             self.log_info('Clicking the Loop icon did not open the Dispatch Room, skipping.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=10, after_sleep=2):
             self.log_info('Could not find the Start Loop button, skipping.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         self.log_info('Loop started, waiting for it to finish.', notify=True)
         if self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
@@ -97,7 +97,7 @@ class GlobalDailyTask(BaseGlobalTask):
             self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=10, after_sleep=2)
         else:
             self.log_info(f'Loop did not report finishing within {LOOP_TIME_OUT}s.', notify=True)
-        self.ensure_main()
+        self.go_home()
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -113,7 +113,7 @@ class GlobalDailyTask(BaseGlobalTask):
                 break
             claimed += 1
         self.log_info(f'claimed {claimed} free supply box(es)')
-        self.ensure_main()
+        self.go_home()
 
     def claim_free_box(self):
         """Claim one supply box priced Free, if there is one.
@@ -141,16 +141,16 @@ class GlobalDailyTask(BaseGlobalTask):
         self.info_set('current_task', 'claim_boundary_push')
         if not self.open_regular_commissions():
             self.log_info('Could not open Regular Commissions, skipping Boundary Push.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if not self.wait_click_ocr(match=BOUNDARY_PUSH, box=self.box.left, time_out=5, after_sleep=3):
             self.log_info('Boundary Push is not available, skipping.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.log_info('Nothing to collect in Crystal Collection, skipping.', notify=True)
-            self.ensure_main()
+            self.go_home()
             return
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
-        self.ensure_main()
+        self.go_home()
