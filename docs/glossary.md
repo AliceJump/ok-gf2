@@ -166,8 +166,8 @@ These are this program's own labels, not game strings. They get plain descriptiv
 
 ## Known-bad translations to watch for
 
-The older machine-generated English in `i18n/en_US/LC_MESSAGES/ok.po` and in the previous
-`README_en.md` used literal renderings that do not appear anywhere in the Global client. If you see
+The older machine-generated English in `i18n/en_US/LC_MESSAGES/ok.po` and in earlier versions of
+the README used literal renderings that do not appear anywhere in the Global client. If you see
 any of these, replace them.
 
 | Wrong | Correct |
