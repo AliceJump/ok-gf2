@@ -102,13 +102,14 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info('Could not find the Start Loop button, skipping.', notify=True)
             self.ensure_main()
             return
-        self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=10, settle_time=2, after_sleep=2)
         self.log_info('Loop started, waiting for it to finish.', notify=True)
-        if ended := self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
-            self.click(ended[0], after_sleep=2)
-            self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=10, settle_time=2, after_sleep=2)
+        if self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
+            self.log_info('Loop finished.', notify=True)
         else:
             self.log_info(f'Loop did not report finishing within {LOOP_TIME_OUT}s.', notify=True)
+        # The finished state has not been observed yet, so clear overlays generically rather than
+        # aiming at a specific button, and let ensure_main back out of whatever is left.
+        self.wait_pop_up(time_out=10)
         self.ensure_main()
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
