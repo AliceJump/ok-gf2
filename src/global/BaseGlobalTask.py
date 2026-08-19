@@ -14,6 +14,10 @@ CLICK_ANYWHERE = re.compile(r'(Click|Tap) anywhere', re.I)
 CAMPAIGN = re.compile(r'Campaign', re.I)
 CREW_DECK = re.compile(r'Public Area|Crew Deck', re.I)
 SHOP = re.compile(r'\bShop\b', re.I)
+COMMISSIONS = re.compile(r'Commissions', re.I)
+# Commissions opens on Daily Quests. Regular Commissions is the tab beside it, and is the hub for
+# Expansion Drills, Boss Fight, Peak Value Assessment and Boundary Push.
+REGULAR_COMMISSIONS = re.compile(r'Regular Commissions', re.I)
 SKIP = re.compile(r'Skip', re.I)
 DO_NOT_REMIND = re.compile(r'not remind|remind me', re.I)
 
@@ -149,6 +153,18 @@ class BaseGlobalTask(BaseGfTask):
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # Navigation
+
+    def open_regular_commissions(self):
+        """Navigate home -> Commissions -> Regular Commissions.
+
+        Commissions is a bottom-nav entry, so it is clicked with `click_ocr_word` - OCR frequently merges it with Platoon next to it. The screen opens on the
+        Daily Quests tab, so Regular Commissions has to be selected explicitly.
+
+        Returns:
+            True when the Regular Commissions tab opened, False when it could not be reached.
+        """
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
+        return bool(self.wait_click_ocr(match=REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
 
     def is_main(self, recheck_time=0.0, esc=True):
         """Decide whether the home screen is showing.

@@ -1,32 +1,29 @@
 import re
 
-from .BaseGlobalTask import CAMPAIGN, BaseGlobalTask
+from .BaseGlobalTask import BaseGlobalTask
 
-COMBAT_SIMULATIONS = re.compile(r'Combat Simulations|Combat Sim', re.I)
+# Left rail of Regular Commissions. Peak Value Assessment wraps onto two lines there, so it is matched
+# on the distinctive first two words rather than the full name.
 PEAK_VALUE = re.compile(r'Peak Value', re.I)
-
-# Peak Value Assessment reward panel.
-REGULAR_PEAK = re.compile(r'Regular Peak|Regular', re.I)
-PERIODIC_REWARD = re.compile(r'Periodic Rewards?|Cycle Rewards?', re.I)
-CLAIM_ALL = re.compile(r'Claim All', re.I)
+CLAIM_ALL = re.compile(r'Claim All|Claim', re.I)
 
 
 class GlobalWeeklyTask(BaseGlobalTask):
     """Weekly modes on the Global client that the in-game Loop does not cover.
 
-    Only the claim-side of Peak Value Assessment so far. Boss Fight and Expansion Drills need an English `auto_battle`, which does not exist yet.
+    Only the claim side of Peak Value Assessment so far. Boss Fight and Expansion Drills need an English `auto_battle`, which does not exist yet.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = 'Global Weekly'
-        self.description = 'Collects the Peak Value Assessment periodic rewards.'
+        self.description = 'Collects the Peak Value Assessment rewards.'
         self.support_schedule_task = True
         self.default_config.update({
             'Claim Peak Value Rewards': True,
         })
         self.config_description.update({
-            'Claim Peak Value Rewards': 'Collects the periodic rewards from Peak Value Assessment. Does not fight anything.',
+            'Claim Peak Value Rewards': 'Collects the rewards from Peak Value Assessment. Does not fight anything.',
         })
 
     def run(self):
@@ -39,33 +36,23 @@ class GlobalWeeklyTask(BaseGlobalTask):
                 func()
         self.log_info('Global Weekly complete.', notify=True)
 
-    def open_combat_simulations(self):
-        """Navigate home -> Campaign -> Combat Simulations.
-
-        Returns:
-            True when Combat Simulations opened, False when it could not be reached.
-        """
-        self.wait_click_ocr(match=CAMPAIGN, box=self.box.top_right, after_sleep=1, raise_if_not_found=True)
-        return bool(self.wait_click_ocr(match=COMBAT_SIMULATIONS, box=self.box.top_right, time_out=10, after_sleep=2))
-
     def claim_peak_value(self):
-        """Collect the Peak Value Assessment periodic rewards.
+        """Collect the Peak Value Assessment rewards.
 
-        This is the claim half of the mode only. Running the Extreme Peak stages needs combat handling and is deliberately left out.
+        The route in is confirmed, but the reward panel itself has not been captured yet, so the claim is a single best-effort press of a Claim button rather
+        than a specific sequence. Running the Extreme Peak stages needs combat handling and is deliberately left out.
         """
         self.info_set('current_task', 'claim_peak_value')
-        if not self.open_combat_simulations():
-            self.log_info('Could not open Combat Simulations, skipping Peak Value.', notify=True)
+        if not self.open_regular_commissions():
+            self.log_info('Could not open Regular Commissions, skipping Peak Value.', notify=True)
             self.ensure_main()
             return
-        if not self.wait_click_ocr(match=PEAK_VALUE, box=self.box.center, time_out=10, after_sleep=2):
+        if not self.wait_click_ocr(match=PEAK_VALUE, box=self.box.left, time_out=5, after_sleep=2):
             self.log_info('Peak Value Assessment is not available, skipping.', notify=True)
             self.ensure_main()
             return
-        self.wait_click_ocr(match=REGULAR_PEAK, box=self.box.bottom_right, time_out=3, after_sleep=2)
-        if reward := self.wait_ocr(match=PERIODIC_REWARD, box=self.box.bottom_left, time_out=3):
-            self.click(reward[0], after_sleep=2)
-            if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.center, time_out=3, after_sleep=2):
-                self.wait_pop_up(time_out=5, count=1)
-                self.back(after_sleep=1)
+        if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.wait_pop_up(time_out=5, count=2)
+        else:
+            self.log_info('Found no claim button on the Peak Value panel.', notify=True)
         self.ensure_main()

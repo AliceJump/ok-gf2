@@ -2,8 +2,6 @@ import re
 
 from .BaseGlobalTask import CONFIRM, SHOP, BaseGlobalTask
 
-COMMISSIONS = re.compile(r'Commissions', re.I)
-
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
 #
@@ -30,11 +28,12 @@ PURCHASE = re.compile(r'Purchase', re.I)
 # more; this only stops it spinning if a dialog ever leaves "Free" on screen.
 MAX_FREE_BOXES = 3
 
-# Commissions -> Boundary Push -> Breakthrough.
+# Regular Commissions -> Boundary Push, which opens on its Breakthrough tab. The rewards sit behind
+# the Crystal Collection button in the bottom-right. Matched on the first word alone because the
+# button wraps onto two lines, which OCR usually returns as two separate boxes.
 BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
-BREAKTHROUGH = re.compile(r'Breakthrough', re.I)
-COLLECT = re.compile(r'Collect|Claim', re.I)
-DISPATCH = re.compile(r'Dispatch', re.I)
+CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
+CLAIM_ALL = re.compile(r'Claim All', re.I)
 
 
 class GlobalDailyTask(BaseGlobalTask):
@@ -138,15 +137,20 @@ class GlobalDailyTask(BaseGlobalTask):
     # Boundary Push
 
     def claim_boundary_push(self):
-        """Collect the Breakthrough rewards under Commissions -> Boundary Push."""
+        """Collect the Breakthrough rewards under Regular Commissions -> Boundary Push."""
         self.info_set('current_task', 'claim_boundary_push')
-        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
-        if not self.wait_click_ocr(match=BOUNDARY_PUSH, box=self.box.top_right, time_out=5, after_sleep=3):
+        if not self.open_regular_commissions():
+            self.log_info('Could not open Regular Commissions, skipping Boundary Push.', notify=True)
+            self.ensure_main()
+            return
+        if not self.wait_click_ocr(match=BOUNDARY_PUSH, box=self.box.left, time_out=5, after_sleep=3):
             self.log_info('Boundary Push is not available, skipping.', notify=True)
             self.ensure_main()
             return
-        self.wait_click_ocr(match=BREAKTHROUGH, box=self.box.top, time_out=5, after_sleep=2)
-        for match in (COLLECT, DISPATCH):
-            if self.wait_click_ocr(match=match, box=self.box.bottom_right, time_out=3, after_sleep=2):
-                self.wait_pop_up(time_out=5, count=1)
+        if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info('Nothing to collect in Crystal Collection, skipping.', notify=True)
+            self.ensure_main()
+            return
+        if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.wait_pop_up(time_out=5, count=2)
         self.ensure_main()
