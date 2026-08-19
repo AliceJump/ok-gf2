@@ -53,6 +53,62 @@ def widen_settings_text_column():
     logger.info('settings text column widened')
 
 
+def _content_height(card):
+    """Measure a card's content at the width it is actually laid out at.
+
+    Word-wrapped labels report height through `heightForWidth`, not `sizeHint`, so a layout holding
+    them cannot describe its own height with `sizeHint` alone. Asking at the real width is what stops
+    a card reserving space its content never uses.
+
+    Args:
+        card: The `ExpandSettingCard` being measured.
+
+    Returns:
+        The content height in pixels, falling back to the size hint when no sensible width is known.
+    """
+    layout = card.viewLayout
+    width = card.view.width()
+    if width > 200 and layout.hasHeightForWidth():
+        height = layout.heightForWidth(width)
+        if height > 0:
+            return height
+    return layout.sizeHint().height()
+
+
+def size_cards_by_height_for_width():
+    """Size expandable cards from real content height rather than the size hint.
+
+    qfluentwidgets derives both the expanded height and the collapse arithmetic from
+    `viewLayout.sizeHint().height()`. Once the text column is widened that estimate no longer matches
+    the laid-out height, so the card reserves too much and leaves a gap under its last row.
+
+    The width guard matters: during early layout the view briefly reports a nonsense width, and
+    asking `heightForWidth` there returns a wildly inflated height.
+    """
+    if os.environ.get('OK_GF2_NO_LAYOUT_PATCH'):
+        return
+    try:
+        from qfluentwidgets import ExpandSettingCard
+    except ImportError:
+        logger.warning('could not import ExpandSettingCard, skipping height-for-width sizing')
+        return
+
+    def adjust_view_size(self):
+        height = _content_height(self)
+        self.spaceWidget.setFixedHeight(height)
+        if self.isExpand:
+            self.setFixedHeight(self.card.height() + height)
+
+    def on_expand_value_changed(self):
+        content = _content_height(self)
+        top = self.viewportMargins().top()
+        self.setFixedHeight(max(top + content - self.verticalScrollBar().value(), top))
+
+    ExpandSettingCard._adjustViewSize = adjust_view_size
+    ExpandSettingCard._onExpandValueChanged = on_expand_value_changed
+    logger.info('expandable cards sized by height-for-width')
+
+
 def fix_collapsed_card_height():
     """Snap an expandable card back to its header height once the collapse animation ends.
 
@@ -102,6 +158,7 @@ class Globals(QObject):
     def __init__(self, exit_event):
         super().__init__()
         widen_settings_text_column()
+        size_cards_by_height_for_width()
         fix_collapsed_card_height()
         # ok.og.executor.ocr_lib.add_text_fix({"a": "b"})
 
