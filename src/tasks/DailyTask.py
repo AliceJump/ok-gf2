@@ -90,7 +90,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self.default_config.update({
             '已确认启用游戏内全局自动功能': False,
             '当前物资关卡名称': '铸碑者的黎明',
-            '体力本': "军备解析",
+            '体力本': "深度搜索",
             '用户名': "",
             '密码': "",
             '喝水': '1.087-1.4-0.5',

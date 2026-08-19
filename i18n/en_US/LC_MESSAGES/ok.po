@@ -16,7 +16,7 @@ msgid "从要推的图的最左边开始"
 msgstr "Start from the leftmost uncleared stage"
 
 msgid "体力本"
-msgstr "Supply Mission"
+msgstr "Supply Missions"
 
 msgid "军备解析"
 msgstr "Equipment Analysis"
@@ -249,7 +249,7 @@ msgid "已确认启用游戏内全局自动功能"
 msgstr "In-game global auto-battle is enabled"
 
 msgid "当前物资关卡名称"
-msgstr "Current Supply stage name"
+msgstr "Current event name"
 
 msgid "用户名"
 msgstr "Username"
@@ -374,7 +374,7 @@ msgid ""
 "关卡名称在\"当前物资关卡名称\"中配置"
 msgstr ""
 "Enters the current Time-Limited Event and runs its Supply stage\n"
-"The stage name is set in \"Current Supply stage name\""
+"The event name is set in \"Current event name\""
 
 msgid "自动完成活动层中的喝水、吃饭和奖励领取流程"
 msgstr "Runs Tea Time, Delicious Cuisine, and reward pickup on the Crew Deck"
