@@ -28,6 +28,8 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 
 </div>
 
+### 中文说明 | [English Readme](README_en.md)
+
 ---
 
 ## ⚠️ 免责声明
@@ -234,14 +236,6 @@ python -m unittest tests/TestMain.py
 | [API 参考（API.md）](docs/dev/API.md) | BaseGfTask、Mixin、ScreenPosition 等详细 API |
 | [i18n 与 OCR 配置流程](docs/dev/i18n_OCR配置流程.md) | runtime locale、语言 JSON、OCR 匹配与纠错配置流程 |
 | [键盘操作体系](docs/dev/键盘操作体系.md) | 热键映射、按键封装规范 |
-
-## 🛠 维护区
-
-### 维护文档
-
-| 文档 | 说明 |
-|------|------|
-| [主数据维护工作流](docs/update/主数据维护工作流.md) | 新增或调整游戏关卡、任务数据时使用 |
 
 ## ❤️ 赞助与致谢
 
