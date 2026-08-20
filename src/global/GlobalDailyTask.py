@@ -2,7 +2,7 @@ import re
 
 from src.tasks.BaseGfTask import map_re
 
-from .BaseGlobalTask import CONFIRM, SHOP, BaseGlobalTask
+from .BaseGlobalTask import CLICK_ANYWHERE, CONFIRM, SHOP, BaseGlobalTask
 
 # Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
 # running its banner appears directly below this one - not supported, since two at once is rare.
@@ -13,6 +13,10 @@ SUPPLY = re.compile(r'\bSupply\b', re.I)
 AUTO = re.compile(r'^Auto$', re.I)
 AUTO_DIALOG = re.compile(r'Number of Auto Battles', re.I)
 ITEMS_OBTAINED = re.compile(r'Items Obtained', re.I)
+# What the end of a run of auto battles can look like. The reward summary is the expected outcome, but
+# the click-anywhere overlay is what actually blocks progress, and it is not always preceded by a title
+# the poll can see - so either one counts as done.
+BATTLES_DONE = [ITEMS_OBTAINED, CLICK_ANYWHERE]
 
 # Sets the battle count to the most the remaining Expenditure allows. Unlabelled, so clicked by position.
 MAX_BATTLES = (0.653, 0.518)
@@ -210,8 +214,11 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info('Could not confirm the auto battles, skipping.', notify=True)
             self.go_home()
             return
-        if self.poll_ocr(ITEMS_OBTAINED, box=self.box.top, time_out=EVENT_BATTLE_TIME_OUT, interval=5):
-            self.wait_pop_up(time_out=10, count=2)
+        # Whole frame rather than a region: the summary title sits at the top and the overlay prompt at
+        # the bottom, and either can be the thing on screen when the battles end.
+        if self.poll_ocr(BATTLES_DONE, time_out=EVENT_BATTLE_TIME_OUT, interval=5):
+            self.log_info('auto battles finished, clearing the reward screens')
+            self.wait_pop_up(time_out=20, count=4)
         else:
             self.log_info(f'Auto battles did not finish within {EVENT_BATTLE_TIME_OUT}s.', notify=True)
         self.go_home()

@@ -175,9 +175,15 @@ class BaseGlobalTask(BaseGfTask):
             The matching boxes, or None if the text never appeared.
         """
         deadline = time.time() + time_out
+        checks = 0
         while time.time() < deadline:
             if found := self.ocr(match=match, box=box):
                 return found
+            checks += 1
+            # Logged because a silent wait is indistinguishable from a hang. Every few checks is enough
+            # to show progress without burying the rest of the run.
+            if checks % 6 == 0:
+                self.log_info(f'still waiting, {int(deadline - time.time())}s left')
             self.sleep(min(interval, max(0, deadline - time.time())))
             self.next_frame()
         return None
