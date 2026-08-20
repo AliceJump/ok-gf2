@@ -58,6 +58,10 @@ NAV_STRIP_TOP = 0.86
 # has to be clicked by position. On the home screen itself that spot is empty, so a stray press is safe.
 HOME_BUTTON = (0.076, 0.048)
 
+# How long to give the home button before falling back to backing out with Escape. Short on purpose:
+# when the button does not take, waiting on it just looks like the bot has hung.
+HOME_BUTTON_TIME_OUT = 4
+
 
 class BaseGlobalTask(BaseGfTask):
     """Base for tasks that drive the Global (English) client.
@@ -228,9 +232,12 @@ class BaseGlobalTask(BaseGfTask):
         """
         self.info_set('current_task', 'go_home')
         self.click_relative(*HOME_BUTTON, after_sleep=2)
-        if self.wait_until(lambda: self.is_main(esc=False), time_out=6):
+        if self.wait_until(lambda: self.is_main(esc=False), time_out=HOME_BUTTON_TIME_OUT):
+            self.log_info('home button worked')
             return
-        self.log_info('home button did not land on the home screen, backing out instead')
+        # Not an error - the button is not on every screen, and backing out always works. Logged so a
+        # run makes it obvious which route was taken rather than leaving the button's usefulness assumed.
+        self.log_info('home button did not reach the home screen, backing out with Escape instead')
         self.ensure_main(time_out=time_out)
 
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):

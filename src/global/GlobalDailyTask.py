@@ -59,6 +59,11 @@ LOOP_POLL_INTERVAL = 5
 FREE = re.compile(r'^Free$', re.I)
 PURCHASE = re.compile(r'Purchase', re.I)
 
+# Any sign of a real-money price. The paid boxes sit directly beside the free one and carry an identical
+# Purchase button, and the shop moves its own selection on after a claim, so the item that is open is not
+# necessarily the one that was clicked. Nothing is ever bought without checking this first.
+PRICE = re.compile(r'[$€£¥]|\d+\.\d{2}')
+
 # Upper bound on free boxes to claim in one run. The loop normally ends when nothing reads Free any
 # more; this only stops it spinning if a dialog ever leaves "Free" on screen.
 MAX_FREE_BOXES = 3
@@ -147,10 +152,20 @@ class GlobalDailyTask(BaseGlobalTask):
         if not free:
             return False
         self.click(free[0], after_sleep=1.5)
-        if not self.wait_click_ocr(match=PURCHASE, box=self.box.bottom, time_out=5, after_sleep=1.5):
+        # Re-read the screen before committing. Clicking Free is not proof that a free item is what
+        # ended up open, so the price is checked on the item as it now stands rather than trusted from
+        # the frame that was clicked.
+        opened = self.ocr(box=self.box.bottom, log=True)
+        if priced := self.find_boxes(opened, match=PRICE):
+            self.log_info(f'the open item costs {priced[0].name}, backing out without buying', notify=True)
+            self.back(after_sleep=1)
+            return False
+        purchase = self.find_boxes(opened, match=PURCHASE)
+        if not purchase:
             self.log_info('opened a free supply box but found no Purchase button, backing out.')
             self.back(after_sleep=1)
             return False
+        self.click(purchase[0], after_sleep=1.5)
         self.wait_pop_up(time_out=5, count=2)
         return True
 

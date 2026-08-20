@@ -5,6 +5,7 @@ task here runs exactly one, with no toggles to set - clicking it does that flow 
 copy of any navigation to drift out of sync.
 """
 
+from .BaseGlobalTask import COMMISSIONS
 from .GlobalDailyTask import FLOWS as DAILY_FLOWS
 from .GlobalDailyTask import GlobalDailyTask
 from .GlobalWeeklyTask import FLOWS as WEEKLY_FLOWS
@@ -65,9 +66,10 @@ class _SingleWeeklyFlow(GlobalWeeklyTask):
 
 
 class RunGoHome(_SingleDailyFlow):
-    """Cheapest possible check: attach, recognise the home screen, press the in-game home button.
+    """Cheapest possible check: recognise the home screen, leave it, and come back.
 
-    Changes nothing in the game, so it is the safe first thing to click. If this fails, nothing else will work either.
+    It has to navigate away first. Pressing the home button while already home clicks empty space and proves nothing, so this opens Commissions - a read-only
+    list - and returns from there. Buys nothing, fights nothing, spends nothing.
     """
 
     flow = 'go_home'
@@ -75,12 +77,17 @@ class RunGoHome(_SingleDailyFlow):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.description = 'Finds the home screen and presses the in-game home button. Changes nothing - run this first.'
+        self.description = 'Opens Commissions and returns home, to check screen detection and the way back. Changes nothing - run this first.'
 
     def run(self):
         self.log_info('checking whether the home screen is recognised')
         self.ensure_main(recheck_time=2, time_out=90)
-        self.log_info('home screen recognised, now testing the home button')
+        self.log_info('home screen recognised, opening Commissions so there is somewhere to come back from')
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=3, raise_if_not_found=True)
+        if self.is_main(esc=False):
+            self.log_info('still on the home screen - the Commissions click did not land', notify=True)
+            return
+        self.log_info('left the home screen, now testing the way back')
         self.go_home()
         self.log_info('Go Home finished.', notify=True)
 
