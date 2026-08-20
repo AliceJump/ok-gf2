@@ -220,6 +220,21 @@ class BaseGlobalTask(BaseGfTask):
         self.log_info('home button did not land on the home screen, backing out instead')
         self.ensure_main(time_out=time_out)
 
+    def focus_game(self):
+        """Bring the game window to the front before looking at it.
+
+        Clicking Run leaves the bot's own window in front, and the game renders nothing into the capture while it is behind, so OCR comes back completely
+        empty for the first several seconds. The interaction layer only activates the window on its first click or key press, which means that without this
+        the bot's opening move is to press Escape at a screen it cannot see, repeatedly, until the window happens to come forward.
+        """
+        window = getattr(self.executor.device_manager, 'hwnd_window', None)
+        if window is None or window.is_foreground():
+            return
+        if window.bring_to_front():
+            self.log_info('brought the game window to the front')
+            self.sleep(1)
+            self.next_frame()
+
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):
         """Back out until the home screen is showing.
 
@@ -232,6 +247,7 @@ class BaseGlobalTask(BaseGfTask):
             Exception: The home screen was not reached within `time_out`.
         """
         self.info_set('current_task', 'go_to_main')
+        self.focus_game()
         if not self.wait_until(lambda: self.is_main(recheck_time=recheck_time, esc=esc), time_out=time_out):
             raise Exception('Could not reach the game home screen. Start the bot from the home screen.')
 
