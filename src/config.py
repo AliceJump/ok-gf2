@@ -19,7 +19,12 @@ config = {
     "windows": {  # Windows游戏请填写此设置
         "exe": ["GF2_Exilium.exe"],  # 新版统一使用 list
         'hwnd_class': 'UnityWndClass',
-        "interaction": "Genshin",  # 或 EfInteraction，根据项目
+        # A list renders the "Choose Interaction" picker on the Start tab; a bare string hides it.
+        # Genshin stays first, so the default is unchanged. PostMessage is the background-friendly
+        # alternative - it posts window messages only, where Genshin warps the real cursor onto the
+        # game (SetCursorPos) and blocks input on every click. Unity games do not always accept
+        # posted input, so PostMessage is offered rather than assumed.
+        "interaction": ["Genshin", "PostMessage"],
         "capture_method": ["WGC", "BitBlt_RenderFull"],
         # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full. 支持的capture有 BitBlt, WGC, BitBlt_RenderFull, DXGI
         "check_hdr": True,  # 当用户开启AutoHDR时候提示用户, 但不禁止使用
