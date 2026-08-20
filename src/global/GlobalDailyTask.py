@@ -23,6 +23,20 @@ STAGE_BAND = (0.0, 0.38, 1.0, 0.62)
 STAGE_SWIPES = 5
 EVENT_BATTLE_TIME_OUT = 900
 
+# The flows this task performs, in the order it performs them: (config key, method, settings text).
+# Single source for the toggles, the settings descriptions, and the run order. `VerifyTasks` also reads
+# it, so a flow added here becomes individually runnable without any further wiring.
+FLOWS = (
+    ('Start Loop', 'start_loop',
+     'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.'),
+    ('Claim Free Packs', 'shopping',
+     'Claims the shop supply boxes that are currently free.'),
+    ('Run Event Supply', 'run_event_supply',
+     'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
+    ('Claim Boundary Push Rewards', 'claim_boundary_push',
+     'Collects the Breakthrough rewards under Commissions.'),
+)
+
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
 #
@@ -68,30 +82,14 @@ class GlobalDailyTask(BaseGlobalTask):
         self.name = 'Global Daily'
         self.description = 'Starts the in-game Loop, claims free shop packs, and collects Boundary Push rewards.'
         self.support_schedule_task = True
-        self.default_config.update({
-            'Start Loop': True,
-            'Claim Free Packs': True,
-            'Run Event Supply': True,
-            'Claim Boundary Push Rewards': True,
-        })
-        self.config_description.update({
-            'Start Loop': 'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.',
-            'Claim Free Packs': 'Claims the shop supply boxes that are currently free.',
-            'Run Event Supply': 'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.',
-            'Claim Boundary Push Rewards': 'Collects the Breakthrough rewards under Commissions.',
-        })
+        self.default_config.update({key: True for key, _, _ in FLOWS})
+        self.config_description.update({key: description for key, _, description in FLOWS})
 
     def run(self):
         self.ensure_main(recheck_time=2, time_out=90)
-        steps = [
-            ('Start Loop', self.start_loop),
-            ('Claim Free Packs', self.shopping),
-            ('Run Event Supply', self.run_event_supply),
-            ('Claim Boundary Push Rewards', self.claim_boundary_push),
-        ]
-        for key, func in steps:
+        for key, method, _ in FLOWS:
             if self.config.get(key):
-                func()
+                getattr(self, method)()
         self.log_info('Global Daily complete.', notify=True)
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////

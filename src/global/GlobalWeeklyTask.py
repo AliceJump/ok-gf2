@@ -7,6 +7,12 @@ from .BaseGlobalTask import BaseGlobalTask
 PEAK_VALUE = re.compile(r'Peak Value', re.I)
 CLAIM_ALL = re.compile(r'Claim All|Claim', re.I)
 
+# The flows this task performs: (config key, method, settings text). See `GlobalDailyTask.FLOWS`.
+FLOWS = (
+    ('Claim Peak Value Rewards', 'claim_peak_value',
+     'Collects the rewards from Peak Value Assessment. Does not fight anything.'),
+)
+
 
 class GlobalWeeklyTask(BaseGlobalTask):
     """Weekly modes on the Global client that the in-game Loop does not cover.
@@ -19,21 +25,14 @@ class GlobalWeeklyTask(BaseGlobalTask):
         self.name = 'Global Weekly'
         self.description = 'Collects the Peak Value Assessment rewards.'
         self.support_schedule_task = True
-        self.default_config.update({
-            'Claim Peak Value Rewards': True,
-        })
-        self.config_description.update({
-            'Claim Peak Value Rewards': 'Collects the rewards from Peak Value Assessment. Does not fight anything.',
-        })
+        self.default_config.update({key: True for key, _, _ in FLOWS})
+        self.config_description.update({key: description for key, _, description in FLOWS})
 
     def run(self):
         self.ensure_main(recheck_time=2, time_out=90)
-        steps = [
-            ('Claim Peak Value Rewards', self.claim_peak_value),
-        ]
-        for key, func in steps:
+        for key, method, _ in FLOWS:
             if self.config.get(key):
-                func()
+                getattr(self, method)()
         self.log_info('Global Weekly complete.', notify=True)
 
     def claim_peak_value(self):

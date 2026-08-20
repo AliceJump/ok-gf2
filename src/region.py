@@ -24,6 +24,14 @@ CN_TASK_PREFIX = "src.tasks."
 GLOBAL_TASKS = [
     ["src.global.GlobalDailyTask", "GlobalDailyTask"],
     ["src.global.GlobalWeeklyTask", "GlobalWeeklyTask"],
+    # One button per flow, for checking a single flow without running the rest. Appended after the
+    # composed tasks so their positions never move.
+    ["src.global.VerifyTasks", "RunGoHome"],
+    ["src.global.VerifyTasks", "RunStartLoop"],
+    ["src.global.VerifyTasks", "RunShop"],
+    ["src.global.VerifyTasks", "RunEventSupply"],
+    ["src.global.VerifyTasks", "RunBoundaryPush"],
+    ["src.global.VerifyTasks", "RunPeakValue"],
 ]
 
 region_option = ConfigOption(
