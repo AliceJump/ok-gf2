@@ -37,6 +37,24 @@ class TestGlobalMain(TaskTestCase):
         self.assertFalse(any('招募' in n for n in names), f'text was translated into Chinese: {names}')
 
 
+class TestMenuLabelFilter(unittest.TestCase):
+    """Guards the home-screen check against text that merely mentions the menu entries.
+
+    Every string here came out of a real run's OCR, not from imagination.
+    """
+
+    def test_real_menu_entries_are_kept(self):
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        for name in ('Campaign', 'Refitting', 'Room', 'Refitting Room', 'Crew Deck', 'Recruitment', 'Shop', 'Public Area'):
+            self.assertTrue(base.is_menu_label(name), f'{name!r} is a real home-screen entry and must count')
+
+    def test_loading_screen_prose_is_rejected(self):
+        """A loading screen describing the ship once satisfied the home check and stopped the bot early."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        for name in ('gine Room, Refitting Room,', 'a Crew Deck, Lounge and other', 'Do you wish to leave the Crew Deck?'):
+            self.assertFalse(base.is_menu_label(name), f'{name!r} is prose, not a menu entry')
+
+
 class TestGlobalFlowWiring(unittest.TestCase):
     """Static checks on the flow tables. No game, no OCR - these guard the wiring only."""
 

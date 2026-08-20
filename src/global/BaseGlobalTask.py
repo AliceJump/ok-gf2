@@ -45,10 +45,28 @@ MAIN_SCREEN_BLOCKERS = [
     CANCEL,
 ]
 
-# Walking out of the Crew Deck raises a confirmation, and Escape does not dismiss it - it has to be
-# answered or the way home is blocked. Deliberately loose, because the exact wording is unconfirmed and
-# OCR splits long sentences; `is_main` only acts on it when a Confirm button is on screen too.
+# Walking out of the Crew Deck raises a confirmation ("Do you wish to leave the Crew Deck?") that
+# Escape does not dismiss - it has to be answered or the way home is blocked. Kept loose because OCR
+# splits long sentences; `is_main` only acts on it when a Confirm button is on screen too.
 LEAVE_PROMPT = re.compile(r'leave|exit|quit', re.I)
+
+# Longest a home-screen menu entry can be. Loading screens describe the ship in prose that names the very
+# same places - "...Engine Room, Refitting Room, a Crew Deck, Lounge and other..." - which otherwise
+# satisfies the home-screen check and makes the bot think it has arrived. Menu entries are short and
+# standalone; sentences are neither.
+MAX_MENU_LABEL = 16
+
+
+def is_menu_label(name):
+    """Whether an OCR result looks like a menu entry rather than a sentence mentioning one.
+
+    Args:
+        name: The detected text.
+
+    Returns:
+        True when the text is short and free of sentence punctuation.
+    """
+    return len(name) <= MAX_MENU_LABEL and not any(character in name for character in ',.')
 
 # Vertical extent of the bottom navigation bar, as a fraction of frame height.
 NAV_STRIP_TOP = 0.86
@@ -193,7 +211,7 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             True on the home screen, False when a blocking dialog was cleared, None when the screen is simply not recognised.
         """
-        boxes = self.ocr(match=MAIN_SCREEN_LABELS, box='right', log=True)
+        boxes = [box for box in self.ocr(match=MAIN_SCREEN_LABELS, box='right', log=True) if is_menu_label(box.name)]
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
