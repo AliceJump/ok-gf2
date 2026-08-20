@@ -20,10 +20,12 @@ config = {
         "exe": ["GF2_Exilium.exe"],  # 新版统一使用 list
         'hwnd_class': 'UnityWndClass',
         # A list renders the "Choose Interaction" picker on the Start tab; a bare string hides it.
-        # Genshin stays first, so the default is unchanged. PostMessage is the background-friendly
-        # alternative - it posts window messages only, where Genshin warps the real cursor onto the
-        # game (SetCursorPos) and blocks input on every click. Unity games do not always accept
-        # posted input, so PostMessage is offered rather than assumed.
+        # Genshin must stay first: it is the only one that works everywhere, because it warps the real
+        # cursor onto the game (SetCursorPos) and blocks input for the duration of each click.
+        # PostMessage posts window messages only, so it neither steals focus nor moves the mouse - but
+        # it has been tried against this game and some dialogs ignore it. The leave-the-Crew-Deck
+        # confirmation is one. Partial support is worse than none, since flows half-complete, so treat
+        # PostMessage as an experiment rather than a background mode that works.
         "interaction": ["Genshin", "PostMessage"],
         "capture_method": ["WGC", "BitBlt_RenderFull"],
         # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full. 支持的capture有 BitBlt, WGC, BitBlt_RenderFull, DXGI

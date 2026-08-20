@@ -45,6 +45,11 @@ MAIN_SCREEN_BLOCKERS = [
     CANCEL,
 ]
 
+# Walking out of the Crew Deck raises a confirmation, and Escape does not dismiss it - it has to be
+# answered or the way home is blocked. Deliberately loose, because the exact wording is unconfirmed and
+# OCR splits long sentences; `is_main` only acts on it when a Confirm button is on screen too.
+LEAVE_PROMPT = re.compile(r'leave|exit|quit', re.I)
+
 # Vertical extent of the bottom navigation bar, as a fraction of frame height.
 NAV_STRIP_TOP = 0.86
 
@@ -193,6 +198,14 @@ class BaseGlobalTask(BaseGfTask):
         self.log_info(f'is main ocr={len(boxes)} features={len(feature_boxes)} total={total}')
         if total >= 2:
             return True
+        # Answer the leave-the-Crew-Deck confirmation rather than pressing Escape at it forever. Both the
+        # prompt and a Confirm button have to be present, so an ordinary screen that happens to contain
+        # the word "exit" is not mistaken for a dialog. One OCR pass, matched twice in memory.
+        centre = self.ocr(box=self.box.center, log=True)
+        if self.find_boxes(centre, match=LEAVE_PROMPT) and (confirm := self.find_boxes(centre, match=CONFIRM)):
+            self.log_info('answering a leave-screen confirmation')
+            self.click(confirm[0], after_sleep=2)
+            return False
         if box := self.ocr(box=self.box.bottom, match=MAIN_SCREEN_BLOCKERS, log=True):
             self.click(box, after_sleep=2)
             return False
