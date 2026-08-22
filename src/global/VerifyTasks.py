@@ -127,6 +127,17 @@ class RunBoundaryPush(_SingleDailyFlow):
     label = 'Claim Boundary Push'
 
 
+class RunCrewDeck(_SingleDailyFlow):
+    """Walks to each Crew Deck station and reports what its dialog says.
+
+    Incomplete by design - it reaches Tea Time and Delicious Cuisine but does not run either activity yet, because the dialogs' English wording is unknown.
+    Run it and read the logged lines to find out. This is also how the walk timings get tuned, since a walk that stops short logs that it found no prompt.
+    """
+
+    flow = 'crew_deck'
+    label = 'Crew Deck'
+
+
 class RunPeakValue(_SingleWeeklyFlow):
     """Collects the Peak Value Assessment rewards."""
 

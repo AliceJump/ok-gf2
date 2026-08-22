@@ -1,8 +1,11 @@
 import re
+from typing import NamedTuple
 
-from src.tasks.BaseGfTask import map_re
+from ok import Box
 
-from .BaseGlobalTask import CLICK_ANYWHERE, CONFIRM, SHOP, BaseGlobalTask
+from src.tasks.BaseGfTask import map_re, parse_time_option
+
+from .BaseGlobalTask import CANCEL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, SHOP, SKIP, BaseGlobalTask
 
 # Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
 # running its banner appears directly below this one - not supported, since two at once is rare.
@@ -39,6 +42,10 @@ FLOWS = (
      'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
     ('Claim Boundary Push Rewards', 'claim_boundary_push',
      'Collects the Breakthrough rewards under Commissions.'),
+    # Last for now because it is unfinished. Once the station dialogs are filled in this belongs ahead
+    # of Start Loop, since the food and drink buffs apply to the battles the Loop then runs.
+    ('Crew Deck', 'crew_deck',
+     'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
 )
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
@@ -84,6 +91,158 @@ BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
 CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
 CLAIM_ALL = re.compile(r'Claim All', re.I)
 
+# Crew Deck. Unlike every other screen this is a walkable 3D area, so its two stations are reached by
+# holding movement keys for a fixed time rather than by clicking anything. Entering always drops the
+# character at the same spawn point, which is what makes fixed durations workable - each station re-enters
+# the deck first so its walk always starts from there.
+TEA_TIME = re.compile(r'Tea Time', re.I)
+# The second alternative stands alone because OCR drops the leading word of a two-word prompt often enough.
+DELICIOUS_CUISINE = re.compile(r'Delicious Cuisine|Cuisine', re.I)
+
+
+class Station(NamedTuple):
+    """One Crew Deck activity, how to walk to it, and what to do once it opens."""
+
+    # Name shown in the log and used in screenshot filenames.
+    label: str
+    # Text that appears when the character is close enough to interact.
+    prompt: re.Pattern
+    # Movement keys held in order, walking from the deck entrance.
+    keys: list
+    # Config key holding this walk's hold durations.
+    config_key: str
+    # Seconds to pause between key presses, measured off a real walk.
+    sleep_between: float
+    # Name of the method that performs the activity once the station is open.
+    action: str
+
+
+# Visited in this order, each starting from the deck entrance.
+STATIONS = (
+    Station('Tea Time', TEA_TIME, ['a', 'w', 'd'], 'Tea Time Walk', 0.7, 'make_drink'),
+    # One key, unlike the CN route, which taps `d` after holding `s`. Walking it by hand showed the tap
+    # is not needed to end up in reach of the kitchen.
+    Station('Delicious Cuisine', DELICIOUS_CUISINE, ['s'], 'Delicious Cuisine Walk', 1, 'cook_dish'),
+)
+
+# Anchored, both of them. The cooking screen carries the words "Cannot Make Dishes" in its preview panel,
+# which an unanchored Make would match.
+MAKE = re.compile(r'^Make$', re.I)
+NEXT = re.compile(r'^Next$', re.I)
+# The Confirm Invite button, matched on its second word alone. `CONFIRM` would also match it, but naming
+# the distinctive word keeps the two confirmations from being confused for one another.
+INVITE = re.compile(r'Invite', re.I)
+
+# The dish ends on an "Effects When Eaten" screen offering "To Battle!" beside Confirm. Nothing here ever
+# clicks by position on that screen, because taking the wrong one of the two drops the bot into a battle
+# it was never asked to fight. Named so a test can assert no pattern the flow clicks matches it.
+TO_BATTLE = re.compile(r'To Battle', re.I)
+
+# How many dishes are already in effect, from the line along the bottom of the dish screen: "Number of
+# Experimental Dishes that can be effective at once 1/3". Anchored on the phrase rather than read as a
+# bare counter, because the ingredient tiles on the same screen are covered in counters of their own.
+ACTIVE_DISHES = re.compile(r'at once\s*(\d+)\s*/\s*\d+', re.I)
+
+# Upper bounds on what follows an activity. The drink plays one scene, the dish two, one of which is
+# dialogue whose Skip has to be pressed once per line, and skipping a scene can raise a confirmation of
+# its own. None of that is a fixed shape, so these only stop the loops spinning on something that looks
+# like a button but never goes away.
+MAX_ACTIVITY_SCREENS = 4
+MAX_SCENE_SKIPS = 10
+SCENE_SKIP_TIME_OUT = 3
+SUMMARY_CONFIRM_TIME_OUT = 4
+
+# The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
+# the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
+INGREDIENT_SPOTS = ((0.236, 0.283), (0.308, 0.283))
+
+# (config key, default, settings text). Durations rather than coordinates, because the walk is the part
+# that varies between setups and it is the only part a user can usefully tune.
+WALK_OPTIONS = (
+    ('Tea Time Walk', '0.636-1.25-0.495',
+     'How long to hold each movement key walking from the Crew Deck entrance to the coffee machine, as left-forward-right in seconds.'),
+    ('Delicious Cuisine Walk', '0.747',
+     'How long to hold the back key walking from the Crew Deck entrance to the kitchen, in seconds.'),
+)
+
+# How long to wait for the deck to load, and for a station prompt once the walk has finished.
+CREW_DECK_LOAD_TIME_OUT = 25
+STATION_PROMPT_TIME_OUT = 4
+
+
+def parse_tickets(names):
+    """Pick the event ticket count out of what OCR found in the top-right corner.
+
+    The band holds the ticket icon as well as the number, and the icon reads as junk, so this takes the first thing that is entirely a number rather than
+    the first thing found.
+
+    Args:
+        names: The text OCR read in the ticket band.
+
+    Returns:
+        The count, or None when nothing there was a number.
+    """
+    for name in names:
+        if TICKET_COUNT.fullmatch(name.strip()):
+            return int(name.replace(',', ''))
+    return None
+
+
+def parse_active_dishes(text):
+    """Read how many experimental dishes are already in effect, off the dish selection screen.
+
+    A dish is only worth cooking while none is active - the buff does not stack, so cooking on top of one spends ingredients for nothing.
+
+    Args:
+        text: The bottom of the dish screen as OCR read it.
+
+    Returns:
+        How many dishes are in effect, or None when the line could not be found. None means unknown, not zero, so an unreadable line does not turn into a
+        wasted dish.
+    """
+    if not (found := ACTIVE_DISHES.search(text)):
+        return None
+    return int(found.group(1))
+
+
+def parse_uses_left(text):
+    """Read a station's remaining daily uses out of its interaction prompt.
+
+    The prompt reads "Tea Time 1/1", where the first number is how many times it has already been used today. Each activity is once a day, so walking into a
+    spent one wastes a trip and clicks through screens that will not do anything.
+
+    Args:
+        text: The prompt line as OCR read it.
+
+    Returns:
+        How many uses are left, or None when the text carries no counter. None means unknown, not spent - a counter OCR failed to read is no reason to skip
+        an activity that may well be available.
+    """
+    if not (counter := COUNTER.search(text)):
+        return None
+    used, total = int(counter.group(1)), int(counter.group(2))
+    return max(0, total - used)
+
+
+def walk_times(option, key_count):
+    """Turn a walk-timing setting into one hold duration per movement key.
+
+    A setting may name fewer durations than the walk has keys. Missing trailing values become 0, which `press_keys_sequence` sends as a tap rather than a
+    hold, so a setting that is too short shortens the walk instead of raising.
+
+    Args:
+        option: The setting value, for example "0.636-1.25-0.495".
+        key_count: How many movement keys the walk uses.
+
+    Returns:
+        A list of exactly `key_count` floats.
+
+    Raises:
+        ValueError: The setting is not a dash-separated list of numbers.
+    """
+    times = parse_time_option(option)
+    return (times + [0.0] * key_count)[:key_count]
+
 
 class GlobalDailyTask(BaseGlobalTask):
     """Daily upkeep on the Global client.
@@ -98,6 +257,12 @@ class GlobalDailyTask(BaseGlobalTask):
         self.support_schedule_task = True
         self.default_config.update({key: True for key, _, _ in FLOWS})
         self.config_description.update({key: description for key, _, description in FLOWS})
+        self.default_config.update({key: default for key, default, _ in WALK_OPTIONS})
+        self.config_description.update({key: description for key, _, description in WALK_OPTIONS})
+        # Nest the walk timings under their flow, so they only show when the flow is on.
+        self.default_config_group.update({'Crew Deck': [key for key, _, _ in WALK_OPTIONS]})
+        # Off by default: the flow reaches each station but does not yet complete either activity.
+        self.default_config['Crew Deck'] = False
 
     def run(self):
         self.ensure_main(recheck_time=2, time_out=90)
@@ -276,3 +441,202 @@ class GlobalDailyTask(BaseGlobalTask):
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
         self.go_home()
+
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # Crew Deck
+
+    def crew_deck(self):
+        """Visit each Crew Deck station in turn."""
+        self.info_set('current_task', 'crew_deck')
+        for station in STATIONS:
+            try:
+                times = walk_times(self.config.get(station.config_key), len(station.keys))
+            except ValueError:
+                self.log_info(f'The {station.config_key} setting is not a list of numbers, skipping {station.label}.', notify=True)
+                continue
+            if not self.enter_crew_deck():
+                self.log_info('Could not get into the Crew Deck, skipping the rest.', notify=True)
+                self.leave_crew_deck()
+                return
+            self.log_info(f'walking to {station.label}, holding {list(zip(station.keys, times))}')
+            self.press_keys_sequence(station.keys, times, sleep_between=station.sleep_between)
+            self.sleep(1)
+            self.open_station(station)
+            # Back to the entrance between stations, so the next walk starts where its timings were measured.
+            self.leave_crew_deck()
+
+    def leave_crew_deck(self):
+        """Back out to the home screen with Escape.
+
+        Deliberately not `go_home`. The station screens have no home button - the spot it clicks holds an info button instead, so pressing it there opens a
+        panel rather than going anywhere. Backing out unwinds these screens reliably, and `is_main` answers the leave-the-deck confirmation on the way.
+        """
+        self.ensure_main(time_out=60)
+
+    def enter_crew_deck(self):
+        """Open the Crew Deck from the home screen and wait for it to become walkable.
+
+        Returns:
+            True once the walkable deck is up, False when it was not reached.
+        """
+        if not self.wait_click_ocr(match=CREW_DECK, box=self.box.right, time_out=5, after_sleep=3):
+            self.log_info('No Crew Deck entry on the home screen.')
+            return False
+        # Confirmed by the movement key hints along the top, which read the same in every language. Waiting
+        # on those rather than on a title also means the deck is not merely open but finished loading.
+        if not self.is_free_layer(time_out=CREW_DECK_LOAD_TIME_OUT):
+            self.log_info('The Crew Deck did not finish loading into its walkable view.')
+            return False
+        return True
+
+    def open_station(self, station):
+        """Interact with one station and run its activity, unless it is already spent for the day.
+
+        Args:
+            station: The `Station` being visited.
+
+        Returns:
+            True when the station was handled, whether the activity ran or was correctly skipped. False when it was never reached or could not start.
+        """
+        entry = self.wait_ocr(match=station.prompt, time_out=STATION_PROMPT_TIME_OUT, log=True)
+        if not entry:
+            self.log_info(f'{station.label}: no prompt after walking, so the walk did not end within reach. Adjust the walk setting.', notify=True)
+            self.dump_screen(f'crew_deck_{station.label}_no_prompt')
+            return False
+        if self.uses_left(entry) == 0:
+            self.log_info(f'{station.label}: already done today, skipping it.', notify=True)
+            return True
+        # Alt has to be held while clicking, because the Crew Deck hides the cursor until it is pressed.
+        self.click_with_key('alt', entry, after_sleep=2)
+        return getattr(self, station.action)()
+
+    def active_dishes(self):
+        """How many experimental dishes are already in effect.
+
+        Read off the line along the bottom of the dish screen rather than the counter on any one tile. The whole bottom is OCR'd and joined, because the
+        sentence is long enough that OCR sometimes breaks it in two.
+
+        Returns:
+            The number in effect, or None when the line could not be read.
+        """
+        text = ' '.join(box.name for box in self.ocr(box=self.box.bottom, log=True))
+        active = parse_active_dishes(text)
+        if active is None:
+            self.log_info('could not read how many dishes are in effect, so going ahead')
+        return active
+
+    def uses_left(self, entry):
+        """Read how many times a station can still be used today, off its interaction prompt.
+
+        OCR returns the label and the counter as separate boxes often enough that this reads the whole line the prompt sits on rather than the matched box
+        alone.
+
+        Args:
+            entry: The boxes that matched the station prompt.
+
+        Returns:
+            How many uses are left, or None when no counter could be read.
+        """
+        line = Box(x=entry[0].x, y=entry[0].y, to_x=self.width, to_y=entry[0].y + entry[0].height)
+        text = ' '.join(box.name for box in self.ocr(box=line, log=True))
+        left = parse_uses_left(text)
+        if left is None:
+            self.log_info(f'no daily counter on the prompt ("{text}"), so going ahead')
+        else:
+            self.log_info(f'prompt "{text}" leaves {left} use(s) today')
+        return left
+
+    def make_drink(self):
+        """Make the drink Tea Time opens with already selected.
+
+        Every drink grants a bonus and the screen preselects one, so there is nothing to choose - pressing Make takes whatever is highlighted.
+
+        Returns:
+            True when the drink was confirmed, False when either step was missing.
+        """
+        if not self.wait_click_ocr(match=MAKE, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info('Tea Time: no Make button on the drink screen.', notify=True)
+            return False
+        # Make raises a Caution dialog - "Do you wish to make X? N time(s) remaining today" - with Cancel
+        # sitting beside Confirm. Matched by name rather than clicked by position, so the wrong one of the
+        # two can never be hit. Nothing is made until this lands.
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, after_sleep=2):
+            self.log_info('Tea Time: the Make confirmation never appeared, so no drink was made.', notify=True)
+            self.dump_screen('crew_deck_Tea_Time_no_confirm')
+            return False
+        self.finish_activity('Tea Time')
+        return True
+
+    def cook_dish(self):
+        """Cook a dish from the first two ingredients, then invite whichever doll is preselected.
+
+        Neither choice matters here - the dish is wanted for the buff it grants, not for itself - so this takes the first two ingredients and the doll the
+        screen already highlights. The ingredient tiles carry counts rather than names, so they are clicked by position.
+
+        Returns:
+            True when the invite was confirmed or there was nothing to cook, False when a step was missing.
+        """
+        if active := self.active_dishes():
+            self.log_info(f'Delicious Cuisine: {active} dish(es) already in effect, so nothing to cook.', notify=True)
+            return True
+        for spot in INGREDIENT_SPOTS:
+            self.click_relative(*spot, after_sleep=0.6)
+        if not self.wait_click_ocr(match=NEXT, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info('Delicious Cuisine: no Next button, so the ingredients probably did not take.', notify=True)
+            self.dump_screen('crew_deck_Delicious_Cuisine_no_next')
+            return False
+        # Next opens the Invite Doll step, which already has a doll selected. Matching the single word
+        # rather than "Confirm Invite" survives OCR splitting the label, and within the bottom right of
+        # this screen that word belongs to no other button.
+        if not self.wait_click_ocr(match=INVITE, box=self.box.bottom_right, time_out=6, after_sleep=2):
+            self.log_info('Delicious Cuisine: no Confirm Invite button on the Invite Doll step.', notify=True)
+            self.dump_screen('crew_deck_Delicious_Cuisine_no_invite')
+            return False
+        self.finish_activity('Delicious Cuisine')
+        return True
+
+    def finish_activity(self, label):
+        """Clear the scenes and summaries that follow an activity, and record anything left unrecognised.
+
+        Committing an activity plays one or more scenes, each offering Skip in the top right, and ends on a reward summary behind a Confirm. The drink plays
+        one scene and the dish two, and skipping can raise a confirmation of its own, so this alternates between the two buttons until neither is on screen
+        rather than assuming a fixed number of either. The screen is dumped at the end either way, so a run says whether the activity finished rather than
+        leaving it assumed.
+
+        The dish's closing screen puts `To Battle!` next to Confirm, so the Confirm is matched by name. Clicking either by position would be a coin flip
+        between finishing and starting a battle.
+
+        Args:
+            label: The station name, for the log and the screenshot filename.
+        """
+        for _ in range(MAX_ACTIVITY_SCREENS):
+            skipped = self.skip_scene(label)
+            confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=SUMMARY_CONFIRM_TIME_OUT, after_sleep=2)
+            if confirmed:
+                self.log_info(f'{label}: cleared a Confirm')
+            if not skipped and not confirmed:
+                break
+        self.wait_pop_up(time_out=10, count=3)
+        self.dump_screen(f'crew_deck_{label}_after')
+
+    def skip_scene(self, label):
+        """Press Skip until it stops appearing.
+
+        One press is not always enough. The dish ends on a line of dialogue, where Skip advances rather than exits, so it takes a press per line. Each look
+        is short, so the passes that find nothing cost little and the loop ends as soon as the scene does.
+
+        Args:
+            label: The station name, for the log.
+
+        Returns:
+            How many times Skip was pressed.
+        """
+        presses = 0
+        for _ in range(MAX_SCENE_SKIPS):
+            if not self.wait_click_ocr(match=SKIP, box=self.box.top_right, time_out=SCENE_SKIP_TIME_OUT, after_sleep=2):
+                break
+            presses += 1
+        if presses:
+            self.log_info(f'{label}: pressed Skip {presses} time(s)')
+        return presses
