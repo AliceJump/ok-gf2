@@ -22,9 +22,16 @@ def _strip_flow_toggles(task, flows):
         task: The task to strip.
         flows: The parent's `FLOWS` table.
     """
-    for key, _, _ in flows:
+    for key, method, _ in flows:
         task.default_config.pop(key, None)
         task.config_description.pop(key, None)
+        # The group goes too, or its members would be nested under a toggle that no longer exists. Their
+        # settings only belong on the task that runs that flow - on any other they would be dead knobs,
+        # which is how every single-flow task ended up offering the Crew Deck walk timings.
+        for nested in task.default_config_group.pop(key, []):
+            if method != task.flow:
+                task.default_config.pop(nested, None)
+                task.config_description.pop(nested, None)
 
 
 class _SingleDailyFlow(GlobalDailyTask):
