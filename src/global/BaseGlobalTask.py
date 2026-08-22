@@ -1,5 +1,10 @@
+import os
 import re
 import time
+
+import cv2
+import pywintypes
+import win32api
 
 from ok import Box
 from src.data.FeatureList import FeatureList as fL
@@ -57,6 +62,21 @@ LEAVE_PROMPT = re.compile(r'leave|exit|quit', re.I)
 MAX_MENU_LABEL = 16
 
 
+# An "n of m" counter. The game uses this shape everywhere - a station's daily uses, a card's reward
+# progress, a stage's clear count - so it lives here rather than being restated per screen.
+COUNTER = re.compile(r'(\d+)\s*/\s*(\d+)')
+
+# How far below a heading to look for the counters belonging to it, as a fraction of frame height. Small
+# on purpose: cards stack their own headings only a little further down, and reading the next one's
+# numbers would answer a different question than the one asked.
+COUNTER_BAND = 0.06
+
+# How far left of its heading a counter may start, as a fraction of frame width. A row belongs to the
+# heading above it and lines up with it, while the screen's own sidebar sits further left at the same
+# height - "Attempts: 3/3" is level with the Breakthrough card's reward row - and would otherwise win
+# on being leftmost.
+COUNTER_LEFT_TOLERANCE = 0.02
+
 # Vertical extent of the bottom navigation bar, as a fraction of frame height.
 NAV_STRIP_TOP = 0.86
 
@@ -78,6 +98,33 @@ POP_UP_AFTER_CLICK = 1.5
 
 # Where a poll starts before backing off toward its caller's interval.
 POLL_MIN_INTERVAL = 1
+
+# How long to keep trying to put the cursor back after Windows refused, and how often. Bounded, because
+# by the time this is reached the action it belonged to has already happened - only the cursor is owed.
+CURSOR_RESTORE_SECONDS = 15
+CURSOR_RESTORE_INTERVAL = 0.5
+
+# Where `dump_screen` keeps its frames. Deliberately not the screenshots folder, which the framework
+# empties on every start - a frame saved to diagnose a problem is worthless if the next run deletes it
+# before it can be looked at, which is exactly what happened to the first one saved here.
+DUMP_FOLDER = 'debug_frames'
+
+
+def first_counter(name):
+    """Read the first "n of m" counter out of a piece of text.
+
+    Deliberately not a whole-string match. OCR merges a row of counters into a single box - the Breakthrough card's three come back as
+    "24/24 112/112 m168/168", complete with a stray character where an icon was - so the first counter has to be picked out of the text rather than the text
+    being a counter on its own. Callers keep the wrong counters out by position, not by being strict here.
+
+    Args:
+        name: The detected text.
+
+    Returns:
+        A (done, total) pair, or None when there is no counter in the text.
+    """
+    match = COUNTER.search(name)
+    return (int(match.group(1)), int(match.group(2))) if match else None
 
 
 def is_menu_label(name):
@@ -207,17 +254,132 @@ class BaseGlobalTask(BaseGfTask):
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # Navigation
 
+    def dump_screen(self, label):
+        """Log every line of text on screen and save the frame beside it.
+
+        For screens whose wording is not yet known. A run's log then carries the exact strings to match on, rather than them being guessed at from the
+        Chinese. Left in the code afterwards, because the next unknown screen needs the same thing.
+
+        Args:
+            label: Name for the screenshot file, and the prefix on each logged line.
+        """
+        self.screenshot(label)
+        self.keep_frame(label)
+        try:
+            boxes = self.ocr(log=True)
+        except AttributeError:
+            self.log_info(f'{label}: capture returned an empty frame, nothing to read')
+            return
+        self.log_info(f'{label}: {len(boxes)} line(s) on screen')
+        for box in boxes:
+            self.log_info(f'{label}: "{box.name}" at ({box.x}, {box.y}) {box.width}x{box.height}')
+
+    def click_card_button(self, title, button, box=None, after_sleep=2):
+        """Click the button belonging to one card in a stacked list.
+
+        Regular Commissions lists its modes as full-width cards, each with its own identically-labelled button - Boundary Push shows a `Proceed` on both the
+        Breakthrough card and the Phase Clash card below it. Matching on the button alone picks whichever OCR happened to return first, which is a coin flip
+        between the mode we want and one we do not. A card's title always sits above its own button, and the next card's title sits below it, so the first
+        button under the title is that title's button.
+
+        Args:
+            title: Pattern identifying the card.
+            button: Pattern identifying the button, which repeats on every card.
+            box: Region to search in, defaulting to the whole frame.
+            after_sleep: Seconds to wait after clicking.
+
+        Returns:
+            The button box that was clicked, or None when the card or its button was not found.
+        """
+        boxes = self.ocr(box=box, log=True)
+        found = self.find_boxes(boxes, match=title)
+        if not found:
+            return None
+        below = sorted([candidate for candidate in self.find_boxes(boxes, match=button) if candidate.y > found[0].y], key=lambda candidate: candidate.y)
+        if not below:
+            return None
+        self.click(below[0], after_sleep=after_sleep)
+        return below[0]
+
+    def read_counter_under(self, label, box=None, band=COUNTER_BAND):
+        """Read the leftmost "n of m" counter sitting just below a heading.
+
+        Cards put a row of counters under a heading and only the first of them says whether anything is left. OCR returns them in no dependable order, so
+        they are picked by position - on the line below the heading, leftmost first - the same way `click_card_button` picks a button.
+
+        Args:
+            label: Pattern identifying the heading.
+            box: Region to search in, defaulting to the whole frame.
+            band: How far below the heading to look, as a fraction of frame height.
+
+        Returns:
+            A (done, total) pair, or None when the heading or any counter under it was not found.
+        """
+        boxes = self.ocr(box=box, log=True)
+        found = self.find_boxes(boxes, match=label)
+        if not found:
+            return None
+        heading = found[0]
+        limit = heading.y + self.height * band
+        left = heading.x - self.width * COUNTER_LEFT_TOLERANCE
+        under = [candidate for candidate in boxes
+                 if heading.y < candidate.y <= limit and candidate.x >= left and first_counter(candidate.name)]
+        if not under:
+            return None
+        return first_counter(min(under, key=lambda candidate: candidate.x).name)
+
+    def keep_frame(self, label):
+        """Save the current frame somewhere a restart will not delete it.
+
+        Args:
+            label: Used in the filename.
+        """
+        frame = self.frame
+        if frame is None:
+            return
+        os.makedirs(DUMP_FOLDER, exist_ok=True)
+        path = os.path.join(DUMP_FOLDER, f'{label}_{int(time.time())}.png')
+        try:
+            cv2.imwrite(path, frame)
+            self.log_info(f'{label}: frame kept at {path}')
+        except Exception as error:
+            self.log_info(f'{label}: could not keep the frame ({error})')
+
+    def read_enlarged(self, band, zoom):
+        """OCR a region after enlarging it, for text too small to be detected at its own size.
+
+        The detector looks for lines of text, and a glyph only a few pixels across does not look like one. It is missed outright in a crop, because a crop
+        is resized down before detection, and found only about half the time in a whole frame. Enlarging the region first and handing that over as the frame
+        gives the detector something the size of ordinary on-screen text.
+
+        Args:
+            band: The `Box` to read.
+            zoom: How much to enlarge it by.
+
+        Returns:
+            The text found, or an empty list.
+        """
+        frame = self.frame
+        if frame is None:
+            return []
+        crop = frame[band.y:band.y + band.height, band.x:band.x + band.width]
+        if not crop.size:
+            return []
+        enlarged = cv2.resize(crop, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC)
+        return [box.name for box in self.ocr(frame=enlarged, log=True)]
+
     def open_regular_commissions(self):
         """Navigate home -> Commissions -> Regular Commissions.
 
-        Commissions is a bottom-nav entry, so it is clicked with `click_ocr_word` - OCR frequently merges it with Platoon next to it. The screen opens on the
-        Daily Quests tab, so Regular Commissions has to be selected explicitly.
+        Both clicks go through `click_ocr_word`, because OCR merges neighbours on both screens. The bottom nav comes back as `Commissions Platoon`, and the
+        tab row along the top comes back as one box reading `Regular Commissions Journey Witness Journey Milestone` - clicking its centre opens Journey
+        Witness, the middle tab. The screen opens on Daily Quests, so the tab has to be selected explicitly.
 
         Returns:
             True when the Regular Commissions tab opened, False when it could not be reached.
         """
         self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
-        return bool(self.wait_click_ocr(match=REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
+        return bool(self.click_ocr_word(REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
 
     def is_main(self, recheck_time=0.0, esc=True):
         """Decide whether the home screen is showing.
