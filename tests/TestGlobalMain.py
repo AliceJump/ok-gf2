@@ -281,6 +281,187 @@ class TestEventTickets(unittest.TestCase):
         self.assertIsNone(self.parse([]))
 
 
+class TestGoHomePolling(unittest.TestCase):
+    """The home button is not on every screen, and each look for it costs up to three OCR passes.
+
+    Polling flat out spent the whole window re-reading a screen that could not change until something was pressed, which reads in the log as the bot hanging.
+    """
+
+    def go_home(self, is_main_results):
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        looks = []
+
+        def is_main(esc=True):
+            looks.append(esc)
+            return is_main_results.pop(0) if is_main_results else False
+
+        clock = {'now': 0.0}
+        task = types.SimpleNamespace(info_set=mock.Mock(), click_relative=mock.Mock(), log_info=mock.Mock(),
+                                     ensure_main=mock.Mock(), is_main=is_main,
+                                     sleep=mock.Mock(side_effect=lambda seconds: clock.__setitem__('now', clock['now'] + seconds)))
+        with mock.patch.object(base.time, 'time', lambda: clock['now']):
+            base.BaseGlobalTask.go_home(task)
+        return task, looks
+
+    def test_it_stops_as_soon_as_the_button_takes(self):
+        task, looks = self.go_home([True])
+        self.assertEqual(1, len(looks))
+        task.ensure_main.assert_not_called()
+
+    def test_it_waits_between_looks_rather_than_spinning(self):
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        task, looks = self.go_home([])
+        expected = base.HOME_BUTTON_TIME_OUT / base.HOME_BUTTON_CHECK_INTERVAL + 1
+        self.assertLessEqual(len(looks), expected, 'polling faster than the interval wastes OCR on an unchanged screen')
+        self.assertGreater(len(looks), 1, 'it should look more than once before giving up')
+
+    def test_it_falls_back_to_backing_out(self):
+        """Screens without a home button are normal - the event map is one - so this is not an error."""
+        task, _ = self.go_home([])
+        task.ensure_main.assert_called_once()
+
+    def test_the_poll_never_presses_escape(self):
+        """Escape here would back out of the screen the home button was meant to leave from, racing it."""
+        _, looks = self.go_home([])
+        self.assertTrue(all(esc is False for esc in looks), 'the home-button poll must be a pure query')
+
+
+class TestCursorContention(unittest.TestCase):
+    """The Genshin interaction warps the real cursor onto the game and back around every action.
+
+    Windows refuses that while something else holds the input queue, which is what happens whenever the mouse is in use during a run. It killed a Crew Deck
+    walk and an Event Supply swipe outright, on an error that said nothing about the game.
+    """
+
+    def base(self):
+        return importlib.import_module('src.global.BaseGlobalTask')
+
+    def task(self, cursor_position=(10, 20)):
+        """A stand-in with just the parts `despite_cursor_error` and `recover_cursor` touch."""
+        interaction = types.SimpleNamespace(cursor_position=cursor_position, unblock_input=mock.Mock())
+        return types.SimpleNamespace(
+            log_info=mock.Mock(),
+            sleep=mock.Mock(),
+            executor=types.SimpleNamespace(interaction=interaction),
+            recover_cursor=mock.Mock(),
+        )
+
+    def cursor_error(self):
+        return pywintypes.error(0, 'SetCursorPos', 'No error message is available')
+
+    def raiser(self, error):
+        def action():
+            raise error
+        return action
+
+    def test_a_refused_cursor_move_does_not_stop_the_run(self):
+        task = self.task()
+        result = self.base().BaseGlobalTask.despite_cursor_error(task, self.raiser(self.cursor_error()), 'send_key')
+        self.assertIsNone(result)
+        task.recover_cursor.assert_called_once()
+
+    def test_the_action_is_not_repeated(self):
+        """The cursor restore runs after the action, so repeating it would press twice or swipe twice."""
+        task, calls = self.task(), []
+
+        def action():
+            calls.append(1)
+            raise self.cursor_error()
+
+        self.base().BaseGlobalTask.despite_cursor_error(task, action, 'send_key')
+        self.assertEqual(1, len(calls), 'the action was repeated, which would double a key press')
+
+    def test_a_successful_action_passes_its_result_through(self):
+        task = self.task()
+        self.assertEqual('clicked', self.base().BaseGlobalTask.despite_cursor_error(task, lambda: 'clicked', 'click'))
+        task.recover_cursor.assert_not_called()
+
+    def test_other_errors_still_surface(self):
+        """Swallowing everything here would hide real bugs behind a message about the mouse."""
+        with self.assertRaises(ValueError):
+            self.base().BaseGlobalTask.despite_cursor_error(self.task(), self.raiser(ValueError('a real bug')), 'click')
+
+
+    def test_the_wrapped_arguments_reach_the_action_untouched(self):
+        """`click` has its own `name`, which bound to this wrapper's parameter and raised instead of clicking.
+
+        Every `click_relative` call passes one, so this broke far more than the flow it was noticed in.
+        """
+        seen = {}
+
+        def action(*args, **kwargs):
+            seen['args'], seen['kwargs'] = args, kwargs
+            return 'clicked'
+
+        result = self.base().BaseGlobalTask.despite_cursor_error(
+            self.task(), action, 'click', 0.1, 0.2, name='Supply', after_sleep=3)
+        self.assertEqual('clicked', result)
+        self.assertEqual((0.1, 0.2), seen['args'])
+        self.assertEqual({'name': 'Supply', 'after_sleep': 3}, seen['kwargs'])
+
+    def test_an_argument_named_like_the_wrapper_itself_is_still_passed_through(self):
+        """Positional-only parameters are what make this safe, so a caller with an `action` or `label` cannot collide either."""
+        seen = {}
+        self.base().BaseGlobalTask.despite_cursor_error(
+            self.task(), lambda **kwargs: seen.update(kwargs), 'swipe', action='x', label='y')
+        self.assertEqual({'action': 'x', 'label': 'y'}, seen)
+
+
+class TestCursorRecovery(unittest.TestCase):
+    """What a refused cursor move leaves behind, and how it is put right.
+
+    A click blocks input for its duration and unblocks it only after restoring the cursor, so a restore that throws leaves the keyboard and mouse frozen for
+    as long as the app lives. That is the part that must not be missed.
+    """
+
+    def base(self):
+        return importlib.import_module('src.global.BaseGlobalTask')
+
+    def task(self, cursor_position=(10, 20)):
+        interaction = types.SimpleNamespace(cursor_position=cursor_position, unblock_input=mock.Mock())
+        return types.SimpleNamespace(log_info=mock.Mock(), sleep=mock.Mock(),
+                                     executor=types.SimpleNamespace(interaction=interaction))
+
+    def recover(self, task, set_cursor):
+        base = self.base()
+        with mock.patch.object(base.win32api, 'SetCursorPos', set_cursor):
+            base.BaseGlobalTask.recover_cursor(task, 'click')
+
+    def test_input_is_unblocked_first(self):
+        """Left blocked, the user's keyboard and mouse stay frozen until the app exits."""
+        task = self.task()
+        self.recover(task, mock.Mock())
+        task.executor.interaction.unblock_input.assert_called_once()
+
+    def test_input_is_unblocked_even_when_there_is_no_cursor_to_restore(self):
+        task = self.task(cursor_position=None)
+        self.recover(task, mock.Mock(side_effect=AssertionError('should not be called')))
+        task.executor.interaction.unblock_input.assert_called_once()
+
+    def test_the_cursor_move_is_retried_until_it_takes(self):
+        """The reason it failed is that the mouse was in use, which passes on its own."""
+        task = self.task()
+        attempts = []
+
+        def set_cursor(position):
+            attempts.append(position)
+            if len(attempts) < 3:
+                raise pywintypes.error(0, 'SetCursorPos', '')
+
+        self.recover(task, set_cursor)
+        self.assertEqual([(10, 20)] * 3, attempts)
+        self.assertEqual(2, task.sleep.call_count, 'it should wait between attempts rather than spin')
+
+    def test_giving_up_is_logged_and_not_raised(self):
+        """The action this belonged to already happened, so there is nothing left to abort."""
+        task = self.task()
+        base = self.base()
+        clock = iter([0] + [base.CURSOR_RESTORE_SECONDS + 1] * 50)
+        with mock.patch.object(base.time, 'time', lambda: next(clock)):
+            self.recover(task, mock.Mock(side_effect=pywintypes.error(0, 'SetCursorPos', '')))
+        task.log_info.assert_called_once()
+
+
 class TestDailyCounter(unittest.TestCase):
     """Each Crew Deck activity runs once a day, and its prompt says whether it has been used.
 
