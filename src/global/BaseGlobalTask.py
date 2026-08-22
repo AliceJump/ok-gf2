@@ -85,9 +85,12 @@ NAV_STRIP_TOP = 0.86
 # has to be clicked by position. On the home screen itself that spot is empty, so a stray press is safe.
 HOME_BUTTON = (0.076, 0.048)
 
-# How long to give the home button before falling back to backing out with Escape. Short on purpose:
-# when the button does not take, waiting on it just looks like the bot has hung.
+# How long to give the home button before falling back to backing out with Escape, and how often to look.
+# The timeout is short on purpose: when the button does not take, waiting on it just looks like the bot
+# has hung. The interval matters because every look costs up to three OCR passes - polling flat out
+# spends the whole window re-reading a screen that is not going to change until something is pressed.
 HOME_BUTTON_TIME_OUT = 3
+HOME_BUTTON_CHECK_INTERVAL = 1
 
 # Per-look timeout when clearing overlays, and how long a match must hold before it is acted on. Both
 # small: overlays appear immediately once the screen they belong to is up, so a longer wait only delays
@@ -532,9 +535,16 @@ class BaseGlobalTask(BaseGfTask):
         """
         self.info_set('current_task', 'go_home')
         self.click_relative(*HOME_BUTTON, after_sleep=2)
-        if self.wait_until(lambda: self.is_main(esc=False), time_out=HOME_BUTTON_TIME_OUT):
-            self.log_info('home button worked')
-            return
+        # Polled by hand rather than with `wait_until`, which has no gap between checks and would spend the
+        # whole window hammering OCR at a screen that cannot change until the next press.
+        deadline = time.time() + HOME_BUTTON_TIME_OUT
+        while True:
+            if self.is_main(esc=False):
+                self.log_info('home button worked')
+                return
+            if time.time() >= deadline:
+                break
+            self.sleep(HOME_BUTTON_CHECK_INTERVAL)
         # Not an error - the button is not on every screen, and backing out always works. Logged so a
         # run makes it obvious which route was taken rather than leaving the button's usefulness assumed.
         self.log_info('home button did not reach the home screen, backing out with Escape instead')
