@@ -57,17 +57,6 @@ LEAVE_PROMPT = re.compile(r'leave|exit|quit', re.I)
 MAX_MENU_LABEL = 16
 
 
-def is_menu_label(name):
-    """Whether an OCR result looks like a menu entry rather than a sentence mentioning one.
-
-    Args:
-        name: The detected text.
-
-    Returns:
-        True when the text is short and free of sentence punctuation.
-    """
-    return len(name) <= MAX_MENU_LABEL and not any(character in name for character in ',.')
-
 # Vertical extent of the bottom navigation bar, as a fraction of frame height.
 NAV_STRIP_TOP = 0.86
 
@@ -78,7 +67,29 @@ HOME_BUTTON = (0.076, 0.048)
 
 # How long to give the home button before falling back to backing out with Escape. Short on purpose:
 # when the button does not take, waiting on it just looks like the bot has hung.
-HOME_BUTTON_TIME_OUT = 4
+HOME_BUTTON_TIME_OUT = 3
+
+# Per-look timeout when clearing overlays, and how long a match must hold before it is acted on. Both
+# small: overlays appear immediately once the screen they belong to is up, so a longer wait only delays
+# the discovery that there are none left.
+POP_UP_CHECK_TIME_OUT = 2
+POP_UP_SETTLE = 1
+POP_UP_AFTER_CLICK = 1.5
+
+# Where a poll starts before backing off toward its caller's interval.
+POLL_MIN_INTERVAL = 1
+
+
+def is_menu_label(name):
+    """Whether an OCR result looks like a menu entry rather than a sentence mentioning one.
+
+    Args:
+        name: The detected text.
+
+    Returns:
+        True when the text is short and free of sentence punctuation.
+    """
+    return len(name) <= MAX_MENU_LABEL and not any(character in name for character in ',.')
 
 
 class BaseGlobalTask(BaseGfTask):
@@ -176,15 +187,19 @@ class BaseGlobalTask(BaseGfTask):
         """
         deadline = time.time() + time_out
         checks = 0
+        # Start responsive and back off. Some of these waits end almost immediately - an auto battle
+        # sweep resolves in seconds - and a fixed long interval would sit through that for no reason,
+        # while a fixed short one would be wasteful across the ten minutes a Loop can take.
+        wait = POLL_MIN_INTERVAL
         while time.time() < deadline:
             if found := self.ocr(match=match, box=box):
                 return found
             checks += 1
-            # Logged because a silent wait is indistinguishable from a hang. Every few checks is enough
-            # to show progress without burying the rest of the run.
+            # Logged because a silent wait is indistinguishable from a hang.
             if checks % 6 == 0:
                 self.log_info(f'still waiting, {int(deadline - time.time())}s left')
-            self.sleep(min(interval, max(0, deadline - time.time())))
+            self.sleep(min(wait, max(0, deadline - time.time())))
+            wait = min(wait * 2, interval)
             self.next_frame()
         return None
 
@@ -295,18 +310,22 @@ class BaseGlobalTask(BaseGfTask):
             check += other if isinstance(other, list) else [other]
         deadline = time.time() + time_out
         for _ in range(count):
-            remaining = int(deadline - time.time())
+            remaining = deadline - time.time()
             if remaining <= 0:
                 break
-            found = self.wait_ocr(match=check, box=box, settle_time=2, time_out=remaining, raise_if_not_found=False)
+            # Each look gets a short timeout of its own rather than the whole remaining budget. Spending
+            # the entire budget establishing that no overlay is left is what made this appear to hang for
+            # fifteen seconds after the last one was already gone. `time_out` still caps the total.
+            found = self.wait_ocr(match=check, box=box, settle_time=POP_UP_SETTLE,
+                                  time_out=min(POP_UP_CHECK_TIME_OUT, remaining), raise_if_not_found=False)
             if not found:
                 break
             # Overlays that say "click anywhere to exit" mean it. Clicking the instruction itself is the
             # dismissal the screen advertises, and more reliable than Escape, which some of them ignore.
             if clickable := [detected for detected in found if CLICK_ANYWHERE.search(detected.name)]:
-                self.click(clickable[0], after_sleep=3)
+                self.click(clickable[0], after_sleep=POP_UP_AFTER_CLICK)
             else:
-                self.back(after_sleep=3)
+                self.back(after_sleep=POP_UP_AFTER_CLICK)
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
         """Click through story dialogue until one of `end_match` appears.
