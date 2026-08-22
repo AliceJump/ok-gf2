@@ -55,6 +55,37 @@ class TestMenuLabelFilter(unittest.TestCase):
             self.assertFalse(base.is_menu_label(name), f'{name!r} is prose, not a menu entry')
 
 
+class TestPurchaseSafety(unittest.TestCase):
+    """Guards the one flow that could spend real money.
+
+    Coordinates are measured off a real screenshot of the Daily Supply Box dialog at 1920x1080, with the shop page visible around it.
+    """
+
+    def dialog_band(self):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        x, y, to_x, to_y = daily.DIALOG_BAND
+        return x * 1920, y * 1080, to_x * 1920, to_y * 1080
+
+    def test_band_covers_the_dialog_but_not_the_page_behind_it(self):
+        """Reading the page behind the dialog once made it refuse a free box as costing $9.99."""
+        x0, y0, x1, y1 = self.dialog_band()
+
+        def inside(px, py):
+            return x0 <= px <= x1 and y0 <= py <= y1
+
+        for name, px, py in (('Free label', 1524, 297), ('dialog Purchase', 1213, 834), ('dialog Cancel', 745, 834)):
+            self.assertTrue(inside(px, py), f'{name} belongs to the dialog and must be read')
+        for name, px, py in (('background price', 817, 970), ('background Purchase', 875, 1020), ('currency total', 1810, 47)):
+            self.assertFalse(inside(px, py), f'{name} is the page behind the dialog and must not be read')
+
+    def test_price_pattern_matches_money_and_not_dialog_prose(self):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        for money in ('$ 9.99', '$0.99', '0.99'):
+            self.assertTrue(daily.PRICE.search(money), f'{money!r} must block a purchase')
+        for prose in ('Current progress: 12/21', 'Daily Limit 1/1', '3 Hours', 'Free', 'Daily Supply Box'):
+            self.assertFalse(daily.PRICE.search(prose), f'{prose!r} appears in the free dialog and must not block it')
+
+
 class TestGlobalFlowWiring(unittest.TestCase):
     """Static checks on the flow tables. No game, no OCR - these guard the wiring only."""
 

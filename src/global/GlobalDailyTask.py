@@ -68,6 +68,11 @@ PURCHASE = re.compile(r'Purchase', re.I)
 # necessarily the one that was clicked. Nothing is ever bought without checking this first.
 PRICE = re.compile(r'[$€£¥]|\d+\.\d{2}')
 
+# The purchase dialog's own area. Scoped tightly on purpose: the shop page stays visible around the
+# dialog, including the featured item's price and its own Purchase button, and reading those as if they
+# belonged to the dialog is what made an earlier version refuse a genuinely free box as costing $9.99.
+DIALOG_BAND = (0.14, 0.13, 0.86, 0.84)
+
 # Upper bound on free boxes to claim in one run. The loop normally ends when nothing reads Free any
 # more; this only stops it spinning if a dialog ever leaves "Free" on screen.
 MAX_FREE_BOXES = 3
@@ -156,12 +161,16 @@ class GlobalDailyTask(BaseGlobalTask):
         if not free:
             return False
         self.click(free[0], after_sleep=1.5)
-        # Re-read the screen before committing. Clicking Free is not proof that a free item is what
-        # ended up open, so the price is checked on the item as it now stands rather than trusted from
-        # the frame that was clicked.
-        opened = self.ocr(box=self.box.bottom, log=True)
+        # Re-read the dialog before committing. Clicking Free is not proof that a free item is what
+        # ended up open, so this asks the dialog itself: it has to say Free, and it has to show no price.
+        # Both, so that neither a missing label nor an unreadable price is enough to authorise a spend.
+        opened = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
         if priced := self.find_boxes(opened, match=PRICE):
             self.log_info(f'the open item costs {priced[0].name}, backing out without buying', notify=True)
+            self.back(after_sleep=1)
+            return False
+        if not self.find_boxes(opened, match=FREE):
+            self.log_info('the open item is not marked Free, backing out without buying', notify=True)
             self.back(after_sleep=1)
             return False
         purchase = self.find_boxes(opened, match=PURCHASE)
