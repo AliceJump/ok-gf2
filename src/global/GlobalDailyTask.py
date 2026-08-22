@@ -345,6 +345,30 @@ class GlobalDailyTask(BaseGlobalTask):
             return False
         self.click(purchase[0], after_sleep=1.5)
         self.wait_pop_up(time_out=5, count=2)
+        self.cancel_paid_pack()
+        return True
+
+    def cancel_paid_pack(self):
+        """Close a paid pack's dialog if dismissing the reward overlay opened one.
+
+        The overlay says to click anywhere, and anywhere includes the packs behind it - the dismissing click lands in the middle of the grid and can open a
+        paid one. Nothing here would ever buy it, since `claim_free_box` requires a dialog that reads Free and shows no price, but leaving it open blocks
+        the way out of the shop.
+
+        A price and a Cancel button both have to be present before anything is clicked. The shop page itself carries prices, so a price alone is not a
+        dialog, and acting on one would mean pressing things on an ordinary page.
+
+        Returns:
+            True when a dialog was cancelled.
+        """
+        dialog = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
+        priced = self.find_boxes(dialog, match=PRICE)
+        cancel = self.find_boxes(dialog, match=CANCEL)
+        if not (priced and cancel):
+            return False
+        # Matched by name, never by position: Purchase sits directly beside Cancel in this dialog.
+        self.log_info(f'the reward overlay opened a paid pack ({priced[0].name}), cancelling it', notify=True)
+        self.click(cancel[0], after_sleep=1.5)
         return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
