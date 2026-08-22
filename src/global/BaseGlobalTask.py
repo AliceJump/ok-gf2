@@ -180,6 +180,105 @@ class BaseGlobalTask(BaseGfTask):
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # Surviving the cursor being fought over
+
+    def despite_cursor_error(self, action, label, /, *args, **kwargs):
+        """Run an interaction, surviving Windows refusing to move the cursor.
+
+        The Genshin interaction warps the real cursor onto the game before each action and puts it back afterwards. `SetCursorPos` fails when something else
+        holds the input queue, which is exactly what happens when the mouse is in use while the bot runs, and the whole task dies on an error that has
+        nothing to do with the game.
+
+        The action itself is not repeated. The failing restore runs after it, and the framework already swallows exceptions from the action, so by the time
+        this is reached the key, click or swipe has landed. Doing it again would press twice - a walk that goes too far, or a stage clicked when it was not
+        meant to be - while letting it through at worst loses one, which shows up as a step that did not take and says so.
+
+        Args:
+            action: The bound superclass method to call.
+            label: What to call it in the log. Positional-only, along with `action`, because the wrapped methods take arguments of their own that would
+                otherwise bind to these - `click` has its own `name`, and passing it used to raise instead of clicking.
+            *args: Positional arguments for `action`.
+            **kwargs: Keyword arguments for `action`.
+
+        Returns:
+            Whatever `action` returned, or None when the cursor move was refused.
+        """
+        try:
+            return action(*args, **kwargs)
+        except pywintypes.error as error:
+            self.log_info(f'{label}: Windows would not move the cursor ({error.funcname}), recovering')
+            self.recover_cursor(label)
+            return None
+
+    def recover_cursor(self, label):
+        """Undo what a refused cursor move left behind.
+
+        Two things are owed. First, input may still be blocked: the framework blocks it for the length of a click and unblocks it only after putting the
+        cursor back, so when putting it back throws, the unblock never runs and the keyboard and mouse stay frozen for as long as the app lives. That is
+        released first and unconditionally, since unblocking input that is not blocked does nothing.
+
+        Second, the cursor is wherever the bot left it rather than where its owner left it. That is retried rather than given up on, because the reason it
+        failed - the mouse being in use - passes on its own. It is not retried forever, and failing to restore it is not raised: the action it belonged to
+        already happened, so there is nothing to abort.
+
+        Args:
+            label: What to call the interaction in the log.
+        """
+        interaction = self.executor.interaction
+        if unblock := getattr(interaction, 'unblock_input', None):
+            unblock()
+        position = getattr(interaction, 'cursor_position', None)
+        if not position:
+            return
+        deadline = time.time() + CURSOR_RESTORE_SECONDS
+        while time.time() < deadline:
+            try:
+                win32api.SetCursorPos(position)
+                return
+            except pywintypes.error:
+                self.sleep(CURSOR_RESTORE_INTERVAL)
+        self.log_info(f'{label}: the cursor could not be put back within {CURSOR_RESTORE_SECONDS}s, leaving it where it is')
+
+    def send_key(self, *args, **kwargs):
+        """Send a key, surviving the cursor being fought over.
+
+        Args:
+            *args: Passed through.
+            **kwargs: Passed through.
+
+        Returns:
+            Whatever the base implementation returned, or None when the cursor move was refused.
+        """
+        return self.despite_cursor_error(super().send_key, 'send_key', *args, **kwargs)
+
+    def click(self, *args, **kwargs):
+        """Click, surviving the cursor being fought over.
+
+        Args:
+            *args: Passed through.
+            **kwargs: Passed through.
+
+        Returns:
+            Whatever the base implementation returned, or None when the cursor move was refused.
+        """
+        return self.despite_cursor_error(super().click, 'click', *args, **kwargs)
+
+    def swipe(self, *args, **kwargs):
+        """Swipe, surviving the cursor being fought over.
+
+        `swipe_relative` goes through here too, so scrolling a map is covered as well.
+
+        Args:
+            *args: Passed through.
+            **kwargs: Passed through.
+
+        Returns:
+            Whatever the base implementation returned, or None when the cursor move was refused.
+        """
+        return self.despite_cursor_error(super().swipe, 'swipe', *args, **kwargs)
+
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
     # Clicking
 
     @property
