@@ -529,6 +529,7 @@ class GlobalDailyTask(BaseGlobalTask):
             return
         if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.log_info('Nothing to collect in Crystal Collection, skipping.', notify=True)
+            self.dump_screen('boundary_push_no_crystal')
             self.go_home()
             return
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
