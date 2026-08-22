@@ -574,6 +574,68 @@ class TestCounterParsing(unittest.TestCase):
             self.assertIsNone(self.parse(name), f'{name!r} holds no counter')
 
 
+class TestSingleFlowConfig(unittest.TestCase):
+    """A single-flow task should offer the settings its own flow uses, and no others.
+
+    Every one of them once carried the Crew Deck walk timings, because stripping a flow's toggle left the settings nested under it behind. They did nothing
+    on a task that never walks anywhere.
+    """
+
+    def strip(self, flow):
+        """Run `_strip_flow_toggles` over a stand-in task and return the settings it would be left with."""
+        verify = importlib.import_module('src.global.VerifyTasks')
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        task = types.SimpleNamespace(
+            flow=flow,
+            default_config={key: True for key, _, _ in daily.FLOWS} | {key: default for key, default, _ in daily.WALK_OPTIONS},
+            config_description={},
+            default_config_group={'Crew Deck': [key for key, _, _ in daily.WALK_OPTIONS]},
+        )
+        verify._strip_flow_toggles(task, daily.FLOWS)
+        return task.default_config
+
+    def test_the_crew_deck_task_keeps_its_walk_timings(self):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        remaining = self.strip('crew_deck')
+        for key, _, _ in daily.WALK_OPTIONS:
+            self.assertIn(key, remaining, f'the Crew Deck task needs {key!r} - it is how the walk is tuned')
+
+    def test_other_flows_are_left_with_nothing_to_set(self):
+        self.assertEqual({}, self.strip('shopping'))
+        self.assertEqual({}, self.strip('start_loop'))
+
+
+class TestNoUndefinedNames(unittest.TestCase):
+    """Catches a name that is used but never defined or imported.
+
+    `CREW_DECK` was used by the Crew Deck flow and left out of its import line. Nothing caught it, because no test executes a flow body - the flow navigates
+    a live game - so it surfaced only as a NameError mid-run. Reading the bytecode needs no game and covers every flow at once.
+    """
+
+    MODULES = ('BaseGlobalTask', 'GlobalDailyTask', 'GlobalWeeklyTask', 'VerifyTasks')
+
+    def functions_defined_in(self, module):
+        """Yield every function the module itself defines, methods included, skipping ones it merely imported."""
+        for value in vars(module).values():
+            if isinstance(value, types.FunctionType) and value.__module__ == module.__name__:
+                yield value
+            elif isinstance(value, type) and value.__module__ == module.__name__:
+                for attribute in vars(value).values():
+                    if isinstance(attribute, types.FunctionType):
+                        yield attribute
+
+    def test_every_global_name_is_defined(self):
+        for name in self.MODULES:
+            module = importlib.import_module(f'src.global.{name}')
+            for function in self.functions_defined_in(module):
+                for instruction in dis.get_instructions(function):
+                    if instruction.opname != 'LOAD_GLOBAL':
+                        continue
+                    used = instruction.argval
+                    self.assertTrue(hasattr(module, used) or hasattr(builtins, used),
+                                    f'{name}.{function.__qualname__} uses {used!r}, which that module neither defines nor imports')
+
+
 class TestGlobalFlowWiring(unittest.TestCase):
     """Static checks on the flow tables. No game, no OCR - these guard the wiring only."""
 
