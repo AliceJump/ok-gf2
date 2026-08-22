@@ -16,6 +16,21 @@ SUPPLY = re.compile(r'\bSupply\b', re.I)
 AUTO = re.compile(r'^Auto$', re.I)
 AUTO_DIALOG = re.compile(r'Number of Auto Battles', re.I)
 ITEMS_OBTAINED = re.compile(r'Items Obtained', re.I)
+
+# Event tickets, in the top-right corner of the event page. Every event puts the count in the same spot
+# and none of them labels it, so it is found by position. The band stops above the event's own name,
+# which sits just below it, and is generous to the left so a four-figure count still falls inside.
+#
+# This is a filter over a full-frame read, not a region to OCR. The count is a single glyph - measured
+# at 8x25 - and the detector finds it in a whole frame but not in a crop around it, because a crop is
+# resized before detection and one character does not survive that. `target_height` does not help: it
+# scales relative to the frame, so asking for 260 shrank the crop to a quarter size and made it worse.
+TICKETS_BAND = (0.86, 0.015, 1.0, 0.085)
+TICKET_COUNT = re.compile(r'\d[\d,]*')
+
+# How much to enlarge that corner before reading it. Six times turns an 8x25 glyph into 48x150, which is
+# the size of ordinary on-screen text rather than something the detector has to be lucky to find.
+TICKETS_ZOOM = 6
 # What the end of a run of auto battles can look like. The reward summary is the expected outcome, but
 # the click-anywhere overlay is what actually blocks progress, and it is not always preceded by a title
 # the poll can see - so either one counts as done.
@@ -386,6 +401,12 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info('No event banner on the home screen, skipping.', notify=True)
             self.go_home()
             return
+        # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
+        # at all, so the whole trip through the map and the auto dialog would be for nothing.
+        if self.event_tickets() == 0:
+            self.log_info('No event tickets left, so there is nothing to run.', notify=True)
+            self.go_home()
+            return
         if not self.wait_click_ocr(match=SUPPLY, box=self.box.bottom_right, time_out=5, after_sleep=3):
             self.log_info('This event has no Supply mode, skipping.', notify=True)
             self.go_home()
@@ -420,6 +441,30 @@ class GlobalDailyTask(BaseGlobalTask):
         else:
             self.log_info(f'Auto battles did not finish within {EVENT_BATTLE_TIME_OUT}s.', notify=True)
         self.go_home()
+
+    def event_tickets(self):
+        """How many event tickets are left, read off the top-right corner of the event page.
+
+        Returns:
+            The count, or None when it could not be read - in which case the caller should go ahead, since an unreadable count is not evidence of an empty
+            one.
+        """
+        band = self.box_of_screen(*TICKETS_BAND)
+        names = self.read_enlarged(band, TICKETS_ZOOM)
+        tickets = parse_tickets(names)
+        if tickets is None:
+            # Second chance by a different route. A whole frame finds this glyph about half the time, which
+            # is no use alone but is worth having behind a method that does not depend on the same luck.
+            names += [box.name for box in self.find_boxes(self.ocr(log=True), boundary=band)]
+            tickets = parse_tickets(names)
+        if tickets is None:
+            self.log_info(f'could not read the event ticket count from {names}, so going ahead')
+            # Saved so the corner can be looked at directly. Guessing at coordinates for something that
+            # reads as nothing at all is how the first attempt at this band went.
+            self.dump_screen('event_tickets_unreadable')
+        else:
+            self.log_info(f'{tickets} event ticket(s) left')
+        return tickets
 
     def last_supply_stage(self):
         """Scroll the Supply map to its right end and return the furthest-right stage node.
