@@ -107,6 +107,25 @@ class TestPurchaseSafety(unittest.TestCase):
             self.assertFalse(daily.PRICE.search(prose), f'{prose!r} appears in the free dialog and must not block it')
 
 
+class TestWalkTimes(unittest.TestCase):
+    """The Crew Deck is walked to on a timer, so the timings are the one part worth checking without a game."""
+
+    def walk_times(self, option, key_count):
+        return importlib.import_module('src.global.GlobalDailyTask').walk_times(option, key_count)
+
+    def test_one_duration_per_movement_key(self):
+        self.assertEqual([0.636, 1.25, 0.495], self.walk_times('0.636-1.25-0.495', 3))
+
+    def test_a_short_setting_pads_with_taps(self):
+        """A setting naming fewer durations than the walk has keys shortens the walk rather than raising."""
+        self.assertEqual([1.0, 0.0], self.walk_times('1.0', 2))
+
+    def test_a_non_numeric_setting_is_rejected(self):
+        """Callers catch this to skip the station rather than crash the whole run."""
+        with self.assertRaises(ValueError):
+            self.walk_times('fast', 2)
+
+
 class _CardScreen:
     """A stand-in for a task, showing `click_card_button` a fixed screen and recording what it clicks.
 
@@ -164,6 +183,73 @@ class TestCardButtonSelection(unittest.TestCase):
         self.assertEqual([], screen.clicked)
 
 
+class TestActiveDishes(unittest.TestCase):
+    """The dish buff does not stack, so cooking while one is in effect spends ingredients for nothing.
+
+    The line is read off the bottom of the dish screen, which is also covered in ingredient counters that must not be mistaken for it.
+    """
+
+    def parse(self, text):
+        return importlib.import_module('src.global.GlobalDailyTask').parse_active_dishes(text)
+
+    def test_a_dish_in_effect_is_counted(self):
+        self.assertEqual(1, self.parse('Number of Experimental Dishes that can be effective at once 1/3'))
+
+    def test_no_dish_in_effect_reads_zero(self):
+        self.assertEqual(0, self.parse('Number of Experimental Dishes that can be effective at once 0/3'))
+
+    def test_ocr_spacing_still_reads(self):
+        self.assertEqual(2, self.parse('effective at once 2 / 3'))
+
+    def test_ingredient_counters_are_not_mistaken_for_it(self):
+        """The tiles read "1/20", "0/17" and so on. Matching one of those would skip cooking every run."""
+        self.assertIsNone(self.parse('Rarity 1/20 1/17 0/12 0/14 Next'))
+
+    def test_a_missing_line_is_unknown_rather_than_active(self):
+        """Returning a truthy value here would skip the dish forever. None means go ahead and find out."""
+        self.assertIsNone(self.parse('Select ingredients Cannot Make Dishes'))
+
+
+class TestActivityButtons(unittest.TestCase):
+    """The Crew Deck activities end on screens where the wrong button is costly.
+
+    The dish's closing screen puts `To Battle!` beside `Confirm`, and the drink's confirmation puts `Cancel` beside it. Every pattern the flow clicks has to
+    miss the neighbour.
+    """
+
+    def daily(self):
+        return importlib.import_module('src.global.GlobalDailyTask')
+
+    def clickable_patterns(self):
+        """Every pattern `crew_deck` clicks by name, so a new one cannot quietly opt out of this check."""
+        daily = self.daily()
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        return {'MAKE': daily.MAKE, 'NEXT': daily.NEXT, 'INVITE': daily.INVITE, 'CONFIRM': base.CONFIRM, 'SKIP': base.SKIP}
+
+    def test_nothing_the_flow_clicks_matches_to_battle(self):
+        """Starting a battle nobody asked for is the worst thing this flow could do."""
+        label = 'To Battle!'
+        self.assertIsNotNone(self.daily().TO_BATTLE.search(label), 'TO_BATTLE should describe the button it is named for')
+        for name, pattern in self.clickable_patterns().items():
+            self.assertIsNone(pattern.search(label), f'{name} matches the To Battle button on the dish summary')
+
+    def test_nothing_the_flow_clicks_matches_cancel(self):
+        """Cancel sits beside Confirm on the Caution dialog, and would silently make no drink at all."""
+        for name, pattern in self.clickable_patterns().items():
+            self.assertIsNone(pattern.search('Cancel'), f'{name} matches the Cancel button beside Confirm')
+
+    def test_make_does_not_match_the_cooking_screens_prose(self):
+        """The cooking screen reads "Cannot Make Dishes", which an unanchored Make would click."""
+        self.assertIsNone(self.daily().MAKE.search('Cannot Make Dishes'))
+
+    def test_the_buttons_still_match_themselves(self):
+        daily = self.daily()
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        for pattern, label in ((daily.MAKE, 'Make'), (daily.NEXT, 'Next'), (daily.INVITE, 'Confirm Invite'),
+                               (daily.INVITE, 'Invite'), (base.CONFIRM, 'Confirm'), (base.SKIP, 'Skip')):
+            self.assertIsNotNone(pattern.search(label), f'{label!r} is a real button and must still be clickable')
+
+
 class TestEventTickets(unittest.TestCase):
     """Without tickets an event stage cannot be run, so the whole trip through the map and the auto dialog is wasted.
 
@@ -193,6 +279,31 @@ class TestEventTickets(unittest.TestCase):
     def test_nothing_readable_is_unknown_rather_than_empty(self):
         """Returning 0 here would skip the event every run, and silently."""
         self.assertIsNone(self.parse([]))
+
+
+class TestDailyCounter(unittest.TestCase):
+    """Each Crew Deck activity runs once a day, and its prompt says whether it has been used.
+
+    Getting this backwards would either skip an available activity every day, or walk to a spent one and click through screens that do nothing.
+    """
+
+    def parse(self, text):
+        return importlib.import_module('src.global.GlobalDailyTask').parse_uses_left(text)
+
+    def test_a_spent_station_has_nothing_left(self):
+        self.assertEqual(0, self.parse('Tea Time 1/1'))
+
+    def test_an_untouched_station_has_a_use_left(self):
+        self.assertEqual(1, self.parse('Tea Time 0/1'))
+
+    def test_a_counter_split_by_ocr_still_reads(self):
+        """OCR spaces the slash out sometimes, and returns the label and counter as separate boxes that get joined."""
+        self.assertEqual(2, self.parse('Delicious Cuisine 0 / 2'))
+
+    def test_a_prompt_with_no_counter_is_unknown_rather_than_spent(self):
+        """Returning 0 here would silently skip the activity every run. None means go ahead and find out."""
+        self.assertIsNone(self.parse('Makiatto'))
+        self.assertIsNone(self.parse('Tea Time'))
 
 
 class TestRewardProgress(unittest.TestCase):
