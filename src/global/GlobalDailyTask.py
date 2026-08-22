@@ -99,10 +99,18 @@ DIALOG_BAND = (0.14, 0.13, 0.86, 0.84)
 # more; this only stops it spinning if a dialog ever leaves "Free" on screen.
 MAX_FREE_BOXES = 3
 
-# Regular Commissions -> Boundary Push, which opens on its Breakthrough tab. The rewards sit behind
-# the Crystal Collection button in the bottom-right. Matched on the first word alone because the
-# button wraps onto two lines, which OCR usually returns as two separate boxes.
+# Regular Commissions -> Boundary Push, which lists Breakthrough and Phase Clash as stacked cards. Only
+# Breakthrough is wanted, and both cards carry an identical Proceed button, so the card is picked by
+# title rather than by the button. The rewards then sit behind the Crystal Collection button in the
+# bottom-right, matched on the first word alone because it wraps onto two lines that OCR splits apart.
 BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
+# The Breakthrough card's reward row - "Reward Progress-Deep Layer" over three counters. Only the first
+# says whether anything is left to collect. The Phase Clash card below says "Reward Details" instead, so
+# this heading picks out the right card on its own.
+REWARD_PROGRESS = re.compile(r'Reward Progress', re.I)
+
+BREAKTHROUGH = re.compile(r'Breakthrough', re.I)
+PROCEED = re.compile(r'Proceed', re.I)
 CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
 CLAIM_ALL = re.compile(r'Claim All', re.I)
 
@@ -499,8 +507,24 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info('Could not open Regular Commissions, skipping Boundary Push.', notify=True)
             self.go_home()
             return
-        if not self.wait_click_ocr(match=BOUNDARY_PUSH, box=self.box.left, time_out=5, after_sleep=3):
+        # Searched across the whole frame rather than a measured corner. The label is distinctive enough
+        # that a wider search cannot match the wrong thing, and one less guessed-at box is one less way
+        # for this to fail silently. Clicked by word in case OCR merges it with the entry beside it.
+        if not self.click_ocr_word(BOUNDARY_PUSH, time_out=5, after_sleep=3):
             self.log_info('Boundary Push is not available, skipping.', notify=True)
+            self.dump_screen('boundary_push_missing')
+            self.go_home()
+            return
+        # Checked before opening the card. Everything past this point is navigation towards a Claim All
+        # that will not be there, and the card says so up front.
+        progress = self.read_counter_under(REWARD_PROGRESS)
+        if progress and progress[0] >= progress[1]:
+            self.log_info(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.', notify=True)
+            self.go_home()
+            return
+        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3):
+            self.log_info('Found no Breakthrough card to open, skipping.', notify=True)
+            self.dump_screen('boundary_push_no_breakthrough')
             self.go_home()
             return
         if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
