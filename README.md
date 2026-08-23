@@ -20,14 +20,15 @@ An image-recognition-based automation tool for Girls' Frontline 2: Exilium, with
 <div align="center">
 
 ![Platform](https://img.shields.io/badge/platform-Windows-blue)
-[![GitHub release](https://img.shields.io/github/v/release/alicejump/ok-gf2)](https://github.com/alicejump/ok-gf2/releases)
-[![Total downloads](https://img.shields.io/github/downloads/alicejump/ok-gf2/total)](https://github.com/alicejump/ok-gf2/releases)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/AliceJump/ok-gf2)
+[![GitHub release](https://img.shields.io/github/v/release/steve1316/ok-gf2-english)](https://github.com/steve1316/ok-gf2-english/releases)
 
 </div>
 
-> Game terms in this document use the wording shown by the **Global / Steam** client, and the
-> feature list reflects what the program actually ships. See [docs/glossary.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/glossary.md)
+> This is a fork of [AliceJump/ok-gf2](https://github.com/AliceJump/ok-gf2) that automates the
+> **Global (Steam, English)** client. Upstream's CN tasks still ship and can be switched back on, but
+> this README documents the Global side only - see [Which client you are automating](#which-client-you-are-automating).
+>
+> Game terms use the wording shown by the Global / Steam client. See [docs/glossary.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/glossary.md)
 > for the full term mapping.
 
 ---
@@ -47,15 +48,11 @@ all potential risks.**
 
 ## 🚀 Quick Start
 
-1. **Download the package**: Choose a source below and download the latest `ok-gf2` archive.
-2. **Extract and run**: Extract the archive and double-click `ok-gf2.exe`. The app can update itself from then on.
-3. **Configure tasks**: Set up task parameters in the software interface as needed.
-
-## 📥 Download Sources
-
-* **[GitHub](https://github.com/alicejump/ok-gf2/releases)**: Official release page with fast global access. (**Download the `7z` archive, not the `Source Code` archive**)
-* **[Mirrorchyan](https://mirrorchyan.com/zh/projects?rid=okgf2&source=okgf2readme)**: China mirror (may require a CD-KEY purchase).
-* **[Quark Drive](https://pan.quark.cn/s/a1052cec4d13)**: Free download (requires registration and the Quark Drive client).
+1. **Download the installer**: Grab the latest Windows installer from
+   **[Releases](https://github.com/steve1316/ok-gf2-english/releases)**. Do not download the `Source Code` archives - they leave out the
+   packaged dependencies.
+2. **Install and run**: Run the installer, then launch `ok-gf2`. The app updates itself from then on.
+3. **Configure tasks**: Set task options in the app. Start with `Run: Go Home`, which changes nothing.
 
 ## Runtime Requirements & Recommendations
 
@@ -86,62 +83,33 @@ matters for the `-t` flag - see [Command-line arguments](#command-line-arguments
 
 ### Tasks
 
-These are the tasks you can select and run in the app. The number in front of each one is its
-index for the `-t` command-line flag (see [Command-line arguments](#command-line-arguments)).
+These are the Global tasks. The number in front of each one is its index for the `-t` command-line
+flag (see [Command-line arguments](#command-line-arguments)).
 
 | # | Task | What it does |
 |---|---|---|
-| 1 | **[One-Click Dailies](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/daily-tasks.md)** | Runs the full daily routine top to bottom. Every step below can be toggled on or off individually |
-| 2 | **[Weekly](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/weekly-tasks.md)** | Runs the weekly Combat Simulations: Boss Fight, Peak Value Assessment, Expansion Drills |
-| 3 | **[Auto-Clear Campaign Stages](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/campaign-clear.md)** | Clears uncleared Campaign stages left to right |
-| 4 | Launch Game | Test task. Starts the game and closes it after 120 seconds |
-| 5 | Test | Test task, for development only |
-| 6 | Diagnosis | Thin wrapper around the ok-script framework's built-in diagnosis task |
-| 7 | **[Global Daily](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Global: starts the in-game Loop, then picks up what Loop does not cover |
-| 8 | **[Global Weekly](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Global: collects the Peak Value Assessment rewards |
-| 9 | Run: Go Home | Global: recognises the home screen, leaves it and comes back. Changes nothing |
-| 10 | Run: Start Loop | Global: runs only the Start Loop step |
-| 11 | Run: Claim Free Packs | Global: runs only the free shop pack step |
-| 12 | Run: Event Supply | Global: runs only the event Supply step |
-| 13 | Run: Claim Boundary Push | Global: runs only the Boundary Push collection |
-| 14 | Run: Claim Peak Value | Global: runs only the Peak Value collection |
-| 15 | Run: Crew Deck | Global: runs only the Crew Deck activities |
+| 7 | **[Global Daily](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Starts the in-game Loop, then picks up what Loop does not cover |
+| 8 | **[Global Weekly](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Collects the Peak Value Assessment rewards |
+| 9 | Run: Go Home | Recognises the home screen, leaves it and comes back. Changes nothing |
+| 10 | Run: Start Loop | Runs only the Start Loop step |
+| 11 | Run: Claim Free Packs | Runs only the free shop pack step |
+| 12 | Run: Event Supply | Runs only the event Supply step |
+| 13 | Run: Claim Boundary Push | Runs only the Boundary Push collection |
+| 14 | Run: Claim Peak Value | Runs only the Peak Value collection |
+| 15 | Run: Crew Deck | Runs only the Crew Deck activities |
 
-Tasks 1-6 are the CN set and 7-15 the Global set. The `Run: ` tasks each run a single step of Global
-Daily or Global Weekly, for checking one flow at a time - see
+The numbering starts at 7 because positions 1-6 belong to upstream's CN tasks, which still ship and
+are hidden unless **Region** is set to `CN`. They are documented in
+[upstream's repository](https://github.com/AliceJump/ok-gf2).
+
+The `Run: ` tasks each run a single step of Global Daily or Global Weekly, for checking one flow at a
+time - see
 **[docs/en/global-tasks.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)**.
-
-### What One-Click Dailies covers
-
-Each of these is a switch inside the Dailies task rather than a task of its own. Full details are in
-**[docs/en/daily-tasks.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/daily-tasks.md)**.
-
-- Community daily check-in (needs your username and password)
-- Mail collection
-- Event reward track and event stage rewards
-- Auto-running the Event **Supply** stage
-- **Crew Deck** activities: Tea Time, Delicious Cuisine, and reward pickup
-- **Dispatch Room** assignments, dispatched and collected
-- Claiming free packs from the **Shop**
-- **Wishlist** purchases across Furniture Shop, Platoon Shop, Dispatch Shop, Battlelog Trading, Neural Integration, and Growth Stack
-- Farming **Supply Missions** with Intelligence Puzzle
-- **Combat Exercises**
-- **Platoon** tasks and **Gunsmoke Frontline**
-- Claiming **Commissions** rewards
-- Claiming daily **Voyage** rewards
-- Claiming **Boundary Push** gathering and dispatch rewards
 
 ### Scheduled tasks
 
 Any task above can be added to the Windows Task Scheduler from inside the app, so it launches and
 runs on its own at a time you set.
-
-### Automatic in-battle behavior
-
-Combat handling is built into the tasks above rather than being something you start separately.
-While a task is running it detects the battle state and fires skills in order, picks up drops, and
-skips story dialogue on its own. The program captures the game window in the background, so you can
-keep using your computer while it works.
 
 ### Under the hood
 
@@ -153,41 +121,15 @@ keep using your computer while it works.
 
 ## ⚙️ Parameter notes
 
-### 1. Current Supply stage name (CN only)
-
-Every Event has a **Supply** stage, which is the one that costs Intelligence Puzzle.
-
-- In a **small event**, that stage is simply labelled **Supply**. Leave this field empty.
-- In a **large event**, the stage is renamed after the event and split into parts. Enter the event
-  name **without** the part suffix. For a stage shown as `铸碑者的黎明·上篇`, you would enter
-  `铸碑者的黎明`.
-
-> ⚠️ Filling this in incorrectly will break the event automation.
-
-The Global Event Supply flow has no equivalent setting. It finds the last Supply stage on the map
-by itself, and stops before spending anything if there are no event tickets left.
-
-![image](https://github.com/user-attachments/assets/ed261840-449a-46d4-8a07-f58382f3a779)
-
----
-
-### 2. Confirm the in-game global auto-battle setting is enabled
-
-Path: **Settings -> Other -> Auto-Battle Settings**
-
----
-
-### 3. Tea Time
+### 1. Tea Time
 
 The Crew Deck is a walkable area, so this setting is how long to hold each movement key while walking
-your character over to the coffee machine. Both clients hold `A`, then `W`, then `D`.
+your character over to the coffee machine. It holds `A`, then `W`, then `D`.
 
 Format: `{seconds holding A}-{seconds holding W}-{seconds holding D}`
 
-| Client | Setting | Default |
-|---|---|---|
-| Global | `Tea Time Walk`, under the `Crew Deck` toggle | `0.636-1.25-0.495` |
-| CN | `喝水` | `1.44-1.56-1.38` |
+The setting is `Tea Time Walk`, nested under the `Crew Deck` toggle. It defaults to
+`0.636-1.25-0.495`.
 
 The right timings depend on where your character spawns, so measure your own rather than trusting the
 default: run [tools/record_walk.py](https://github.com/steve1316/ok-gf2-english/blob/master/tools/record_walk.py), walk the route by hand, press Esc, and
@@ -195,25 +137,16 @@ paste the line it prints into the setting it names.
 
 ---
 
-### 4. Delicious Cuisine
+### 2. Delicious Cuisine
 
-The same idea, walking to the kitchen instead. **The two clients take different routes.**
+The same idea, walking to the kitchen instead. This route is a single key - hold `S`.
 
-| Client | Setting | Keys | Default |
-|---|---|---|---|
-| Global | `Delicious Cuisine Walk`, under the `Crew Deck` toggle | holds `S` | `0.747` |
-| CN | `吃饭` | holds `S`, then taps `D` | `1.3` |
+The setting is `Delicious Cuisine Walk`, nested under the `Crew Deck` toggle. It defaults to `0.747`.
 
 Format: `{seconds holding S}`
 
 > On Global the `Crew Deck` flow ships **switched off**, because it needs walk timings that suit your
 > setup. Measure them, then turn it on.
-
----
-
-![image](https://github.com/user-attachments/assets/6bd2ac34-fd40-4c74-9e8e-a0343818876d)
-
-![image](https://github.com/user-attachments/assets/ae1ecd07-6608-478d-9226-40d4f8000a60)
 
 ---
 
@@ -228,30 +161,17 @@ If you encounter issues, check the following in order:
    * Use the game's default brightness settings.
    * Use a **dark** home screen background.
 4. **Game frame rate**: 120 FPS recommended, higher is better.
-5. **Game language**: Set **Settings -> Region -> Game Client** to match the client you are running, then restart the app.
+5. **Game language**: Set the game to English, and leave **Settings -> Region -> Game Client** on `Global`.
 6. **Software version**: Make sure you are running the latest release.
-7. **Get help**: If none of the above helps, submit a detailed error report via the QQ group.
+7. **Get help**: If none of the above helps, see [Getting help](#-getting-help).
 
-## 💬 Join Us
+## 💬 Getting help
 
-* **QQ Group**: `1033950808` (join answer: `老王同学OK`)
+Open an issue on [this fork](https://github.com/steve1316/ok-gf2-english/issues) for anything to do
+with the Global tasks. Attach the log and, if the bot saved one, the frame from `debug_frames/`.
 
-This project is built on [ok-script](https://github.com/ok-oldking/ok-script), which is easy to maintain. Developers are
-welcome to build their own automation projects with ok-script.
-
-## 🔗 Projects using ok-script
-
-* Arknights: Endfield [https://github.com/AliceJump/ok-end-field](https://github.com/AliceJump/ok-end-field)
-* Wuthering Waves [https://github.com/ok-oldking/ok-wuthering-waves](https://github.com/ok-oldking/ok-wuthering-waves)
-* Wuthering Waves (enhanced daily runner) [https://github.com/zzc-tongji/ok-ww-enhanced](https://github.com/zzc-tongji/ok-ww-enhanced)
-* Genshin Impact (no longer maintained, background dialogue skipping still works) [https://github.com/ok-oldking/ok-genshin-impact](https://github.com/ok-oldking/ok-genshin-impact)
-* Girls' Frontline 2: Exilium [https://github.com/ok-oldking/ok-gf2](https://github.com/ok-oldking/ok-gf2)
-* Honkai: Star Rail [https://github.com/Shasnow/ok-starrailassistant](https://github.com/Shasnow/ok-starrailassistant)
-* Star Resonance [https://github.com/Sanheiii/ok-star-resonance](https://github.com/Sanheiii/ok-star-resonance)
-* Duet Night Abyss [https://github.com/BnanZ0/ok-duet-night-abyss](https://github.com/BnanZ0/ok-duet-night-abyss)
-* Bai Jing Corridor (no longer maintained) [https://github.com/ok-oldking/ok-baijing](https://github.com/ok-oldking/ok-baijing)
-
----
+Issues with the CN tasks belong [upstream](https://github.com/AliceJump/ok-gf2), along with its QQ
+group.
 
 ## 💻 Developer Zone
 
@@ -287,18 +207,17 @@ python main_direct_ml_debug.py
 ### Command-line arguments
 
 ```pwsh
-# Start, automatically run task 1 (One-Click Dailies), then exit when it finishes
-ok-gf2.exe -t 1 -e
+# Start, automatically run task 7 (Global Daily), then exit when it finishes
+ok-gf2.exe -t 7 -e
 ```
 
 * `-t` or `--task`: Automatically run the Nth task. The numbering is the `#` column in
-  [Tasks](#tasks), so `-t 1` is One-Click Dailies, `-t 2` is Weekly, and `-t 3` is Auto-Clear
-  Campaign Stages.
+  [Tasks](#tasks), so `-t 7` is Global Daily and `-t 8` is Global Weekly.
 
-  > ⚠️ These numbers count **both** task sets, and they do not shift when you change region. On a
-  > Global install `-t 1` still runs the CN daily, which is not what the sidebar is showing you. The
-  > Global tasks are `-t 7` (Global Daily) and `-t 8` (Global Weekly). The positions are deliberately
-  > held stable so existing shortcuts and scheduled tasks keep pointing at the same task.
+  > ⚠️ These numbers count **both** task sets, and they do not shift when you change region. `-t 1`
+  > still runs upstream's CN daily even on a Global install, which is not what the sidebar is showing
+  > you. The positions are held stable on purpose, so existing shortcuts and scheduled tasks keep
+  > pointing at the same task.
 * `-e` or `--exit`: Exit automatically after the task completes.
 
 ### Development and testing
@@ -327,7 +246,7 @@ python scripts/compile_i18n.py
 python scripts/compile_i18n.py --check
 ```
 
-See [docs/glossary.md](docs/glossary.md) for the Chinese to Global/Steam term mapping. Note that
+See [docs/glossary.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/glossary.md) for the Chinese to Global/Steam term mapping. Note that
 `ocr.po` is a different thing entirely: it rewrites English game text into the Chinese tokens the
 task code matches against, so never put UI strings there.
 
@@ -346,16 +265,13 @@ task code matches against, so never put UI strings there.
 Note that the developer docs above are still written in Chinese. Only the user-facing guides in
 [docs/en/](https://github.com/steve1316/ok-gf2-english/tree/master/docs/en/) have been translated so far.
 
-## ❤️ Sponsors & Acknowledgements
+## ❤️ Acknowledgements
 
-### Sponsors
-
-[![Afdian](https://img.shields.io/badge/Afdian-Sponsor-blue?style=flat-square)](https://afdian.com/a/AliceJump)
-[![Afdian](https://img.shields.io/badge/Afdian-Sponsor-blue?style=flat-square)](https://afdian.com/a/ok-oldking)
-[![Patreon](https://img.shields.io/badge/Patreon-Support-orange?style=flat-square)](https://patreon.com/ok_oldking)
-[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?style=flat-square)](https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ)
-
-### Acknowledgements
+All of the original work is [AliceJump/ok-gf2](https://github.com/AliceJump/ok-gf2) and
+[ok-oldking](https://github.com/ok-oldking); this fork only adds the Global client on top. If you get
+value out of it, sponsor them: [Afdian](https://afdian.com/a/AliceJump),
+[Afdian](https://afdian.com/a/ok-oldking), [Patreon](https://patreon.com/ok_oldking),
+[PayPal](https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ).
 
 * [ok-oldking/OnnxOCR](https://github.com/ok-oldking/OnnxOCR)
 * [zhiyiYo/PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
