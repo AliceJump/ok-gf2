@@ -403,7 +403,7 @@ class BaseGlobalTask(BaseGfTask):
         for box in boxes:
             self.log_info(f'{label}: "{box.name}" at ({box.x}, {box.y}) {box.width}x{box.height}')
 
-    def click_card_button(self, title, button, box=None, after_sleep=2):
+    def click_card_button(self, title, button, box=None, after_sleep=2, boxes=None):
         """Click the button belonging to one card in a stacked list.
 
         Regular Commissions lists its modes as full-width cards, each with its own identically-labelled button - Boundary Push shows a `Proceed` on both the
@@ -433,7 +433,7 @@ class BaseGlobalTask(BaseGfTask):
         self.click(below[0], after_sleep=after_sleep)
         return below[0]
 
-    def read_counter_under(self, label, box=None, band=COUNTER_BAND):
+    def read_counter_under(self, label, box=None, band=COUNTER_BAND, boxes=None):
         """Read the leftmost "n of m" counter sitting just below a heading.
 
         Cards put a row of counters under a heading and only the first of them says whether anything is left. OCR returns them in no dependable order, so
@@ -522,6 +522,9 @@ class BaseGlobalTask(BaseGfTask):
 
         Two independent signals are pooled: the right-hand menu labels, and the two home-only icons. Requiring a quorum of two keeps a single OCR misread or
         a partly faded label from flipping the answer.
+
+        The screen is read once and then searched three times in memory. Reading each region separately cost three model runs over 1.25 frames of
+        overlapping pixels, on the one path that repeats - `go_home` polls this and runs about ten times in a daily pass.
 
         Args:
             recheck_time: Unused here, kept for signature parity with the CN base.
