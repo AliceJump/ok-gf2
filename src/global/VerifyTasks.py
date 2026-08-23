@@ -88,12 +88,19 @@ class RunGoHome(_SingleDailyFlow):
     label = 'Go Home'
 
     def __init__(self, *args, **kwargs):
+        """Build the task, then replace the generic single-flow description with one that says this changes nothing.
+
+        Args:
+            *args: Passed to the composed task.
+            **kwargs: Passed to the composed task.
+        """
         super().__init__(*args, **kwargs)
         self.description = 'Opens Commissions and returns home, to check screen detection and the way back. Changes nothing - run this first.'
 
     def run(self):
+        """Recognise the home screen, leave it for a read-only list, and come back."""
         self.log_info('checking whether the home screen is recognised')
-        self.ensure_main(recheck_time=2, time_out=90)
+        self.ensure_main(recheck_time=START_RECHECK, time_out=START_TIME_OUT)
         self.log_info('home screen recognised, opening Commissions so there is somewhere to come back from')
         self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=3, raise_if_not_found=True)
         if self.is_main(esc=False):

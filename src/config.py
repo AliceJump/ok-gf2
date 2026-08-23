@@ -19,7 +19,7 @@ config = {
     "windows": {  # Windows游戏请填写此设置
         "exe": ["GF2_Exilium.exe"],  # 新版统一使用 list
         'hwnd_class': 'UnityWndClass',
-        # A list renders the "Choose Interaction" picker on the Start tab; a bare string hides it.
+        # A list renders the "Choose Interaction" picker on the Start tab. A bare string hides it.
         # Genshin must stay first: it is the only one that works everywhere, because it warps the real
         # cursor onto the game (SetCursorPos) and blocks input for the duration of each click.
         # PostMessage posts window messages only, so it neither steals focus nor moves the mouse - but

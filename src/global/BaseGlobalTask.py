@@ -54,13 +54,13 @@ MAIN_SCREEN_BLOCKERS = [
 
 # Walking out of the Crew Deck raises a confirmation ("Do you wish to leave the Crew Deck?") that
 # Escape does not dismiss - it has to be answered or the way home is blocked. Kept loose because OCR
-# splits long sentences; `is_main` only acts on it when a Confirm button is on screen too.
+# splits long sentences. `is_main` only acts on it when a Confirm button is on screen too.
 LEAVE_PROMPT = re.compile(r'leave|exit|quit', re.I)
 
 # Longest a home-screen menu entry can be. Loading screens describe the ship in prose that names the very
 # same places - "...Engine Room, Refitting Room, a Crew Deck, Lounge and other..." - which otherwise
 # satisfies the home-screen check and makes the bot think it has arrived. Menu entries are short and
-# standalone; sentences are neither.
+# standalone. Sentences are neither.
 MAX_MENU_LABEL = 16
 
 

@@ -20,6 +20,12 @@ class GlobalWeeklyTask(BaseGlobalTask):
     """
 
     def __init__(self, *args, **kwargs):
+        """Build the task and describe it for the sidebar.
+
+        Args:
+            *args: Passed to the framework task.
+            **kwargs: Passed to the framework task.
+        """
         super().__init__(*args, **kwargs)
         self.name = 'Global Weekly'
         self.description = 'Collects the Peak Value Assessment rewards.'

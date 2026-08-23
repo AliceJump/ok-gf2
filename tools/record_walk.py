@@ -61,7 +61,7 @@ def record():
     """Watch the keyboard until Esc, timing every movement key held along the way.
 
     Returns:
-        A list of `(key, hold seconds, gap seconds since the previous release)` in the order the keys were pressed, or None when the recording was discarded.
+        A list of `(key, hold seconds, gap seconds since the previous release)` in the order the keys were pressed. Empty when the recording was cleared.
     """
     held = {}
     presses = []

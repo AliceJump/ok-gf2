@@ -96,7 +96,7 @@ PRICE = re.compile(r'[$€£¥]|\d+\.\d{2}')
 DIALOG_BAND = (0.14, 0.13, 0.86, 0.84)
 
 # Upper bound on free boxes to claim in one run. The loop normally ends when nothing reads Free any
-# more; this only stops it spinning if a dialog ever leaves "Free" on screen.
+# more. This only stops it spinning if a dialog ever leaves "Free" on screen.
 MAX_FREE_BOXES = 3
 
 # Regular Commissions -> Boundary Push, which lists Breakthrough and Phase Clash as stacked cards. Only
@@ -279,6 +279,12 @@ class GlobalDailyTask(BaseGlobalTask):
     """
 
     def __init__(self, *args, **kwargs):
+        """Build the task and describe it for the sidebar.
+
+        Args:
+            *args: Passed to the framework task.
+            **kwargs: Passed to the framework task.
+        """
         super().__init__(*args, **kwargs)
         self.name = 'Global Daily'
         self.description = 'Starts the in-game Loop, claims free shop packs, and collects Boundary Push rewards.'
