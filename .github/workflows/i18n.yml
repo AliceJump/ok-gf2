@@ -1,0 +1,25 @@
+name: i18n
+
+# The app only ever reads the compiled .mo files, so a .po edit that was never compiled is invisible
+# at runtime. build.yml runs only on v* tags, which is far too late to catch that.
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+jobs:
+  check-catalogs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install polib
+        run: pip install -r requirements-dev.txt
+
+      - name: Check compiled catalogs are up to date
+        run: python scripts/compile_i18n.py --check

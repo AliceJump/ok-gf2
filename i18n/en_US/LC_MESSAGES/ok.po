@@ -10,79 +10,59 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 msgid "一键日常"
-msgstr "One-click Dailies"
+msgstr "One-Click Dailies"
 
 msgid "从要推的图的最左边开始"
-msgstr "Start from the leftmost stage to clear"
+msgstr "Start from the leftmost uncleared stage"
 
 msgid "体力本"
-msgstr "Stamina Stage"
-
-msgid "公共区"
-msgstr "Public Area"
-
-msgid "兵棋推演"
-msgstr "War Chess Simulation"
+msgstr "Supply Missions"
 
 msgid "军备解析"
-msgstr "Armament Analysis"
-
-msgid "冲锋"
-msgstr "SMG & MG"
+msgstr "Equipment Analysis"
 
 msgid "决策构象"
-msgstr "Decision Configuration"
+msgstr "Cognitive Configuration"
 
 msgid "刷钱本"
-msgstr "Gold Farming Stage"
+msgstr "Standardizing Sync"
 
 msgid "大月卡"
-msgstr "Premium Monthly Card"
+msgstr "Voyage"
 
 msgid "尘烟"
-msgstr "Dust Smoke"
-
-msgid "手枪"
-msgstr "HG"
+msgstr "Gunsmoke Frontline"
 
 msgid "推图"
-msgstr "Clear Stages"
+msgstr "Auto-Clear Campaign Stages"
 
 msgid "收菜"
-msgstr "Collect Resources"
-
-msgid "活动情报补给"
-msgstr "Event Intel Supply"
+msgstr "Collect Idle Rewards"
 
 msgid "活动自律"
-msgstr "Event Auto-Battle"
+msgstr "Auto-Run Event Supply"
 
 msgid "深度搜索"
-msgstr "Deep Search"
-
-msgid "狙击"
-msgstr "RF & BLD"
+msgstr "In-Depth Search"
 
 msgid "班组"
-msgstr "Squad"
-
-msgid "突击"
-msgstr "AR & SG"
+msgstr "Platoon"
 
 msgid "竞技场"
-msgstr "Arena"
+msgstr "Combat Exercises"
 
 msgid "自动刷体力"
-msgstr "Auto-Farm Stamina"
+msgstr "Auto-Farm Intelligence Puzzle"
 
 msgid "购买免费礼包"
-msgstr "Claim Free Pack"
+msgstr "Claim Free Packs"
 
 msgid "邮件"
 msgstr "Mail"
 
 msgid "领任务"
-msgstr "Claim Missions"
+msgstr "Claim Commission Rewards"
+
 msgid "Daily"
 msgstr "Daily"
 
@@ -250,3 +230,287 @@ msgstr "Delete Task"
 
 msgid "Are you sure you want to delete task"
 msgstr "Are you sure you want to delete task"
+
+msgid "周常"
+msgstr "Weekly"
+
+msgid "启动一次游戏,120s后自动关闭"
+msgstr "Launch Game Once (auto-closes after 120s)"
+
+msgid "配合任务计划程序提前启动游戏,防止游戏更新/弹公告导致的后续问题"
+msgstr ""
+"Launches the game ahead of a scheduled task so updates and announcement "
+"popups do not disrupt it"
+
+msgid "测试用"
+msgstr "Test"
+
+msgid "已确认启用游戏内全局自动功能"
+msgstr "In-game global auto-battle is enabled"
+
+msgid "当前物资关卡名称"
+msgstr "Current event name"
+
+msgid "用户名"
+msgstr "Username"
+
+msgid "密码"
+msgstr "Password"
+
+msgid "喝水"
+msgstr "Tea Time"
+
+msgid "吃饭"
+msgstr "Delicious Cuisine"
+
+msgid "社区每日"
+msgstr "Community Daily Check-In"
+
+msgid "情报补给"
+msgstr "Event Reward Track"
+
+msgid "闪耀星愿"
+msgstr "Event Bonus Stages"
+
+msgid "活动层"
+msgstr "Crew Deck"
+
+msgid "公共区/调度室"
+msgstr "Crew Deck / Dispatch Room"
+
+msgid "自主循环"
+msgstr "Start Loop"
+
+msgid "商店心愿单购买"
+msgstr "Wishlist Purchases"
+
+msgid "探索领取"
+msgstr "Claim Boundary Push Rewards"
+
+msgid "自主循环跳过项"
+msgstr "Skipped when Start Loop is on"
+
+msgid "定向"
+msgstr "Targeted Study"
+
+msgid "首领挑战"
+msgstr "Boss Fight"
+
+msgid "峰值推定"
+msgstr "Peak Value Assessment"
+
+msgid "扩编实练"
+msgstr "Expansion Drills"
+
+msgid "普通OCR"
+msgstr "Plain OCR"
+
+msgid "除杂色OCR1"
+msgstr "Color filter 1 (strict white)"
+
+msgid "除杂色OCR2"
+msgstr "Color filter 2 (loose white and gray)"
+
+msgid "回到主页后等待的时间"
+msgstr "Wait time after returning to the home screen"
+
+msgid ""
+"运行前必须先在游戏内开启全局自动战斗\n"
+"（设置 → 其他 → 自动战斗设置），开启后勾选本项"
+msgstr ""
+"You must enable global auto-battle in the game first.\n"
+"(Settings -> Other -> Auto-Battle Settings), then tick this box."
+
+msgid ""
+"活动自律中当前大活动的名称\n"
+"例：铸碑者的黎明"
+msgstr ""
+"Name of the current large event, used to locate its chapter stages.\n"
+"Only works on a Chinese client: chapter matching looks for Chinese markers, so an English client falls back to the generic Supply stage instead."
+
+msgid ""
+"使用账户密码方式登录网页社区时(不是直接的手机号或邮箱)\n"
+" account 请求负载中的 account_name 的值"
+msgstr ""
+"When signing in to the web community with an account and password (not a phone number or email),\n"
+"this is the account_name value from the account request payload."
+
+msgid ""
+"使用账户密码方式登录网页社区时(不是直接的密码)\n"
+" account 请求负载中的 passwd 的值"
+msgstr ""
+"When signing in to the web community with an account and password (not the password itself),\n"
+"this is the passwd value from the account request payload."
+
+msgid ""
+"活动层喝水动作的按键时长，格式：a键时长-w键时长-d键时长\n"
+"例：1.087-1.4-0.5"
+msgstr ""
+"How long to hold each key while walking across the Crew Deck to the coffee machine.\n"
+"Format: seconds holding A-W-D, e.g. 1.087-1.4-0.5"
+
+msgid ""
+"活动层吃饭动作的按键时长，格式：时长（秒）\n"
+"例：1.0"
+msgstr ""
+"How long to hold the key while walking across the Crew Deck to the kitchen.\n"
+"Format: seconds holding S, e.g. 1.0"
+
+msgid "自动完成社区每日任务（需填写用户名和密码）"
+msgstr ""
+"Completes the web community daily tasks (needs a username and password)."
+
+msgid "自动领取邮件中的所有奖励"
+msgstr "Claims every attachment in your mailbox."
+
+msgid "自动领取活动页面中的情报补给奖励"
+msgstr "Claims the rewards from the Event reward track."
+
+msgid "自动完成活动页面中的闪耀星愿关卡"
+msgstr "Completes the bonus stages on the Event page."
+
+msgid ""
+"自动进入限时开启活动并挑战物资关卡\n"
+"关卡名称在\"当前物资关卡名称\"中配置"
+msgstr ""
+"Enters the current Time-Limited Event and runs its Supply stage.\n"
+"The event name is set in \"Current event name\"."
+
+msgid "自动完成活动层中的喝水、吃饭和奖励领取流程"
+msgstr "Runs Tea Time, Delicious Cuisine, and reward pickup on the Crew Deck."
+
+msgid "自动完成公共区委托的派遣与领取"
+msgstr "Sends out and collects Dispatch Room assignments."
+
+msgid ""
+"开启后公共区将启动游戏内自主循环模式\n"
+"同时跳过：体力本、自动刷体力、刷钱本、竞技场"
+msgstr ""
+"Uses the game's own auto-loop mode from the Crew Deck.\n"
+"Also skips: Supply Mission, Auto-Farm Intelligence Puzzle, Standardizing Sync, Combat Exercises."
+
+msgid "自动购买商城中的免费礼包"
+msgstr "Claims the free packs in the Shop."
+
+msgid ""
+"自动在各商店（家具/班组/调度/讯段/心智/人形堆栈）中\n"
+"一键购买心愿单商品"
+msgstr ""
+"Buys your Wishlist items in each shop.\n"
+"(Furniture Shop / Platoon Shop / Dispatch Shop / Battlelog Trading / Neural Integration / Growth Stack)."
+
+msgid "需开启班组项"
+msgstr "Requires the Platoon option to be enabled."
+
+msgid "自动领取委托中的每日任务奖励"
+msgstr "Claims the daily task rewards from Commissions."
+
+msgid "自动领取巡录（大月卡）的每日沿途行动奖励"
+msgstr "Claims the daily progress rewards from Voyage, the monthly pass."
+
+msgid "自动领取边界推进探索区域的采集与派遣奖励"
+msgstr "Claims the gathering and dispatch rewards from Boundary Push."
+
+msgid ""
+"普通OCR：不做任何图像预处理，直接识别关卡名称\n"
+"适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨"
+msgstr ""
+"Plain OCR: reads stage names with no image preprocessing.\n"
+"Best when the background and stage cards contrast clearly against white and the text is easy to read."
+
+msgid ""
+"除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n"
+"适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别"
+msgstr ""
+"Color filter 1 (strict white): filters out everything that is not pure white before reading.\n"
+"Best when the stage card text is standard white and a busy background is interfering."
+
+msgid ""
+"除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n"
+"适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时"
+msgstr ""
+"Color filter 2 (loose white and gray): keeps white and light gray areas before reading.\n"
+"Best when the stage card text is white or light gray, or when neither Plain OCR nor Color filter 1 can read it."
+
+msgid "开启自主循环后会跳过该项"
+msgstr "Skipped when Start Loop is enabled."
+
+msgid "自动完成班组的每日要务战斗、尘烟前线和补给领取"
+msgstr ""
+"Runs the daily Platoon Essential Tasks battle, then Gunsmoke Frontline, and "
+"claims Resupply."
+
+msgid "自动进入战役推进→模拟作战→首领挑战，打完并领取奖励"
+msgstr ""
+"Runs Boss Fight under Campaign -> Combat Simulations, clears it and claims "
+"the rewards."
+
+msgid ""
+"先领取常规峰值的周期报酬\n"
+"然后依次挑战极限峰值的各等级关卡，激化等级不足时跳过"
+msgstr ""
+"Claims the periodic rewards from Standard first.\n"
+"Then works through each Extreme tier in order, skipping any where your intensity level is too low."
+
+msgid ""
+"自动挑战扩编实练的特殊增强关卡并领取实练奖励\n"
+"体力已满时不会挑战特殊增强关卡"
+msgstr ""
+"Plays the special enhanced Expansion Drills stages and claims the drill rewards.\n"
+"The enhanced stages are skipped while your Intelligence Puzzle is still full."
+
+msgid "到达主页后停留的秒数，给游戏更新和公告弹窗留出时间"
+msgstr ""
+"Seconds to stay on the home screen before closing, leaving time for updates "
+"and announcement popups."
+
+msgid "日常完成!"
+msgstr "Dailies complete!"
+
+msgid "周常完成!"
+msgstr "Weekly complete!"
+
+msgid "阵容没上满!"
+msgstr "Your squad is not full!"
+
+msgid "开局检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected at the start, clicking it to begin another auto-battle "
+"round."
+
+msgid "开局后检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected after the start, clicking it to begin another auto-battle "
+"round."
+
+msgid "开局二次检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected again at the start, clicking it to begin another auto-"
+"battle round."
+
+msgid "检测到继续前进，点击后开启新一轮自动战斗"
+msgstr "Continue detected, clicking it to begin another auto-battle round."
+
+msgid "结算后检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected after the results screen, clicking it to begin another "
+"auto-battle round."
+
+msgid "最后阶段检测到继续前进，点击后开启新一轮自动战斗"
+msgstr ""
+"Continue detected in the final phase, clicking it to begin another auto-"
+"battle round."
+
+msgid "未获取到 hwnd，无法终止游戏进程"
+msgstr "No window handle found, cannot stop the game process."
+
+msgid "未获取到 hwnd 属性，无法终止游戏进程"
+msgstr "No window handle attribute found, cannot stop the game process."
+
+msgid "闪耀星愿未找到开始作战和一键领取，尝试跳过对话框后重试"
+msgstr ""
+"Could not find Start Battle or Claim All in the event bonus stages, skipping"
+" dialogs and retrying."
+
+msgid "自主循环步骤4未完成，退出循环"
+msgstr "Start Loop step 4 did not finish, leaving the loop."

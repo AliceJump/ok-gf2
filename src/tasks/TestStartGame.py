@@ -7,6 +7,9 @@ class TestStartGame(BaseGfTask):
         self.name = "启动一次游戏,120s后自动关闭"
         self.description = "配合任务计划程序提前启动游戏,防止游戏更新/弹公告导致的后续问题"
         self.add_exit_after_config()
+        self.config_description.update({
+            "回到主页后等待的时间": '到达主页后停留的秒数，给游戏更新和公告弹窗留出时间'
+        })
         self.default_config.update({"回到主页后等待的时间": 15, "Exit After Task": True})
         self.support_schedule_task = True
     def run(self):
