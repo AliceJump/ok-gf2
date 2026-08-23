@@ -525,25 +525,26 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             True on the home screen, False when a blocking dialog was cleared, None when the screen is simply not recognised.
         """
-        boxes = [box for box in self.ocr(match=MAIN_SCREEN_LABELS, box='right', log=True) if is_menu_label(box.name)]
+        screen = self.ocr(log=True)
+        labels = [box for box in self.find_boxes(screen, match=MAIN_SCREEN_LABELS, boundary=self.box.right) if is_menu_label(box.name)]
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
                 feature_boxes.append(result)
-        total = len(boxes) + len(feature_boxes)
-        self.log_info(f'is main ocr={len(boxes)} features={len(feature_boxes)} total={total}')
+        total = len(labels) + len(feature_boxes)
+        self.log_info(f'is main ocr={len(labels)} features={len(feature_boxes)} total={total}')
         if total >= 2:
             return True
         # Answer the leave-the-Crew-Deck confirmation rather than pressing Escape at it forever. Both the
         # prompt and a Confirm button have to be present, so an ordinary screen that happens to contain
-        # the word "exit" is not mistaken for a dialog. One OCR pass, matched twice in memory.
-        centre = self.ocr(box=self.box.center, log=True)
+        # the word "exit" is not mistaken for a dialog.
+        centre = self.find_boxes(screen, boundary=self.box.center)
         if self.find_boxes(centre, match=LEAVE_PROMPT) and (confirm := self.find_boxes(centre, match=CONFIRM)):
             self.log_info('answering a leave-screen confirmation')
             self.click(confirm[0], after_sleep=2)
             return False
-        if box := self.ocr(box=self.box.bottom, match=MAIN_SCREEN_BLOCKERS, log=True):
-            self.click(box, after_sleep=2)
+        if blockers := self.find_boxes(screen, match=MAIN_SCREEN_BLOCKERS, boundary=self.box.bottom):
+            self.click(blockers, after_sleep=2)
             return False
         if esc:
             self.back(after_sleep=2)
