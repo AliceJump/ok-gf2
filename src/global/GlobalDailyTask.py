@@ -520,7 +520,13 @@ class GlobalDailyTask(BaseGlobalTask):
         # Checked before opening the card. Everything past this point is navigation towards a Claim All
         # that will not be there, and the card says so up front.
         progress = self.read_counter_under(REWARD_PROGRESS)
-        if progress and progress[0] >= progress[1]:
+        if progress is None:
+            # Said out loud rather than passed over. Going on from here reaches a Crystal Collection that
+            # is not there and reports nothing to collect, which reads as a game state rather than as the
+            # failed read it actually is.
+            self.log_info('Could not read the Breakthrough reward progress, so going on to look.')
+            self.dump_screen('boundary_push_progress_unreadable')
+        elif progress[0] >= progress[1]:
             self.log_info(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.', notify=True)
             self.go_home()
             return
