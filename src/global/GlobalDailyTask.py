@@ -188,8 +188,10 @@ WALK_OPTIONS = (
      'How long to hold the back key walking from the Crew Deck entrance to the kitchen, in seconds.'),
 )
 
-# How long to wait for the deck to load, and for a station prompt once the walk has finished.
-CREW_DECK_LOAD_TIME_OUT = 25
+# How many times to look for the loaded deck, and how long to wait for a station prompt once the walk
+# has finished. The first is a count, not seconds: `is_free_layer` divides it by its own interval and
+# each attempt costs up to the framework's scene timeout of 10s, so 25 was a four-minute stall.
+CREW_DECK_LOAD_ATTEMPTS = 3
 STATION_PROMPT_TIME_OUT = 4
 
 
@@ -579,7 +581,7 @@ class GlobalDailyTask(BaseGlobalTask):
             return False
         # Confirmed by the movement key hints along the top, which read the same in every language. Waiting
         # on those rather than on a title also means the deck is not merely open but finished loading.
-        if not self.is_free_layer(time_out=CREW_DECK_LOAD_TIME_OUT):
+        if not self.is_free_layer(time_out=CREW_DECK_LOAD_ATTEMPTS):
             self.log_info('The Crew Deck did not finish loading into its walkable view.')
             return False
         return True
