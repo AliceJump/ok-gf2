@@ -467,7 +467,7 @@ class GlobalDailyTask(BaseGlobalTask):
             The rightmost stage `Box`, or None when the map showed no stage codes.
         """
         band = self.box_of_screen(*STAGE_BAND)
-        previous = None
+        previous = stages = None
         for _ in range(STAGE_SWIPES):
             stages = self.ocr(match=map_re, box=band)
             names = tuple(sorted(box.name for box in stages))
@@ -476,7 +476,11 @@ class GlobalDailyTask(BaseGlobalTask):
             previous = names
             self.swipe_relative(0.8, 0.5, 0.2, 0.5, duration=0.5, settle_time=1)
             self.next_frame()
-        stages = self.ocr(match=map_re, box=band, log=True)
+            # Only the swipe invalidates what was read. Leaving the loop on unchanged names means the
+            # last read still describes what is on screen, so it is kept rather than taken again.
+            stages = None
+        if stages is None:
+            stages = self.ocr(match=map_re, box=band, log=True)
         return max(stages, key=lambda box: box.x) if stages else None
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -507,7 +511,7 @@ class GlobalDailyTask(BaseGlobalTask):
             self.dump_screen('boundary_push_progress_unreadable')
         elif progress[0] >= progress[1]:
             return self.stop_flow(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.')
-        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3):
+        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3, boxes=card):
             return self.stop_flow('Found no Breakthrough card to open, skipping.', dump='boundary_push_no_breakthrough')
         if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
             return self.stop_flow('Nothing to collect in Crystal Collection, skipping.', dump='boundary_push_no_crystal')
