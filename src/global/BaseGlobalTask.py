@@ -483,9 +483,11 @@ class BaseGlobalTask(BaseGfTask):
         frame = self.frame
         if frame is None:
             return []
-        crop = frame[band.y:band.y + band.height, band.x:band.x + band.width]
-        if not crop.size:
+        height, width = frame.shape[:2]
+        if not (0 <= band.x and 0 <= band.y and band.x + band.width <= width and band.y + band.height <= height):
+            self.log_info(f'the band {band.x},{band.y} {band.width}x{band.height} does not fit a {width}x{height} frame, nothing read')
             return []
+        crop = frame[band.y:band.y + band.height, band.x:band.x + band.width]
         enlarged = cv2.resize(crop, None, fx=zoom, fy=zoom, interpolation=cv2.INTER_CUBIC)
         return [box.name for box in self.ocr(frame=enlarged, log=True)]
 
