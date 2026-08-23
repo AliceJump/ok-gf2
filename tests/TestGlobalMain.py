@@ -89,9 +89,9 @@ class TestPurchaseSafety(unittest.TestCase):
             self.assertFalse(inside(px, py), f'{name} is the page behind the dialog and must not be read')
 
     def test_cancel_and_purchase_never_match_each_other(self):
-        """Cancelling an accidentally-opened paid pack must not be able to buy it.
+        """Closing the popup once it has switched to its paid tab must not be able to buy that pack.
 
-        The two buttons sit side by side in the same dialog, so a pattern that matched both would turn the safety into the accident.
+        The two buttons sit side by side in the same dialog, so a pattern that matched both would turn the safety into a purchase.
         """
         base = importlib.import_module('src.global.BaseGlobalTask')
         daily = importlib.import_module('src.global.GlobalDailyTask')

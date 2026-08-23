@@ -85,9 +85,9 @@ LOOP_POLL_INTERVAL = 5
 FREE = re.compile(r'^Free$', re.I)
 PURCHASE = re.compile(r'Purchase', re.I)
 
-# Any sign of a real-money price. The paid boxes sit directly beside the free one and carry an identical
-# Purchase button, and the shop moves its own selection on after a claim, so the item that is open is not
-# necessarily the one that was clicked. Nothing is ever bought without checking this first.
+# Any sign of a real-money price. The free box and the paid one are two tabs of a single popup and carry
+# an identical Purchase button, and claiming the free box switches the popup to the paid tab, so the item
+# that is open is not necessarily the one that was clicked. Nothing is ever bought without checking this first.
 PRICE = re.compile(r'[$€£¥]|\d+\.\d{2}')
 
 # The purchase dialog's own area. Scoped tightly on purpose: the shop page stays visible around the
@@ -372,21 +372,20 @@ class GlobalDailyTask(BaseGlobalTask):
             return False
         self.click(purchase[0], after_sleep=1.5)
         self.wait_pop_up(time_out=5, count=2)
-        self.cancel_paid_pack()
+        self.close_pack_dialog()
         return True
 
-    def cancel_paid_pack(self):
-        """Close a paid pack's dialog if dismissing the reward overlay opened one.
+    def close_pack_dialog(self):
+        """Close the supply box popup, which is left showing a priced pack once the free one has been claimed.
 
-        The overlay says to click anywhere, and anywhere includes the packs behind it - the dismissing click lands in the middle of the grid and can open a
-        paid one. Nothing here would ever buy it, since `claim_free_box` requires a dialog that reads Free and shows no price, but leaving it open blocks
-        the way out of the shop.
+        The free box and the paid one are two tabs of the same popup, and claiming the free box switches the popup over to the paid tab by itself. A
+        priced dialog here is the normal end of a successful claim, not a misclick, but leaving it open blocks the way out of the shop.
 
         A price and a Cancel button both have to be present before anything is clicked. The shop page itself carries prices, so a price alone is not a
         dialog, and acting on one would mean pressing things on an ordinary page.
 
         Returns:
-            True when a dialog was cancelled.
+            True when a dialog was closed.
         """
         dialog = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
         priced = self.find_boxes(dialog, match=PRICE)
@@ -394,7 +393,7 @@ class GlobalDailyTask(BaseGlobalTask):
         if not (priced and cancel):
             return False
         # Matched by name, never by position: Purchase sits directly beside Cancel in this dialog.
-        self.log_info(f'the reward overlay opened a paid pack ({priced[0].name}), cancelling it', notify=True)
+        self.log_info(f'closing the supply box popup, left showing the paid tab ({priced[0].name})')
         self.click(cancel[0], after_sleep=1.5)
         return True
 
