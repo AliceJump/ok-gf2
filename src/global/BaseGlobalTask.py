@@ -574,6 +574,26 @@ class BaseGlobalTask(BaseGfTask):
         self.log_info('home button did not reach the home screen, backing out with Escape instead')
         self.ensure_main(time_out=time_out)
 
+    def stop_flow(self, message, dump=None):
+        """Say why a flow is stopping, record the screen if it was not understood, and return to the home screen.
+
+        Covers both endings a flow has short of finishing: something could not be found, and there was nothing to do. Both want the same three steps, and
+        writing them out each time made whether a frame gets saved a matter of which copy was last edited.
+
+        Args:
+            message: What to tell the user.
+            dump: Name to save a frame under. Pass one only when the screen was not what was expected - an early exit that read the game correctly has
+                nothing worth keeping.
+
+        Returns:
+            False, so a caller can `return self.stop_flow(...)` in one line.
+        """
+        self.log_info(message, notify=True)
+        if dump:
+            self.dump_screen(dump)
+        self.go_home()
+        return False
+
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):
         """Back out until the home screen is showing.
 

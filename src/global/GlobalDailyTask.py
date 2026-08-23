@@ -308,13 +308,9 @@ class GlobalDailyTask(BaseGlobalTask):
         self.info_set('current_task', 'start_loop')
         self.click_relative(*LOOP_ICON, after_sleep=3)
         if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=10, log=True):
-            self.log_info('Clicking the Loop icon did not open the Dispatch Room, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Clicking the Loop icon did not open the Dispatch Room, skipping.')
         if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=10, after_sleep=2):
-            self.log_info('Could not find the Start Loop button, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Could not find the Start Loop button, skipping.')
         self.log_info('Loop started, waiting for it to finish.', notify=True)
         if self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
             self.log_info('Loop finished.', notify=True)
@@ -407,41 +403,27 @@ class GlobalDailyTask(BaseGlobalTask):
         self.info_set('current_task', 'run_event_supply')
         self.click_relative(*EVENT_BANNER, after_sleep=3)
         if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=10, log=True):
-            self.log_info('No event banner on the home screen, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('No event banner on the home screen, skipping.')
         # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
         # at all, so the whole trip through the map and the auto dialog would be for nothing.
         if self.event_tickets() == 0:
-            self.log_info('No event tickets left, so there is nothing to run.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('No event tickets left, so there is nothing to run.')
         if not self.wait_click_ocr(match=SUPPLY, box=self.box.bottom_right, time_out=5, after_sleep=3):
-            self.log_info('This event has no Supply mode, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('This event has no Supply mode, skipping.')
         stage = self.last_supply_stage()
         if not stage:
-            self.log_info('Found no Supply stages on the map, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Found no Supply stages on the map, skipping.')
         self.log_info(f'running event supply stage {stage.name}')
         self.click(stage, after_sleep=2)
         if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5, after_sleep=2):
-            self.log_info('Found no Auto button on the stage panel, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Found no Auto button on the stage panel, skipping.')
         if not self.wait_ocr(match=AUTO_DIALOG, box=self.box.center, time_out=5):
-            self.log_info('The Auto Mode dialog did not open, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('The Auto Mode dialog did not open, skipping.')
         # Take the maximum the remaining Expenditure allows. Missing this button costs a smaller run,
         # not a wrong one, so it is not worth failing over.
         self.click_relative(*MAX_BATTLES, after_sleep=1)
         if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5, after_sleep=3):
-            self.log_info('Could not confirm the auto battles, skipping.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Could not confirm the auto battles, skipping.')
         # Whole frame rather than a region: the summary title sits at the top and the overlay prompt at
         # the bottom, and either can be the thing on screen when the battles end.
         if self.poll_ocr(BATTLES_DONE, time_out=EVENT_BATTLE_TIME_OUT, interval=5):
@@ -505,17 +487,12 @@ class GlobalDailyTask(BaseGlobalTask):
         """Collect the Breakthrough rewards under Regular Commissions -> Boundary Push."""
         self.info_set('current_task', 'claim_boundary_push')
         if not self.open_regular_commissions():
-            self.log_info('Could not open Regular Commissions, skipping Boundary Push.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow('Could not open Regular Commissions, skipping Boundary Push.')
         # Searched across the whole frame rather than a measured corner. The label is distinctive enough
         # that a wider search cannot match the wrong thing, and one less guessed-at box is one less way
         # for this to fail silently. Clicked by word in case OCR merges it with the entry beside it.
         if not self.click_ocr_word(BOUNDARY_PUSH, time_out=5, after_sleep=3):
-            self.log_info('Boundary Push is not available, skipping.', notify=True)
-            self.dump_screen('boundary_push_missing')
-            self.go_home()
-            return
+            return self.stop_flow('Boundary Push is not available, skipping.', dump='boundary_push_missing')
         # Checked before opening the card. Everything past this point is navigation towards a Claim All
         # that will not be there, and the card says so up front.
         progress = self.read_counter_under(REWARD_PROGRESS)
@@ -526,19 +503,11 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info('Could not read the Breakthrough reward progress, so going on to look.')
             self.dump_screen('boundary_push_progress_unreadable')
         elif progress[0] >= progress[1]:
-            self.log_info(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.', notify=True)
-            self.go_home()
-            return
+            return self.stop_flow(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.')
         if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3):
-            self.log_info('Found no Breakthrough card to open, skipping.', notify=True)
-            self.dump_screen('boundary_push_no_breakthrough')
-            self.go_home()
-            return
+            return self.stop_flow('Found no Breakthrough card to open, skipping.', dump='boundary_push_no_breakthrough')
         if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
-            self.log_info('Nothing to collect in Crystal Collection, skipping.', notify=True)
-            self.dump_screen('boundary_push_no_crystal')
-            self.go_home()
-            return
+            return self.stop_flow('Nothing to collect in Crystal Collection, skipping.', dump='boundary_push_no_crystal')
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
         self.go_home()
