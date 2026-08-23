@@ -10,6 +10,7 @@ import pywintypes
 from unittest import mock
 
 from ok import Box, find_boxes_by_name
+from ok.task.task import BaseTask
 from ok.gui.common.config import Language
 from ok.test.TaskTestCase import TaskTestCase
 from src.config import config
@@ -589,11 +590,21 @@ class TestRewardProgress(unittest.TestCase):
         ]
 
     def read(self, boxes):
-        base = self.base()
+        """Run the real `read_counter_under` over the given boxes.
+
+        The stand-in borrows the framework's own `find_boxes` rather than approximating it. An approximation here ignored the boundary argument entirely,
+        which is the very thing that keeps the sidebar's counters out, so the test agreed with code that would have failed against the game.
+
+        Args:
+            boxes: The text to pretend was read off the screen.
+
+        Returns:
+            Whatever `read_counter_under` made of it.
+        """
         daily = importlib.import_module('src.global.GlobalDailyTask')
-        task = types.SimpleNamespace(height=1080, width=1920, ocr=lambda **kwargs: boxes,
-                                     find_boxes=lambda b, match=None, boundary=None: [x for x in b if match.search(x.name)])
-        return base.BaseGlobalTask.read_counter_under(task, daily.REWARD_PROGRESS)
+        task = types.SimpleNamespace(height=1080, width=1920, ocr=lambda **kwargs: boxes)
+        task.find_boxes = lambda *args, **kwargs: BaseTask.find_boxes(task, *args, **kwargs)
+        return BaseGlobalTask.read_counter_under(task, daily.REWARD_PROGRESS)
 
     def test_it_reads_the_first_counter_out_of_the_merged_row(self):
         """OCR returns "24/24 112/112 m168/168" as one box, which is not a counter on its own."""
