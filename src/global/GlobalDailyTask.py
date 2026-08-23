@@ -171,8 +171,8 @@ ACTIVE_DISHES = re.compile(r'at once\s*(\d+)\s*/\s*\d+', re.I)
 # like a button but never goes away.
 MAX_ACTIVITY_SCREENS = 4
 MAX_SCENE_SKIPS = 10
-SCENE_SKIP_TIME_OUT = 3
-SUMMARY_CONFIRM_TIME_OUT = 4
+SCENE_SKIP_TIME_OUT = 2
+SUMMARY_CONFIRM_TIME_OUT = 3
 
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
@@ -186,6 +186,10 @@ WALK_OPTIONS = (
     ('Delicious Cuisine Walk', '0.747',
      'How long to hold the back key walking from the Crew Deck entrance to the kitchen, in seconds.'),
 )
+
+# How long to give a screen to appear after the click that opens it. These waits re-read flat out, so a
+# generous one spends its whole budget on a question the first redraw already answered.
+SCREEN_SETTLE_TIME_OUT = 5
 
 # How many times to look for the loaded deck, and how long to wait for a station prompt once the walk
 # has finished. The first is a count, not seconds: `is_free_layer` divides it by its own interval and
@@ -303,9 +307,9 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         self.info_set('current_task', 'start_loop')
         self.click_relative(*LOOP_ICON, after_sleep=3)
-        if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=10, log=True):
+        if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('Clicking the Loop icon did not open the Dispatch Room, skipping.')
-        if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=10, after_sleep=2):
+        if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=SCREEN_SETTLE_TIME_OUT, after_sleep=2):
             return self.stop_flow('Could not find the Start Loop button, skipping.')
         self.log_info('Loop started, waiting for it to finish.', notify=True)
         if self.poll_ocr(LOOP_ENDED, box=self.box.top, time_out=LOOP_TIME_OUT, interval=LOOP_POLL_INTERVAL):
@@ -398,7 +402,7 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         self.info_set('current_task', 'run_event_supply')
         self.click_relative(*EVENT_BANNER, after_sleep=3)
-        if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=10, log=True):
+        if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('No event banner on the home screen, skipping.')
         # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
         # at all, so the whole trip through the map and the auto dialog would be for nothing.
