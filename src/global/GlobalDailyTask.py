@@ -491,7 +491,10 @@ class GlobalDailyTask(BaseGlobalTask):
             return self.stop_flow('Boundary Push is not available, skipping.', dump='boundary_push_missing')
         # Checked before opening the card. Everything past this point is navigation towards a Claim All
         # that will not be there, and the card says so up front.
-        progress = self.read_counter_under(REWARD_PROGRESS)
+        # One read of the card, used by both checks below. Nothing is clicked between them, so it is the
+        # same pixels either way.
+        card = self.ocr(log=True)
+        progress = self.read_counter_under(REWARD_PROGRESS, boxes=card)
         if progress is None:
             # Said out loud rather than passed over. Going on from here reaches a Crystal Collection that
             # is not there and reports nothing to collect, which reads as a game state rather than as the

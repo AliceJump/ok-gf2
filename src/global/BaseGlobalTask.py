@@ -416,11 +416,14 @@ class BaseGlobalTask(BaseGfTask):
             button: Pattern identifying the button, which repeats on every card.
             box: Region to search in, defaulting to the whole frame.
             after_sleep: Seconds to wait after clicking.
+            boxes: Text already read off this frame. Pass it when the caller has read the screen already, so the same pixels are not put through OCR
+                twice. Ignored if the screen has changed since - it has not been re-read.
 
         Returns:
             The button box that was clicked, or None when the card or its button was not found.
         """
-        boxes = self.ocr(box=box, log=True)
+        if boxes is None:
+            boxes = self.ocr(box=box, log=True)
         found = self.find_boxes(boxes, match=title)
         if not found:
             return None
@@ -440,11 +443,13 @@ class BaseGlobalTask(BaseGfTask):
             label: Pattern identifying the heading.
             box: Region to search in, defaulting to the whole frame.
             band: How far below the heading to look, as a fraction of frame height.
+            boxes: Text already read off this frame, to save reading it again.
 
         Returns:
             A (done, total) pair, or None when the heading or any counter under it was not found.
         """
-        boxes = self.ocr(box=box, log=True)
+        if boxes is None:
+            boxes = self.ocr(box=box, log=True)
         found = self.find_boxes(boxes, match=label)
         if not found:
             return None
