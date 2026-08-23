@@ -61,6 +61,21 @@ def current_region(config_folder="configs"):
     return region if region in (REGION_GLOBAL, REGION_CN) else REGION_DEFAULT
 
 
+def already_hidden(task_class):
+    """Whether this class has had its own `post_init` wrapped already.
+
+    Looked up on the class itself rather than through its bases. Every task in `VerifyTasks` subclasses a composed task, so an inherited marker would report
+    them as already wrapped and leave them visible in the region they do not belong to.
+
+    Args:
+        task_class: The task class to check.
+
+    Returns:
+        True when this class, not merely an ancestor, carries the marker.
+    """
+    return HIDDEN_MARKER in task_class.__dict__
+
+
 def _hiding_post_init(original):
     """Wrap a task's `post_init` so the instance ends up hidden.
 
@@ -94,7 +109,7 @@ def _hide_tasks(task_entries):
         except (ImportError, AttributeError):
             logger.warning(f'could not hide {module_path}.{class_name}, it was registered but does not exist')
             continue
-        if getattr(task_class, HIDDEN_MARKER, False):
+        if already_hidden(task_class):
             continue
         task_class.post_init = _hiding_post_init(task_class.post_init)
         setattr(task_class, HIDDEN_MARKER, True)

@@ -326,6 +326,46 @@ class TestGoHomePolling(unittest.TestCase):
         self.assertTrue(all(esc is False for esc in looks), 'the home-button poll must be a pure query')
 
 
+class TestRegionHiding(unittest.TestCase):
+    """Hiding a task means wrapping its `post_init`, and each class must be wrapped in its own right.
+
+    Every task in `VerifyTasks` subclasses a composed task. A marker read through the bases reports the subclasses as already wrapped, so they keep their
+    inherited `post_init` and stay visible in the region they do not belong to.
+    """
+
+    def region(self):
+        return importlib.import_module('src.region')
+
+    def test_a_class_that_was_wrapped_reports_itself_hidden(self):
+        region = self.region()
+
+        class Parent:
+            pass
+
+        setattr(Parent, region.HIDDEN_MARKER, True)
+        self.assertTrue(region.already_hidden(Parent))
+
+    def test_a_subclass_of_a_wrapped_class_is_not_reported_hidden(self):
+        """Without this, every single-flow task is skipped and shows up in the wrong region."""
+        region = self.region()
+
+        class Parent:
+            pass
+
+        setattr(Parent, region.HIDDEN_MARKER, True)
+
+        class Child(Parent):
+            pass
+
+        self.assertFalse(region.already_hidden(Child))
+
+    def test_an_untouched_class_is_not_reported_hidden(self):
+        class Fresh:
+            pass
+
+        self.assertFalse(self.region().already_hidden(Fresh))
+
+
 class TestSwipeRecovery(unittest.TestCase):
     """A refused cursor move during a swipe leaves the mouse button held.
 
