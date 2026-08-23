@@ -326,6 +326,36 @@ class TestGoHomePolling(unittest.TestCase):
         self.assertTrue(all(esc is False for esc in looks), 'the home-button poll must be a pure query')
 
 
+class TestSwipeRecovery(unittest.TestCase):
+    """A refused cursor move during a swipe leaves the mouse button held.
+
+    The framework presses the button, moves, then releases, each through the call that can be refused. A refusal on the way in unwinds past the release, and
+    a held button turns every later click into a drag.
+    """
+
+    def base(self):
+        return importlib.import_module('src.global.BaseGlobalTask')
+
+    def task(self, interaction):
+        return types.SimpleNamespace(log_info=mock.Mock(), executor=types.SimpleNamespace(interaction=interaction))
+
+    def test_the_button_is_released(self):
+        release = mock.Mock()
+        self.base().BaseGlobalTask.release_mouse(self.task(types.SimpleNamespace(mouse_up=release)))
+        release.assert_called_once()
+
+    def test_an_interaction_without_a_release_is_tolerated(self):
+        """`PostMessage` is selectable on the Start tab and does not offer the same surface."""
+        self.base().BaseGlobalTask.release_mouse(self.task(types.SimpleNamespace()))
+
+    def test_a_refused_release_is_logged_rather_than_raised(self):
+        """The same contention that broke the swipe can refuse the release, and there is nothing left to abort."""
+        release = mock.Mock(side_effect=pywintypes.error(0, 'SetCursorPos', ''))
+        task = self.task(types.SimpleNamespace(mouse_up=release))
+        self.base().BaseGlobalTask.release_mouse(task)
+        task.log_info.assert_called_once()
+
+
 class TestCursorContention(unittest.TestCase):
     """The Genshin interaction warps the real cursor onto the game and back around every action.
 

@@ -271,6 +271,10 @@ class BaseGlobalTask(BaseGfTask):
 
         `swipe_relative` goes through here too, so scrolling a map is covered as well.
 
+        A swipe needs more than the cursor put back. It presses the button, moves, and releases, each through the same call that can be refused, and a
+        refusal on the way in unwinds past the release - leaving the button held, which turns every later click into a drag. The release is reissued here
+        rather than in `recover_cursor`, because a click that failed the same way has already released and would not survive a second one.
+
         Args:
             *args: Passed through.
             **kwargs: Passed through.
@@ -278,7 +282,23 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             Whatever the base implementation returned, or None when the cursor move was refused.
         """
-        return self.despite_cursor_error(super().swipe, 'swipe', *args, **kwargs)
+        try:
+            return super().swipe(*args, **kwargs)
+        except pywintypes.error as error:
+            self.log_info(f'swipe: Windows would not move the cursor ({error.funcname}), releasing the button and recovering')
+            self.release_mouse()
+            self.recover_cursor('swipe')
+            return None
+
+    def release_mouse(self):
+        """Let go of the mouse button after a swipe was interrupted part way through."""
+        release = getattr(self.executor.interaction, 'mouse_up', None)
+        if not release:
+            return
+        try:
+            release()
+        except pywintypes.error as error:
+            self.log_info(f'the mouse button could not be released ({error.funcname})')
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
