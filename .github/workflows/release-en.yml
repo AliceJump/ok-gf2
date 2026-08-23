@@ -1,0 +1,128 @@
+name: Build release on demand
+
+# Upstream's build.yml releases on a v* tag push and cannot run here: its release job waits on a sync
+# job that pushes to upstream's update repos with secrets this fork does not have. This one builds and
+# releases the same installers from a button, with nothing to sync.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, as 1.0.0. Tagged as en-v1.0.0.'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    env:
+      PYTHONIOENCODING: 'UTF-8'
+
+    steps:
+      # Tagged en-v* rather than v*, so cutting a release here can never wake upstream's build.yml.
+      - name: Check the version and settle the tag
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Version must look like 1.0.0, got '$version'."
+            exit 1
+          }
+          "TAG=en-v$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Releasing as en-v$version"
+
+      - name: Configure git
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install cython setuptools polib
+
+      - name: Run tests
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          Get-ChildItem -LiteralPath tests -Filter "Test*.py" | Sort-Object Name | ForEach-Object {
+            $module = "tests.$([System.IO.Path]::GetFileNameWithoutExtension($_.Name))"
+            python -u -m unittest $module -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      # The manifest upstream ships points its self-update at upstream's own repos, so an installer
+      # built from this fork would replace this fork's code with theirs on first update. Rewritten here
+      # rather than in the committed file, so pyappify.yml keeps merging from upstream untouched.
+      - name: Point the build at this fork
+        shell: pwsh
+        run: |
+          $url = "${{ github.server_url }}/${{ github.repository }}.git"
+          @(
+            'name: "ok-gf2"'
+            'uac: true'
+            'profiles:'
+            '  - name: "en"'
+            "    git_url: `"$url`""
+            '    admin: true'
+            '    main_script: "main.py"'
+            '    requires_python: "3.12"'
+            '    requirements: "requirements.txt"'
+            '    use_pythonw: true'
+            '    show_add_defender: true'
+          ) | Set-Content -Path pyappify.yml -Encoding utf8
+          Get-Content pyappify.yml
+
+      # Does three jobs at once: writes the tag into src/config.py so the app reports its own version,
+      # copies ok-script into the tree, and drops it from requirements.txt. The build needs all three.
+      - name: inline_ok_requirements
+        run: |
+          python -m ok.update.inline_ok_requirements --tag ${{ env.TAG }}
+
+      - name: Build
+        uses: ok-oldking/pyappify-action@master
+
+      - name: Add version to build filenames
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path pyappify_dist -File | ForEach-Object {
+            Rename-Item -LiteralPath $_.FullName -NewName "$($_.BaseName)-${{ env.TAG }}$($_.Extension)"
+          }
+          Get-ChildItem -Path pyappify_dist
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: pyappify_dist/**
+          body: |
+            Windows installers for the Global (Steam, English) client, built from `${{ github.ref_name }}`.
+
+            Download an installer below. Do not download the source archives - they do not include the
+            packaged dependencies.
