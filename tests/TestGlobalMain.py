@@ -304,6 +304,11 @@ class TestGoHomePolling(unittest.TestCase):
             base.BaseGlobalTask.go_home(task)
         return task, looks
 
+    def per_press(self):
+        """How many looks one press gets before its window runs out."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        return int(base.HOME_BUTTON_TIME_OUT / base.HOME_BUTTON_CHECK_INTERVAL) + 1
+
     def test_it_stops_as_soon_as_the_button_takes(self):
         task, looks = self.go_home([True])
         self.assertEqual(1, len(looks))
@@ -312,13 +317,20 @@ class TestGoHomePolling(unittest.TestCase):
     def test_it_waits_between_looks_rather_than_spinning(self):
         base = importlib.import_module('src.global.BaseGlobalTask')
         task, looks = self.go_home([])
-        expected = base.HOME_BUTTON_TIME_OUT / base.HOME_BUTTON_CHECK_INTERVAL + 1
-        self.assertLessEqual(len(looks), expected, 'polling faster than the interval wastes OCR on an unchanged screen')
+        self.assertLessEqual(len(looks), base.HOME_BUTTON_PRESSES * self.per_press(), 'polling faster than the interval wastes OCR on an unchanged screen')
         self.assertGreater(len(looks), 1, 'it should look more than once before giving up')
+
+    def test_it_presses_again_when_the_first_press_is_swallowed(self):
+        """A flow ending on a reward screen leaves an overlay that eats the first press, which used to read as a dead button."""
+        task, _ = self.go_home([False] * self.per_press() + [True])
+        self.assertEqual(2, task.click_relative.call_count)
+        task.ensure_main.assert_not_called()
 
     def test_it_falls_back_to_backing_out(self):
         """Screens without a home button are normal - the event map is one - so this is not an error."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
         task, _ = self.go_home([])
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count, 'every press in the budget should be spent before backing out')
         task.ensure_main.assert_called_once()
 
     def test_the_poll_never_presses_escape(self):
