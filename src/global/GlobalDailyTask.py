@@ -122,31 +122,6 @@ TEA_TIME = re.compile(r'Tea Time', re.I)
 DELICIOUS_CUISINE = re.compile(r'Delicious Cuisine|Cuisine', re.I)
 
 
-class Station(NamedTuple):
-    """One Crew Deck activity, how to walk to it, and what to do once it opens."""
-
-    # Name shown in the log and used in screenshot filenames.
-    label: str
-    # Text that appears when the character is close enough to interact.
-    prompt: re.Pattern
-    # Movement keys held in order, walking from the deck entrance.
-    keys: list
-    # Config key holding this walk's hold durations.
-    config_key: str
-    # Seconds to pause between key presses, measured off a real walk.
-    sleep_between: float
-    # Name of the method that performs the activity once the station is open.
-    action: str
-
-
-# Visited in this order, each starting from the deck entrance.
-STATIONS = (
-    Station('Tea Time', TEA_TIME, ['a', 'w', 'd'], 'Tea Time Walk', 0.7, 'make_drink'),
-    # One key, unlike the CN route, which taps `d` after holding `s`. Walking it by hand showed the tap
-    # is not needed to end up in reach of the kitchen.
-    Station('Delicious Cuisine', DELICIOUS_CUISINE, ['s'], 'Delicious Cuisine Walk', 1, 'cook_dish'),
-)
-
 # Anchored, both of them. The cooking screen carries the words "Cannot Make Dishes" in its preview panel,
 # which an unanchored Make would match.
 MAKE = re.compile(r'^Make$', re.I)
@@ -196,6 +171,32 @@ SCREEN_SETTLE_TIME_OUT = 5
 # each attempt costs up to the framework's scene timeout of 10s, so 25 was a four-minute stall.
 CREW_DECK_LOAD_ATTEMPTS = 3
 STATION_PROMPT_TIME_OUT = 4
+
+
+class Station(NamedTuple):
+    """One Crew Deck activity, how to walk to it, and what to do once it opens."""
+
+    # Name shown in the log and used in screenshot filenames.
+    label: str
+    # Text that appears when the character is close enough to interact.
+    prompt: re.Pattern
+    # Movement keys held in order, walking from the deck entrance.
+    keys: list
+    # Config key holding this walk's hold durations.
+    config_key: str
+    # Seconds to pause between key presses, measured off a real walk.
+    sleep_between: float
+    # Name of the method that performs the activity once the station is open.
+    action: str
+
+
+# Visited in this order, each starting from the deck entrance.
+STATIONS = (
+    Station('Tea Time', TEA_TIME, ['a', 'w', 'd'], 'Tea Time Walk', 0.7, 'make_drink'),
+    # One key, unlike the CN route, which taps `d` after holding `s`. Walking it by hand showed the tap
+    # is not needed to end up in reach of the kitchen.
+    Station('Delicious Cuisine', DELICIOUS_CUISINE, ['s'], 'Delicious Cuisine Walk', 1, 'cook_dish'),
+)
 
 
 def parse_tickets(names):
