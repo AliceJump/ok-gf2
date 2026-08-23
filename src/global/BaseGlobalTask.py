@@ -6,7 +6,6 @@ import cv2
 import pywintypes
 import win32api
 
-from ok import Box
 from src.data.FeatureList import FeatureList as fL
 from src.tasks.BaseGfTask import BaseGfTask
 
@@ -314,7 +313,7 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             A `Box` spanning the frame width across the nav bar's height.
         """
-        return Box(x=0, y=int(self.height * NAV_STRIP_TOP), to_x=self.width, to_y=self.height)
+        return self.box_of_screen(0, NAV_STRIP_TOP)
 
     def click_ocr_word(self, match, box=None, time_out=5, after_sleep=0, raise_if_not_found=False):
         """Click a word, even when OCR merged it into a box with its neighbour.
