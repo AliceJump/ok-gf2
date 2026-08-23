@@ -23,6 +23,9 @@ COMMISSIONS = re.compile(r'Commissions', re.I)
 # Expansion Drills, Boss Fight, Peak Value Assessment and Boundary Push.
 REGULAR_COMMISSIONS = re.compile(r'Regular Commissions', re.I)
 SKIP = re.compile(r'Skip', re.I)
+# Collects everything a reward screen is holding. Used by both task modules, which had drifted to two
+# patterns - the looser of the two also matched a bare Claim, which is a different button on some screens.
+CLAIM_ALL = re.compile(r'Claim All', re.I)
 DO_NOT_REMIND = re.compile(r'not remind|remind me', re.I)
 
 # Dismissable overlays that sit on top of whatever screen we actually want.

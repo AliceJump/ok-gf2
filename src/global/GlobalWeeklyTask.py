@@ -1,11 +1,10 @@
 import re
 
-from .BaseGlobalTask import BaseGlobalTask
+from .BaseGlobalTask import CLAIM_ALL, BaseGlobalTask
 
 # Left rail of Regular Commissions. Peak Value Assessment wraps onto two lines there, so it is matched
 # on the distinctive first two words rather than the full name.
 PEAK_VALUE = re.compile(r'Peak Value', re.I)
-CLAIM_ALL = re.compile(r'Claim All|Claim', re.I)
 
 # The flows this task performs: (config key, method, settings text). See `GlobalDailyTask.FLOWS`.
 FLOWS = (
