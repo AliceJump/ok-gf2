@@ -24,15 +24,11 @@ class GlobalWeeklyTask(BaseGlobalTask):
         self.name = 'Global Weekly'
         self.description = 'Collects the Peak Value Assessment rewards.'
         self.support_schedule_task = True
-        self.default_config.update({key: True for key, _, _ in FLOWS})
-        self.config_description.update({key: description for key, _, description in FLOWS})
+        self.register_flows(FLOWS)
 
     def run(self):
-        self.ensure_main(recheck_time=2, time_out=90)
-        for key, method, _ in FLOWS:
-            if self.config.get(key):
-                getattr(self, method)()
-        self.log_info('Global Weekly complete.', notify=True)
+        """Run every enabled weekly flow, in the order `FLOWS` lists them."""
+        self.run_flows(FLOWS, 'Global Weekly complete.')
 
     def claim_peak_value(self):
         """Collect the Peak Value Assessment rewards.

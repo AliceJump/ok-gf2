@@ -101,6 +101,11 @@ POP_UP_CHECK_TIME_OUT = 2
 POP_UP_SETTLE = 1
 POP_UP_AFTER_CLICK = 1.5
 
+# How a task begins: how long to keep looking for the home screen, and how long a sighting must hold.
+# Generous, because this runs once and the game may still be loading when the button is pressed.
+START_TIME_OUT = 90
+START_RECHECK = 2
+
 # Where a poll starts before backing off toward its caller's interval.
 POLL_MIN_INTERVAL = 1
 
@@ -573,6 +578,28 @@ class BaseGlobalTask(BaseGfTask):
         # run makes it obvious which route was taken rather than leaving the button's usefulness assumed.
         self.log_info('home button did not reach the home screen, backing out with Escape instead')
         self.ensure_main(time_out=time_out)
+
+    def register_flows(self, flows):
+        """Turn a flow table into the task's settings: one toggle per flow, on by default, with its description.
+
+        Args:
+            flows: The module's `FLOWS` table of (config key, method name, settings text).
+        """
+        self.default_config.update({key: True for key, _, _ in flows})
+        self.config_description.update({key: description for key, _, description in flows})
+
+    def run_flows(self, flows, finished):
+        """Run each flow whose toggle is on, in table order, starting from the home screen.
+
+        Args:
+            flows: The module's `FLOWS` table.
+            finished: What to say once every enabled flow has run.
+        """
+        self.ensure_main(recheck_time=START_RECHECK, time_out=START_TIME_OUT)
+        for key, method, _ in flows:
+            if self.config.get(key):
+                getattr(self, method)()
+        self.log_info(finished, notify=True)
 
     def stop_flow(self, message, dump=None):
         """Say why a flow is stopping, record the screen if it was not understood, and return to the home screen.

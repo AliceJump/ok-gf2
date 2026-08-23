@@ -279,8 +279,7 @@ class GlobalDailyTask(BaseGlobalTask):
         self.name = 'Global Daily'
         self.description = 'Starts the in-game Loop, claims free shop packs, and collects Boundary Push rewards.'
         self.support_schedule_task = True
-        self.default_config.update({key: True for key, _, _ in FLOWS})
-        self.config_description.update({key: description for key, _, description in FLOWS})
+        self.register_flows(FLOWS)
         self.default_config.update({key: default for key, default, _ in WALK_OPTIONS})
         self.config_description.update({key: description for key, _, description in WALK_OPTIONS})
         # Nest the walk timings under their flow, so they only show when the flow is on.
@@ -289,11 +288,8 @@ class GlobalDailyTask(BaseGlobalTask):
         self.default_config['Crew Deck'] = False
 
     def run(self):
-        self.ensure_main(recheck_time=2, time_out=90)
-        for key, method, _ in FLOWS:
-            if self.config.get(key):
-                getattr(self, method)()
-        self.log_info('Global Daily complete.', notify=True)
+        """Run every enabled daily flow, in the order `FLOWS` lists them."""
+        self.run_flows(FLOWS, 'Global Daily complete.')
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
