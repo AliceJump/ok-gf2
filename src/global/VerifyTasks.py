@@ -5,7 +5,7 @@ task here runs exactly one, with no toggles to set - clicking it does that flow 
 copy of any navigation to drift out of sync.
 """
 
-from .BaseGlobalTask import COMMISSIONS
+from .BaseGlobalTask import COMMISSIONS, START_RECHECK, START_TIME_OUT
 from .GlobalDailyTask import FLOWS as DAILY_FLOWS
 from .GlobalDailyTask import GlobalDailyTask
 from .GlobalWeeklyTask import FLOWS as WEEKLY_FLOWS
@@ -34,42 +34,47 @@ def _strip_flow_toggles(task, flows):
                 task.config_description.pop(nested, None)
 
 
-class _SingleDailyFlow(GlobalDailyTask):
-    """Runs one Global Daily flow. Subclasses set `flow` and `label`."""
+class _SingleFlow:
+    """Shared behaviour for a task that runs exactly one flow.
 
+    Mixed in ahead of the composed task it borrows the flow from, so `super()` in `__init__` still reaches that task. Subclasses set `flow` and `label`, and
+    `FLOWS` names the table the composed task registered, so its toggles can be taken back off again.
+    """
+
+    FLOWS = ()
     flow = None
     label = None
 
     def __init__(self, *args, **kwargs):
+        """Build the task, then strip the settings that belong to the flows it will not run.
+
+        Args:
+            *args: Passed to the composed task.
+            **kwargs: Passed to the composed task.
+        """
         super().__init__(*args, **kwargs)
-        _strip_flow_toggles(self, DAILY_FLOWS)
+        _strip_flow_toggles(self, self.FLOWS)
         self.name = f'Run: {self.label}'
         self.description = f'Runs only {self.label}, for checking that one flow on its own.'
         self.support_schedule_task = False
 
     def run(self):
-        self.ensure_main(recheck_time=2, time_out=90)
+        """Run the one flow this task exists for, starting from the home screen."""
+        self.ensure_main(recheck_time=START_RECHECK, time_out=START_TIME_OUT)
         getattr(self, self.flow)()
         self.log_info(f'{self.label} finished.', notify=True)
 
 
-class _SingleWeeklyFlow(GlobalWeeklyTask):
-    """Runs one Global Weekly flow. Subclasses set `flow` and `label`."""
+class _SingleDailyFlow(_SingleFlow, GlobalDailyTask):
+    """Runs one Global Daily flow."""
 
-    flow = None
-    label = None
+    FLOWS = DAILY_FLOWS
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _strip_flow_toggles(self, WEEKLY_FLOWS)
-        self.name = f'Run: {self.label}'
-        self.description = f'Runs only {self.label}, for checking that one flow on its own.'
-        self.support_schedule_task = False
 
-    def run(self):
-        self.ensure_main(recheck_time=2, time_out=90)
-        getattr(self, self.flow)()
-        self.log_info(f'{self.label} finished.', notify=True)
+class _SingleWeeklyFlow(_SingleFlow, GlobalWeeklyTask):
+    """Runs one Global Weekly flow."""
+
+    FLOWS = WEEKLY_FLOWS
 
 
 class RunGoHome(_SingleDailyFlow):
