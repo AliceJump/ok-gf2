@@ -184,6 +184,94 @@ class TestCardButtonSelection(unittest.TestCase):
         self.assertEqual([], screen.clicked)
 
 
+class _Activity:
+    """A stand-in for the daily task, scripted with when the scene appears rather than with what each look returns.
+
+    Borrows the real `finish_activity` and `skip_scene` for the same reason `_CardScreen` borrows its method - the harness is a process-wide singleton and
+    nothing here needs a live executor. The looks are answered off a virtual clock so that a wait with a long budget can outlast the transition while the
+    clearing loop's short looks cannot, which is the whole difference being tested.
+    """
+
+    finish_activity = GlobalDailyTask.finish_activity
+    skip_scene = GlobalDailyTask.skip_scene
+
+    def __init__(self, scene_at, presses_to_clear=1):
+        self.scene_at = scene_at
+        self.presses_left = presses_to_clear
+        self.now = 0.0
+        self.skips = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(top_right=None, bottom=None)
+
+    def scene_is_up(self):
+        return self.scene_at <= self.now and self.presses_left > 0
+
+    def spend(self, time_out):
+        """Run the clock forward the way a look that found nothing does."""
+        self.now += time_out
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        if self.scene_at <= self.now + time_out and self.presses_left > 0:
+            self.now = max(self.now, self.scene_at)
+            return [Box(1770, 19, 104, 49, name='I Skip')]
+        self.spend(time_out)
+        return []
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is not daily.SKIP or not self.scene_is_up():
+            self.spend(time_out)
+            return None
+        self.presses_left -= 1
+        self.skips += 1
+        self.spend(time_out)
+        return Box(1770, 19, 104, 49, name='I Skip')
+
+    def wait_pop_up(self, **kwargs):
+        return None
+
+    def dump_screen(self, name):
+        pass
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestActivityStart(unittest.TestCase):
+    """An activity is committed before its scene appears, and the clearing loop used to read that gap as the activity being over.
+
+    A Tea Time run gave up about five seconds after Make was confirmed, then spent 26 seconds pressing Escape at a scene that ignores it. The dump taken on
+    the way out listed the scene's own `I Skip` button, so it was on screen the whole time - nothing was looking for it any more.
+    """
+
+    def test_it_waits_out_the_transition_before_the_scene(self):
+        """Six seconds outlasts the clearing loop's own looks, so only the start wait can bridge it."""
+        screen = _Activity(scene_at=6)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(1, screen.skips, 'gave up during the transition and never skipped the scene')
+
+    def test_the_transition_it_bridges_is_longer_than_the_loop_alone_would_survive(self):
+        """Without the start wait the loop quits after one empty skip look plus one empty confirm look."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        loop_alone = daily.SCENE_SKIP_TIME_OUT + daily.SUMMARY_CONFIRM_TIME_OUT
+        self.assertGreater(6, loop_alone, 'the scripted transition must be one the loop could not have survived on its own')
+        self.assertGreaterEqual(daily.ACTIVITY_START_TIME_OUT, 6, 'the start wait must be long enough to cover it')
+
+    def test_a_scene_already_up_is_not_waited_on(self):
+        """The normal path costs nothing - the wait returns on the first look and the clock does not move."""
+        screen = _Activity(scene_at=0)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(1, screen.skips)
+        self.assertNotIn('Tea Time: no scene started, clearing whatever is on screen instead', screen.logged)
+
+    def test_a_scene_that_never_starts_still_clears_the_screen(self):
+        """Falling through rather than returning keeps an activity that goes straight to a summary working as before."""
+        screen = _Activity(scene_at=999)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(0, screen.skips)
+        self.assertTrue(any('no scene started' in message for message in screen.logged))
+
+
 class TestActiveDishes(unittest.TestCase):
     """The dish buff does not stack, so cooking while one is in effect spends ingredients for nothing.
 

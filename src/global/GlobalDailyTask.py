@@ -149,6 +149,11 @@ MAX_SCENE_SKIPS = 10
 SCENE_SKIP_TIME_OUT = 2
 SUMMARY_CONFIRM_TIME_OUT = 3
 
+# How long to give the first scene to come up after an activity is committed. Generous because it is only
+# ever waited out when something has gone wrong - the normal path returns the moment Skip appears. Without
+# it, the clearing loop reads the transition before the scene as the activity already being over.
+ACTIVITY_START_TIME_OUT = 15
+
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
 INGREDIENT_SPOTS = ((0.236, 0.283), (0.308, 0.283))
@@ -554,7 +559,11 @@ class GlobalDailyTask(BaseGlobalTask):
 
         Deliberately not `go_home`. The station screens have no home button - the spot it clicks holds an info button instead, so pressing it there opens a
         panel rather than going anywhere. Backing out unwinds these screens reliably, and `is_main` answers the leave-the-deck confirmation on the way.
+
+        A scene is skipped first if one is still playing. Escape does not exit a scene, so backing out of one means pressing it at a screen that cannot
+        answer until the scene ends by itself, which reads in the log as the bot hanging.
         """
+        self.skip_scene('leaving the Crew Deck')
         self.ensure_main(time_out=60)
 
     def enter_crew_deck(self):
@@ -693,6 +702,12 @@ class GlobalDailyTask(BaseGlobalTask):
         Args:
             label: The station name, for the log and the screenshot filename.
         """
+        # The scene does not start the instant the activity is committed - the game plays a transition
+        # first, and a loop that looks during it finds nothing and concludes the activity is already over.
+        # Waited on Skip alone rather than on Skip or Confirm, because the Caution dialog's own Confirm can
+        # still be fading when this is reached and would satisfy the wait without the scene having started.
+        if not self.wait_ocr(match=SKIP, box=self.box.top_right, time_out=ACTIVITY_START_TIME_OUT):
+            self.log_info(f'{label}: no scene started, clearing whatever is on screen instead')
         for _ in range(MAX_ACTIVITY_SCREENS):
             skipped = self.skip_scene(label)
             confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=SUMMARY_CONFIRM_TIME_OUT, after_sleep=2)
