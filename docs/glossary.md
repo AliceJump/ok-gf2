@@ -1,7 +1,9 @@
 # Terminology Glossary (Chinese -> Global / Steam English)
 
-This project is written in Chinese. This file maps each Chinese game term to the exact wording the
-**Global / Steam** client of Girls' Frontline 2: Exilium shows on screen.
+This project began in Chinese, and its CN task set still is. This file maps each Chinese game term to
+the exact wording the **Global / Steam** client of Girls' Frontline 2: Exilium shows on screen. The
+Global task set under `src/global/` matches that English wording directly, so this table is also the
+reference for what those tasks look for.
 
 The authority is the Global client itself, not a dictionary. Several terms are deliberately *not*
 literal translations, because the literal form does not exist in the English client. For example
@@ -157,6 +159,26 @@ These are this program's own labels, not game strings. They get plain descriptiv
 | 社区每日 | Community Daily Check-In | n/a |
 | 购买免费礼包 | Claim Free Packs | n/a |
 | 邮件 | Mail | n/a |
+
+### Global task set
+
+These have no Chinese counterpart. They are the labels used by the tasks under `src/global/`, which
+only ever run against the English client.
+
+| Label | Where it appears |
+|---|---|
+| Game Client | The `Region` setting, choosing `Global` or `CN` |
+| Global Daily | Task name |
+| Global Weekly | Task name |
+| Start Loop | Global Daily setting |
+| Claim Free Packs | Global Daily setting, same label as the CN one above |
+| Run Event Supply | Global Daily setting |
+| Claim Boundary Push Rewards | Global Daily setting, same label as the CN one above |
+| Crew Deck | Global Daily setting, off by default |
+| Tea Time Walk | Walk timing, nested under `Crew Deck` |
+| Delicious Cuisine Walk | Walk timing, nested under `Crew Deck` |
+| Claim Peak Value Rewards | Global Weekly setting |
+| Run: Go Home, Run: Start Loop, Run: Claim Free Packs, Run: Event Supply, Run: Claim Boundary Push, Run: Claim Peak Value, Run: Crew Deck | One task each, running a single flow |
 
 ## Do not translate
 

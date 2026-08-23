@@ -84,6 +84,7 @@ ok-gf2/
 ├── src/                       # 项目核心源码
 │   ├── config.py              # 配置字典（传给 ok.OK），定义所有任务列表、窗口参数、OCR 参数等
 │   ├── globals.py             # 全局单例（Globals），存放跨任务共享状态
+│   ├── region.py              # Region 设置（Global / CN），追加国际服任务并隐藏未选中的一侧
 │   │
 │   ├── data/
 │   │   ├── FeatureList.py     # 枚举：所有模板匹配特征名
@@ -116,16 +117,27 @@ ok-gf2/
 │       ├── TestStartGame.py   # 测试启动游戏
 │       └── TestTask.py        # 开发调试用
 │
+│   └── global/                # 国际服（Steam 英文版）任务层，直接匹配英文文本
+│       ├── BaseGlobalTask.py  # 国际服任务基类，覆盖所有与中文绑定的方法
+│       ├── GlobalDailyTask.py # 国际服日常
+│       ├── GlobalWeeklyTask.py# 国际服周常
+│       └── VerifyTasks.py     # 每个流程一个任务，用于单独验证
+│
 ├── assets/                    # 静态资源
 │   ├── coco_annotations.json  # COCO 格式标注
 │   ├── images/                # 模板匹配图片
 │   └── ppocr_keys_v1.txt      # OCR 字典
+│
+├── tools/                     # 开发辅助工具
+│   └── record_walk.py         # 记录公共区行走按键时长，用于填写 Crew Deck 的行走设置
 │
 ├── docs/                      # 功能说明文档
 │   ├── 日常任务.md
 │   ├── 清图任务.md
 │   ├── 兵棋推演.md
 │   ├── 周常任务.md
+│   ├── glossary.md            # 中文 -> 国际服英文术语对照
+│   ├── en/                    # 英文版用户文档
 │   └── dev/                   # 面向开发者的技术文档
 │       ├── QUICKSTART.md
 │       ├── DEVELOPMENT.md
@@ -245,3 +257,4 @@ python -m unittest tests/TestOcr.py
 | `TestMain.py` | 主要功能测试 |
 | `TestEnglish.py` | 英文语言测试 |
 | `TestOcr.py` | OCR 识别测试 |
+| `TestGlobalMain.py` | 国际服任务测试：主界面识别、各流程提前退出的判断、光标被占用时的恢复 |

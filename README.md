@@ -27,7 +27,7 @@ An image-recognition-based automation tool for Girls' Frontline 2: Exilium, with
 </div>
 
 > Game terms in this document use the wording shown by the **Global / Steam** client, and the
-> feature list reflects what the program actually ships. See [docs/glossary.md](docs/glossary.md)
+> feature list reflects what the program actually ships. See [docs/glossary.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/glossary.md)
 > for the full term mapping.
 
 ---
@@ -63,7 +63,7 @@ all potential risks.**
 - Game: PC version of Girls' Frontline 2: Exilium, supports native background mode
 - Resolution: All 16:9 resolutions supported, minimum 1280x720
 - Frame rate: 120 FPS recommended, higher is better
-- Language: Simplified Chinese / English (English may have issues)
+- Language: Simplified Chinese or English. Pick the matching client in **Settings -> Region**
 - Display: Windows Auto HDR must be disabled. RTX HDR is acceptable
 - Background: Your home screen background must be **dark**. A white background breaks text recognition
 - Privilege: Run as Administrator recommended, and required when running from source
@@ -73,6 +73,17 @@ all potential risks.**
 
 ## 🎮 Feature Overview
 
+### Which client you are automating
+
+This fork automates the **Global (Steam, English)** client. Upstream's original CN tasks are still
+here, and a setting decides which set you get.
+
+Open **Settings** and set **Region -> Game Client** to `Global` or `CN`. It defaults to `Global`, and
+**the app must be restarted after changing it**, because the task list is built at startup.
+
+Only the selected client's tasks appear in the sidebar, but both sets are always registered. That
+matters for the `-t` flag - see [Command-line arguments](#command-line-arguments).
+
 ### Tasks
 
 These are the tasks you can select and run in the app. The number in front of each one is its
@@ -80,17 +91,30 @@ index for the `-t` command-line flag (see [Command-line arguments](#command-line
 
 | # | Task | What it does |
 |---|---|---|
-| 1 | **[One-Click Dailies](docs/en/daily-tasks.md)** | Runs the full daily routine top to bottom. Every step below can be toggled on or off individually |
-| 2 | **[Weekly](docs/en/weekly-tasks.md)** | Runs the weekly Combat Simulations: Boss Fight, Peak Value Assessment, Expansion Drills |
-| 3 | **[Auto-Clear Campaign Stages](docs/en/campaign-clear.md)** | Clears uncleared Campaign stages left to right |
+| 1 | **[One-Click Dailies](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/daily-tasks.md)** | Runs the full daily routine top to bottom. Every step below can be toggled on or off individually |
+| 2 | **[Weekly](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/weekly-tasks.md)** | Runs the weekly Combat Simulations: Boss Fight, Peak Value Assessment, Expansion Drills |
+| 3 | **[Auto-Clear Campaign Stages](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/campaign-clear.md)** | Clears uncleared Campaign stages left to right |
 | 4 | Launch Game | Test task. Starts the game and closes it after 120 seconds |
 | 5 | Test | Test task, for development only |
 | 6 | Diagnosis | Thin wrapper around the ok-script framework's built-in diagnosis task |
+| 7 | **[Global Daily](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Global: starts the in-game Loop, then picks up what Loop does not cover |
+| 8 | **[Global Weekly](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)** | Global: collects the Peak Value Assessment rewards |
+| 9 | Run: Go Home | Global: recognises the home screen, leaves it and comes back. Changes nothing |
+| 10 | Run: Start Loop | Global: runs only the Start Loop step |
+| 11 | Run: Claim Free Packs | Global: runs only the free shop pack step |
+| 12 | Run: Event Supply | Global: runs only the event Supply step |
+| 13 | Run: Claim Boundary Push | Global: runs only the Boundary Push collection |
+| 14 | Run: Claim Peak Value | Global: runs only the Peak Value collection |
+| 15 | Run: Crew Deck | Global: runs only the Crew Deck activities |
+
+Tasks 1-6 are the CN set and 7-15 the Global set. The `Run: ` tasks each run a single step of Global
+Daily or Global Weekly, for checking one flow at a time - see
+**[docs/en/global-tasks.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md)**.
 
 ### What One-Click Dailies covers
 
 Each of these is a switch inside the Dailies task rather than a task of its own. Full details are in
-**[docs/en/daily-tasks.md](docs/en/daily-tasks.md)**.
+**[docs/en/daily-tasks.md](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/daily-tasks.md)**.
 
 - Community daily check-in (needs your username and password)
 - Mail collection
@@ -129,7 +153,7 @@ keep using your computer while it works.
 
 ## ⚙️ Parameter notes
 
-### 1. Current Supply stage name
+### 1. Current Supply stage name (CN only)
 
 Every Event has a **Supply** stage, which is the one that costs Intelligence Puzzle.
 
@@ -139,6 +163,9 @@ Every Event has a **Supply** stage, which is the one that costs Intelligence Puz
   `铸碑者的黎明`.
 
 > ⚠️ Filling this in incorrectly will break the event automation.
+
+The Global Event Supply flow has no equivalent setting. It finds the last Supply stage on the map
+by itself, and stops before spending anything if there are no event tickets left.
 
 ![image](https://github.com/user-attachments/assets/ed261840-449a-46d4-8a07-f58382f3a779)
 
@@ -152,23 +179,35 @@ Path: **Settings -> Other -> Auto-Battle Settings**
 
 ### 3. Tea Time
 
-The Crew Deck is a walkable area, so this setting is how long to hold each movement key while
-walking your character over to the coffee machine. It presses `A`, then `W`, then `D`. You will need
-to tune the values yourself, since the right timings depend on where your character starts.
+The Crew Deck is a walkable area, so this setting is how long to hold each movement key while walking
+your character over to the coffee machine. Both clients hold `A`, then `W`, then `D`.
 
 Format: `{seconds holding A}-{seconds holding W}-{seconds holding D}`
 
-Example: `1.44-1.56-1.38`
+| Client | Setting | Default |
+|---|---|---|
+| Global | `Tea Time Walk`, under the `Crew Deck` toggle | `0.636-1.25-0.495` |
+| CN | `喝水` | `1.44-1.56-1.38` |
+
+The right timings depend on where your character spawns, so measure your own rather than trusting the
+default: run [tools/record_walk.py](https://github.com/steve1316/ok-gf2-english/blob/master/tools/record_walk.py), walk the route by hand, press Esc, and
+paste the line it prints into the setting it names.
 
 ---
 
 ### 4. Delicious Cuisine
 
-Same idea, walking to the kitchen instead. It presses `S`, then taps `D`.
+The same idea, walking to the kitchen instead. **The two clients take different routes.**
+
+| Client | Setting | Keys | Default |
+|---|---|---|---|
+| Global | `Delicious Cuisine Walk`, under the `Crew Deck` toggle | holds `S` | `0.747` |
+| CN | `吃饭` | holds `S`, then taps `D` | `1.3` |
 
 Format: `{seconds holding S}`
 
-Example: `1.3`
+> On Global the `Crew Deck` flow ships **switched off**, because it needs walk timings that suit your
+> setup. Measure them, then turn it on.
 
 ---
 
@@ -189,7 +228,7 @@ If you encounter issues, check the following in order:
    * Use the game's default brightness settings.
    * Use a **dark** home screen background.
 4. **Game frame rate**: 120 FPS recommended, higher is better.
-5. **Game language**: Simplified Chinese works best. English may have issues.
+5. **Game language**: Set **Settings -> Region -> Game Client** to match the client you are running, then restart the app.
 6. **Software version**: Make sure you are running the latest release.
 7. **Get help**: If none of the above helps, submit a detailed error report via the QQ group.
 
@@ -255,6 +294,11 @@ ok-gf2.exe -t 1 -e
 * `-t` or `--task`: Automatically run the Nth task. The numbering is the `#` column in
   [Tasks](#tasks), so `-t 1` is One-Click Dailies, `-t 2` is Weekly, and `-t 3` is Auto-Clear
   Campaign Stages.
+
+  > ⚠️ These numbers count **both** task sets, and they do not shift when you change region. On a
+  > Global install `-t 1` still runs the CN daily, which is not what the sidebar is showing you. The
+  > Global tasks are `-t 7` (Global Daily) and `-t 8` (Global Weekly). The positions are deliberately
+  > held stable so existing shortcuts and scheduled tasks keep pointing at the same task.
 * `-e` or `--exit`: Exit automatically after the task completes.
 
 ### Development and testing
@@ -291,15 +335,16 @@ task code matches against, so never put UI strings there.
 
 | Document | Description |
 |----------|-------------|
-| [Quick Start Guide (QUICKSTART.md)](docs/dev/QUICKSTART.md) | Minimal workflow to run from source, launch the software, and create tasks |
-| [Development Guide (DEVELOPMENT.md)](docs/dev/DEVELOPMENT.md) | Architecture overview, directory structure, development workflow, testing, CI/CD |
-| [API Reference (API.md)](docs/dev/API.md) | Detailed API docs for BaseGfTask, Mixin, ScreenPosition, and more |
-| [i18n & OCR Configuration](docs/dev/i18n_OCR配置流程.md) | Runtime locale, language JSON, OCR matching, and text-fix workflow |
-| [Keyboard System](docs/dev/键盘操作体系.md) | Hotkey mapping, key binding conventions |
-| [Terminology Glossary](docs/glossary.md) | Chinese to Global / Steam English term mapping, for anyone translating this project |
+| [Quick Start Guide (QUICKSTART.md)](https://github.com/steve1316/ok-gf2-english/blob/master/docs/dev/QUICKSTART.md) | Minimal workflow to run from source, launch the software, and create tasks |
+| [Development Guide (DEVELOPMENT.md)](https://github.com/steve1316/ok-gf2-english/blob/master/docs/dev/DEVELOPMENT.md) | Architecture overview, directory structure, development workflow, testing, CI/CD |
+| [API Reference (API.md)](https://github.com/steve1316/ok-gf2-english/blob/master/docs/dev/API.md) | Detailed API docs for BaseGfTask, Mixin, ScreenPosition, and more |
+| [i18n & OCR Configuration](https://github.com/steve1316/ok-gf2-english/blob/master/docs/dev/i18n_OCR配置流程.md) | Runtime locale, language JSON, OCR matching, and text-fix workflow |
+| [Keyboard System](https://github.com/steve1316/ok-gf2-english/blob/master/docs/dev/键盘操作体系.md) | Hotkey mapping, key binding conventions |
+| [Global Client Tasks](https://github.com/steve1316/ok-gf2-english/blob/master/docs/en/global-tasks.md) | The Global task set, the `Run: ` verification tasks, and what is not covered yet |
+| [Terminology Glossary](https://github.com/steve1316/ok-gf2-english/blob/master/docs/glossary.md) | Chinese to Global / Steam English term mapping, for anyone translating this project |
 
 Note that the developer docs above are still written in Chinese. Only the user-facing guides in
-[docs/en/](docs/en/) have been translated so far.
+[docs/en/](https://github.com/steve1316/ok-gf2-english/tree/master/docs/en/) have been translated so far.
 
 ## ❤️ Sponsors & Acknowledgements
 
