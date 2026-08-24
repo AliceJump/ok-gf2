@@ -1089,6 +1089,78 @@ class TestWishlistButtons(unittest.TestCase):
             self.assertIn(key, keys, f'{key!r} is switched off by default but is not a flow')
 
 
+class _PeakValue:
+    """A stand-in for the weekly task, scripted with whether the popup opens itself.
+
+    Borrows the real method for the same reason `_CardScreen` does - it only looks for one label and clicks one button.
+    """
+
+    def __init__(self, opens_itself, has_button=True):
+        self.opens_itself = opens_itself
+        self.has_button = has_button
+        self.open = opens_itself
+        self.button_presses = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(bottom_right=None, bottom_left=None)
+
+    def open_periodic_returns(self):
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        return weekly.GlobalWeeklyTask.open_periodic_returns(self)
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        return [Box(1416, 837, 190, 60, name='Claim All')] if self.open else []
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        if match is not weekly.PERIODIC_RETURNS or not self.has_button:
+            return None
+        self.button_presses += 1
+        self.open = True
+        return Box(204, 1013, 280, 60, name='Periodic')
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestPeakValueRewards(unittest.TestCase):
+    """Selecting the mode in the rail only brings up its card - the rewards are two screens further in.
+
+    The flow used to look for a Claim All on the card itself, find none, and report that there was nothing to claim, which is not the same thing as never
+    having gone to look. Coordinates come from a real 1920x1080 capture of the card and of the Periodic Returns popup.
+    """
+
+    def test_the_reward_tally_is_not_read_off_the_reset_timer(self):
+        """The card carries `Rewards Reset In 6 days 11 hours` in its corner, which an unanchored pattern matches just as readily as the tally's heading."""
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        self.assertTrue(weekly.REWARDS.search('Rewards'))
+        for heading in ('Rewards Reset In 6 days 11 hours', 'Rewards Reset', 'Reward Progress'):
+            self.assertIsNone(weekly.REWARDS.search(heading), f'REWARDS matches {heading!r}, which is not the tally')
+
+    def test_the_card_and_its_button_are_told_apart_from_extreme_peak(self):
+        """Extreme Peak sits directly below with an identical Proceed, so the button is only safe to reach through the card's name."""
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        self.assertTrue(weekly.PEAK_VALUE.search('Peak Value Assessment'))
+        self.assertIsNone(weekly.PEAK_VALUE.search('Extreme Peak'), 'the card pattern also matches the card below it')
+        self.assertTrue(base.PROCEED.search('Proceed'))
+
+    def test_a_popup_that_opens_itself_needs_no_button(self):
+        screen = _PeakValue(opens_itself=True)
+        self.assertTrue(screen.open_periodic_returns())
+        self.assertEqual(0, screen.button_presses)
+
+    def test_a_popup_that_stays_shut_is_opened_from_the_button(self):
+        """Once the weekly auto-open has been used and dismissed it does not happen again, so the rewards are only reachable this way."""
+        screen = _PeakValue(opens_itself=False)
+        self.assertTrue(screen.open_periodic_returns())
+        self.assertEqual(1, screen.button_presses)
+
+    def test_no_popup_and_no_button_gives_up(self):
+        """Rather than pressing on to a Claim All that is not there."""
+        screen = _PeakValue(opens_itself=False, has_button=False)
+        self.assertFalse(screen.open_periodic_returns())
+
+
 class TestGlobalFlowWiring(unittest.TestCase):
     """Static checks on the flow tables. No game, no OCR - these guard the wiring only."""
 

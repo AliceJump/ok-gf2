@@ -5,7 +5,7 @@ from ok import Box
 
 from src.tasks.BaseGfTask import map_re, parse_time_option
 
-from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, SHOP, SKIP, BaseGlobalTask
+from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, PROCEED, SHOP, SKIP, BaseGlobalTask
 
 # Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
 # running its banner appears directly below this one - not supported, since two at once is rare.
@@ -162,7 +162,6 @@ BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
 REWARD_PROGRESS = re.compile(r'Reward Progress', re.I)
 
 BREAKTHROUGH = re.compile(r'Breakthrough', re.I)
-PROCEED = re.compile(r'Proceed', re.I)
 CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
 # The collection screen's own dispatch button, on screen only while at least one of the four slots is
 # still empty. That makes its presence the check for whether there is anything to send out, which beats
