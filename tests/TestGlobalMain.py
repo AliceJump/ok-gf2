@@ -992,6 +992,103 @@ class TestNoUndefinedNames(unittest.TestCase):
                                     f'{name}.{function.__qualname__} uses {used!r}, which that module neither defines nor imports')
 
 
+class _Rail:
+    """A stand-in for the daily task holding one fixed Wishlist rail, so the badge pairing can be checked without a game.
+
+    Borrows the real method for the same reason `_CardScreen` does. `find_boxes` is the real matcher, and the frame is the 1080-high one the coordinates
+    below were measured on.
+    """
+
+    flagged_categories = GlobalDailyTask.flagged_categories
+    height = 1080
+
+    def __init__(self, boxes):
+        self.boxes = boxes
+        self.box = types.SimpleNamespace(left=None)
+
+    def ocr(self, *args, **kwargs):
+        return self.boxes
+
+    def find_boxes(self, boxes, match=None, boundary=None):
+        return find_boxes_by_name(boxes, match) if match else boxes
+
+    def log_info(self, message, notify=False):
+        pass
+
+
+class TestWishlistBadges(unittest.TestCase):
+    """The rail is read once and only the categories carrying a count are opened.
+
+    Coordinates come from a real 1920x1080 Wishlist screenshot: names down the left at x~90-200, badges in their yellow squares at x~232, level with the
+    middle of a name that wraps onto two lines. A badge missed here costs a purchase, so the pairing is worth pinning down.
+    """
+
+    def rail(self):
+        """The real rail: Platoon, Dispatch and Battlelog hold something, the other three do not."""
+        return [Box(88, 155, 110, 50, name='Furniture'), Box(88, 190, 60, 32, name='Shop'),
+                Box(88, 262, 90, 32, name='Platoon'), Box(88, 296, 60, 32, name='Shop'), Box(226, 272, 20, 24, name='1'),
+                Box(88, 366, 100, 32, name='Dispatch'), Box(88, 400, 60, 32, name='Shop'), Box(226, 376, 20, 24, name='9'),
+                Box(88, 468, 105, 32, name='Battlelog'), Box(88, 502, 90, 32, name='Trading'), Box(226, 478, 20, 24, name='2'),
+                Box(88, 572, 90, 32, name='Neural'), Box(88, 606, 120, 32, name='Integration'),
+                Box(88, 674, 90, 32, name='Growth'), Box(88, 708, 60, 32, name='Stack')]
+
+    def flagged(self, boxes):
+        return [pattern.pattern for pattern in _Rail(boxes).flagged_categories()]
+
+    def test_only_the_categories_with_a_badge_are_opened(self):
+        self.assertEqual(['Platoon', 'Dispatch', 'Battlelog'], self.flagged(self.rail()))
+
+    def test_a_rail_with_nothing_waiting_opens_nothing(self):
+        """Every category is spent, so the flow should buy nothing rather than tour all six."""
+        quiet = [box for box in self.rail() if not box.name.isdigit()]
+        self.assertEqual([], self.flagged(quiet))
+
+    def test_a_badge_belongs_to_the_row_it_sits_on(self):
+        """One badge must not flag a neighbour - the rows are only ~100px apart, so the tolerance has to stay under that."""
+        one_badge = [box for box in self.rail() if not box.name.isdigit()]
+        one_badge.append(Box(226, 376, 20, 24, name='9'))
+        self.assertEqual(['Dispatch'], self.flagged(one_badge))
+
+    def test_a_badge_left_of_the_name_is_not_its_own(self):
+        """Badges sit to the right. Anything to the left is another column and not this category's count."""
+        stray = [box for box in self.rail() if not box.name.isdigit()]
+        stray.append(Box(40, 376, 20, 24, name='9'))
+        self.assertEqual([], self.flagged(stray))
+
+
+class TestWishlistButtons(unittest.TestCase):
+    """The Wishlist is the one flow that spends, so what it is willing to press is worth pinning down."""
+
+    def test_the_two_buy_buttons_never_match_each_other(self):
+        """Both sit in the bottom right - Purchase All on the page, Purchase(s) in the dialog over it."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.PURCHASE_ALL.search('Purchase All'))
+        self.assertIsNone(daily.PURCHASE_ALL.search('Purchase(s)'), 'PURCHASE_ALL matches the dialog button')
+        self.assertTrue(daily.PURCHASE_CONFIRM.search('Purchase(s)'))
+        self.assertTrue(daily.PURCHASE_CONFIRM.search('Purchases'), 'OCR drops the brackets often enough to allow for it')
+        self.assertIsNone(daily.PURCHASE_CONFIRM.search('Purchase All'), 'PURCHASE_CONFIRM matches the page button')
+
+    def test_the_bare_purchase_pattern_is_not_reused_here(self):
+        """`PURCHASE` matches the dialog's title and heading as readily as its button, which is why the flow has its own patterns."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        for text in ('Purchase Details', 'Confirm Purchase(s)', 'Purchase All'):
+            self.assertTrue(daily.PURCHASE.search(text), f'{text!r} shows why PURCHASE is too loose for the Wishlist')
+
+    def test_wishlist_buying_is_off_until_it_is_asked_for(self):
+        """It is the only flow that spends anything, so a fresh install must not start buying on its own."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        keys = [key for key, method, _ in daily.FLOWS if method == 'buy_wishlist']
+        self.assertEqual(['Buy Wishlist Items'], keys)
+        self.assertIn('Buy Wishlist Items', daily.FLOWS_OFF_BY_DEFAULT)
+
+    def test_every_flow_left_off_is_a_real_flow(self):
+        """A renamed flow would otherwise leave a dead entry behind and quietly switch the flow back on."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        keys = {key for key, _, _ in daily.FLOWS}
+        for key in daily.FLOWS_OFF_BY_DEFAULT:
+            self.assertIn(key, keys, f'{key!r} is switched off by default but is not a flow')
+
+
 class TestGlobalFlowWiring(unittest.TestCase):
     """Static checks on the flow tables. No game, no OCR - these guard the wiring only."""
 

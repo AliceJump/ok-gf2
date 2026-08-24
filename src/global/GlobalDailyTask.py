@@ -53,6 +53,8 @@ FLOWS = (
      'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.'),
     ('Claim Free Packs', 'shopping',
      'Claims the shop supply boxes that are currently free.'),
+    ('Buy Wishlist Items', 'buy_wishlist',
+     'Buys everything waiting in the shop Wishlist, one in-game shop at a time. Spends in-game currency, never real money, and only on what is already on the Wishlist.'),
     ('Run Event Supply', 'run_event_supply',
      'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
     ('Claim Boundary Push Rewards', 'claim_boundary_push',
@@ -62,6 +64,11 @@ FLOWS = (
     ('Crew Deck', 'crew_deck',
      'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
 )
+
+# Flows that stay switched off until they are asked for. Crew Deck because it reaches each station but does
+# not yet complete either activity. Buy Wishlist Items because it is the only flow that spends anything, and
+# spending on the first run after an update is not something to decide on someone's behalf.
+FLOWS_OFF_BY_DEFAULT = ('Crew Deck', 'Buy Wishlist Items')
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
@@ -98,6 +105,37 @@ FREE_BOX_TABS = (re.compile(r'Treasured', re.I), re.compile(r'Regular', re.I))
 # one moves from tab to tab, so the whole grid is read rather than a measured corner. Reading only the
 # bottom-right corner is what made this claim nothing at all on any page but Premium Selections.
 CARD_GRID = (0.15, 0.18, 1.0, 1.0)
+
+# Wishlist, reached from the bottom-left of the shop. It gathers what has been picked out for later across
+# six in-game shops, each its own category in a left rail. Every label there wraps onto two lines that OCR
+# splits apart, so each is matched on its distinctive first word.
+WISHLIST = re.compile(r'Wishlist', re.I)
+WISHLIST_CATEGORIES = (
+    re.compile(r'Furniture', re.I),
+    re.compile(r'Platoon', re.I),
+    re.compile(r'Dispatch', re.I),
+    re.compile(r'Battlelog', re.I),
+    re.compile(r'Neural', re.I),
+    re.compile(r'Growth', re.I),
+)
+
+# A category holding something shows a count in a badge to the right of its name and level with it. Reading
+# the rail once and opening only the categories that carry one costs a single look on a quiet day instead
+# of six. A badge missed by OCR therefore means a purchase missed, never a purchase made by mistake - what
+# is actually bought is decided by `PURCHASE_ALL` being on the category's own page.
+BADGE = re.compile(r'^\d+$')
+# How far apart a badge and its category's name may sit vertically, as a fraction of frame height. Generous
+# because the name wraps onto two lines and OCR returns whichever line it pleases, while the badge sits
+# level with the middle of both.
+BADGE_ROW_TOLERANCE = 0.04
+
+# The two buy buttons. "Purchase All" is only drawn on a category that has something in it, so its presence
+# is the check for whether there is anything to buy here - a spent category shows Sold Out rows and no
+# button at all. Both are matched in the bottom right, which takes in the buttons but not the dialog's
+# "Confirm Purchase(s)" heading over on its left. Deliberately not the existing `PURCHASE`, which is a bare
+# "Purchase" and would match that heading and the dialog's own title just as readily as either button.
+PURCHASE_ALL = re.compile(r'Purchase All', re.I)
+PURCHASE_CONFIRM = re.compile(r'Purchase\(?s\)?', re.I)
 
 # Any sign of a real-money price. The free box and the paid one are two tabs of a single popup and carry
 # an identical Purchase button, and claiming the free box switches the popup to the paid tab, so the item
@@ -336,8 +374,7 @@ class GlobalDailyTask(BaseGlobalTask):
         self.config_description.update({key: description for key, _, description in WALK_OPTIONS})
         # Nest the walk timings under their flow, so they only show when the flow is on.
         self.default_config_group.update({'Crew Deck': [key for key, _, _ in WALK_OPTIONS]})
-        # Off by default: the flow reaches each station but does not yet complete either activity.
-        self.default_config['Crew Deck'] = False
+        self.default_config.update({key: False for key in FLOWS_OFF_BY_DEFAULT})
 
     def run(self):
         """Run every enabled daily flow, in the order `FLOWS` lists them."""
@@ -459,6 +496,89 @@ class GlobalDailyTask(BaseGlobalTask):
         # Matched by name, never by position: Purchase sits directly beside Cancel in this dialog.
         self.log_info(f'closing the supply box popup, left showing the paid tab ({priced[0].name})')
         self.click(cancel[0], after_sleep=1.5)
+        return True
+
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # Wishlist
+
+    def buy_wishlist(self):
+        """Buy everything waiting in the shop Wishlist, one in-game shop at a time.
+
+        The only flow that spends anything, so it is off until it is switched on, and it is built to fail towards buying nothing: it opens only categories
+        whose rail badge says they hold something, presses Purchase All only where the game draws one, and reads the confirmation dialog for a real-money
+        price before pressing anything in it.
+
+        Select All is never touched. It comes up already ticked, so clicking it would clear the selection and buy nothing.
+        """
+        self.info_set('current_task', 'buy_wishlist')
+        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        if not self.click_ocr_word(WISHLIST, box=self.box.bottom_left, time_out=5, after_sleep=2):
+            return self.stop_flow('No Wishlist in the shop, skipping.', dump='wishlist_missing')
+        flagged = self.flagged_categories()
+        if not flagged:
+            return self.stop_flow('Nothing waiting on the Wishlist.')
+        bought = 0
+        for category in flagged:
+            if not self.click_ocr_word(category, box=self.box.left, time_out=5, after_sleep=2):
+                self.log_info(f'could not open the {category.pattern} category, skipping it')
+                continue
+            if self.purchase_category(category.pattern):
+                bought += 1
+        self.log_info(f'bought from {bought} of {len(flagged)} Wishlist category(ies)', notify=True)
+        self.go_home()
+
+    def flagged_categories(self):
+        """Which Wishlist categories carry a count badge.
+
+        Read off one look at the rail rather than by opening each category in turn. The badge sits to the right of its category's name and level with it, so
+        it is paired by position the same way `read_counter_under` pairs a counter with its heading.
+
+        Returns:
+            The patterns of the categories holding something, in rail order.
+        """
+        rail = self.ocr(box=self.box.left, log=True)
+        badges = [box for box in rail if BADGE.match(box.name.strip())]
+        tolerance = self.height * BADGE_ROW_TOLERANCE
+        flagged = []
+        for category in WISHLIST_CATEGORIES:
+            found = self.find_boxes(rail, match=category)
+            if not found:
+                continue
+            name = found[0]
+            middle = name.y + name.height / 2
+            if any(badge.x > name.x and abs(badge.y + badge.height / 2 - middle) <= tolerance for badge in badges):
+                flagged.append(category)
+        self.log_info(f'Wishlist categories holding something: {[category.pattern for category in flagged] or "none"}')
+        return flagged
+
+    def purchase_category(self, label):
+        """Buy everything selected in the category that is open.
+
+        Args:
+            label: The category's name, for the log.
+
+        Returns:
+            True when a purchase went through.
+        """
+        # A category with nothing left shows Sold Out rows and no button at all, so this is the check for
+        # whether there is anything here rather than a step that is expected to succeed.
+        if not self.wait_click_ocr(match=PURCHASE_ALL, box=self.box.bottom_right, time_out=3, after_sleep=2):
+            return False
+        # Everything on the Wishlist trades in an in-game currency, so a real-money price here means this is
+        # not the dialog it looks like. Checked before anything in it is pressed, the same way a free supply
+        # box is checked before its Purchase.
+        dialog = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
+        if priced := self.find_boxes(dialog, match=PRICE):
+            self.log_info(f'{label}: the confirmation shows a real-money price ({priced[0].name}), backing out without buying', notify=True)
+            self.back(after_sleep=1)
+            return False
+        if not self.wait_click_ocr(match=PURCHASE_CONFIRM, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info(f'{label}: no confirm button on the Purchase Details dialog, backing out.', notify=True)
+            self.back(after_sleep=1)
+            return False
+        self.log_info(f'{label}: bought what was on the Wishlist')
+        self.wait_pop_up(time_out=5, count=2)
         return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
