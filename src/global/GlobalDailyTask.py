@@ -146,6 +146,7 @@ ACTIVE_DISHES = re.compile(r'at once\s*(\d+)\s*/\s*\d+', re.I)
 # like a button but never goes away.
 MAX_ACTIVITY_SCREENS = 4
 MAX_SCENE_SKIPS = 10
+MAX_SUMMARY_CONFIRMS = 3
 SCENE_SKIP_TIME_OUT = 2
 SUMMARY_CONFIRM_TIME_OUT = 3
 
@@ -159,6 +160,11 @@ ACTIVITY_START_TIME_OUT = 15
 # straight away, so waiting the full amount again only adds dead time to the end of every activity.
 QUIET_CONFIRM_TIME_OUT = 1
 SCENE_RECHECK_TIME_OUT = 0.5
+
+# How long Confirm has to hold still before it is clicked. The button animates in, and a click that lands
+# during that is swallowed - the summary stays up having done nothing. Waiting for the match to settle
+# stops the press being thrown away rather than noticing afterwards that it was.
+CONFIRM_SETTLE = 0.5
 
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
@@ -659,7 +665,7 @@ class GlobalDailyTask(BaseGlobalTask):
         # Make raises a Caution dialog - "Do you wish to make X? N time(s) remaining today" - with Cancel
         # sitting beside Confirm. Matched by name rather than clicked by position, so the wrong one of the
         # two can never be hit. Nothing is made until this lands.
-        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, after_sleep=2):
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, settle_time=CONFIRM_SETTLE, after_sleep=2):
             self.log_info('Tea Time: the Make confirmation never appeared, so no drink was made.', notify=True)
             self.dump_screen('crew_deck_Tea_Time_no_confirm')
             return False
@@ -721,9 +727,7 @@ class GlobalDailyTask(BaseGlobalTask):
             # would have been there throughout. Only a pass that skipped something is followed by a screen
             # still in motion, and that one keeps the full budget.
             confirm_time_out = SUMMARY_CONFIRM_TIME_OUT if skipped else QUIET_CONFIRM_TIME_OUT
-            confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=confirm_time_out, after_sleep=2)
-            if confirmed:
-                self.log_info(f'{label}: cleared a Confirm')
+            confirmed = self.confirm_summary(label, time_out=confirm_time_out)
             if not skipped and not confirmed:
                 break
         self.wait_pop_up(time_out=10, count=3)
@@ -750,4 +754,31 @@ class GlobalDailyTask(BaseGlobalTask):
             presses += 1
         if presses:
             self.log_info(f'{label}: pressed Skip {presses} time(s)')
+        return presses
+
+    def confirm_summary(self, label, time_out=SUMMARY_CONFIRM_TIME_OUT):
+        """Press Confirm until it stops appearing.
+
+        One press is not proof it took. The button animates in, and a click landing before it has settled is swallowed, leaving the summary up with nothing
+        having happened. Pressing until the button is gone covers that without the loop above having to spend a whole extra pass discovering it.
+
+        Re-read and matched by name every time rather than simply clicked twice. The dish's closing screen puts `To Battle!` beside Confirm, so a second
+        click at the same spot once the summary has closed would be a coin flip between doing nothing and starting a battle.
+
+        Args:
+            label: The station name, for the log.
+            time_out: How long the first look waits for Confirm. Later looks are always brief, since by then the screen has been clicked and waited on and
+                a button still there is there to stay.
+
+        Returns:
+            How many times Confirm was pressed.
+        """
+        presses = 0
+        for _ in range(MAX_SUMMARY_CONFIRMS):
+            if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=time_out, settle_time=CONFIRM_SETTLE, after_sleep=2):
+                break
+            presses += 1
+            time_out = QUIET_CONFIRM_TIME_OUT
+        if presses:
+            self.log_info(f'{label}: pressed Confirm {presses} time(s)')
         return presses

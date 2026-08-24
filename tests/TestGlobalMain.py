@@ -194,12 +194,16 @@ class _Activity:
 
     finish_activity = GlobalDailyTask.finish_activity
     skip_scene = GlobalDailyTask.skip_scene
+    confirm_summary = GlobalDailyTask.confirm_summary
 
-    def __init__(self, scene_at, presses_to_clear=1):
+    def __init__(self, scene_at, presses_to_clear=1, summary_swallows=0):
         self.scene_at = scene_at
         self.presses_left = presses_to_clear
+        self.summary_swallows = summary_swallows
+        self.summary_up = True
         self.now = 0.0
         self.skips = 0
+        self.confirms = 0
         self.logged = []
         self.box = types.SimpleNamespace(top_right=None, bottom=None)
 
@@ -219,13 +223,25 @@ class _Activity:
 
     def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
         daily = importlib.import_module('src.global.GlobalDailyTask')
-        if match is not daily.SKIP or not self.scene_is_up():
+        if match is daily.SKIP:
+            if not self.scene_is_up():
+                self.spend(time_out)
+                return None
+            self.presses_left -= 1
+            self.skips += 1
             self.spend(time_out)
-            return None
-        self.presses_left -= 1
-        self.skips += 1
+            return Box(1770, 19, 104, 49, name='I Skip')
+        if match is daily.CONFIRM and self.summary_up and not self.scene_is_up():
+            self.confirms += 1
+            self.spend(time_out)
+            # A press that the button swallows is still a press, but the summary stays up behind it.
+            if self.summary_swallows > 0:
+                self.summary_swallows -= 1
+            else:
+                self.summary_up = False
+            return Box(960, 900, 200, 60, name='Confirm')
         self.spend(time_out)
-        return Box(1770, 19, 104, 49, name='I Skip')
+        return None
 
     def wait_pop_up(self, **kwargs):
         return None
@@ -263,6 +279,27 @@ class TestActivityStart(unittest.TestCase):
         screen.finish_activity('Tea Time')
         self.assertEqual(1, screen.skips)
         self.assertNotIn('Tea Time: no scene started, clearing whatever is on screen instead', screen.logged)
+
+    def test_a_swallowed_confirm_is_pressed_again_within_the_pass(self):
+        """The button animates in, so the first press can land on nothing and leave the summary up.
+
+        Driven straight at `confirm_summary`, because the loop around it would eventually press again on its own - the point of pressing inside one pass is
+        that the recovery does not cost a whole extra pass first.
+        """
+        screen = _Activity(scene_at=999, summary_swallows=1)
+        self.assertEqual(2, screen.confirm_summary('Tea Time'), 'a swallowed press left the summary up and was never retried')
+        self.assertFalse(screen.summary_up, 'the summary should be gone once the presser returns')
+
+    def test_a_confirm_that_takes_is_not_pressed_again(self):
+        """Pressing a second time into empty space is how the dish screen starts a battle instead of finishing."""
+        screen = _Activity(scene_at=999)
+        self.assertEqual(1, screen.confirm_summary('Tea Time'))
+
+    def test_the_summary_is_gone_by_the_time_the_activity_finishes(self):
+        """End to end, whichever press clears it."""
+        screen = _Activity(scene_at=0, summary_swallows=1)
+        screen.finish_activity('Tea Time')
+        self.assertFalse(screen.summary_up)
 
     def test_a_scene_that_never_starts_still_clears_the_screen(self):
         """Falling through rather than returning keeps an activity that goes straight to a summary working as before."""
