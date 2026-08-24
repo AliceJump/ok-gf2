@@ -112,6 +112,16 @@ REWARD_PROGRESS = re.compile(r'Reward Progress', re.I)
 BREAKTHROUGH = re.compile(r'Breakthrough', re.I)
 PROCEED = re.compile(r'Proceed', re.I)
 CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
+# The collection screen's own dispatch button, on screen only while at least one of the four slots is
+# still empty. That makes its presence the check for whether there is anything to send out, which beats
+# reading the plus symbol drawn in an empty slot - OCR has no word to give back for that.
+DISPATCH = re.compile(r'Dispatch', re.I)
+
+# Opening the collection screen at the start of a season. The card plays an animation for a few seconds
+# during which the button is drawn but not yet live, so the press lands on nothing and the screen never
+# changes. Arrival is confirmed rather than assumed, and the press repeated while it has not happened.
+CRYSTAL_OPEN_ATTEMPTS = 3
+CRYSTAL_ARRIVAL_TIME_OUT = 6
 
 # Crew Deck. Unlike every other screen this is a walkable 3D area, so its two stations are reached by
 # holding movement keys for a fixed time rather than by clicking anything. Entering always drops the
@@ -536,11 +546,47 @@ class GlobalDailyTask(BaseGlobalTask):
             return self.stop_flow(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.')
         if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3, boxes=card):
             return self.stop_flow('Found no Breakthrough card to open, skipping.', dump='boundary_push_no_breakthrough')
-        if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
-            return self.stop_flow('Nothing to collect in Crystal Collection, skipping.', dump='boundary_push_no_crystal')
+        if not self.open_crystal_collection():
+            return self.stop_flow('Could not open Crystal Collection, skipping.', dump='boundary_push_no_crystal')
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
+        self.dispatch_crystals()
         self.go_home()
+
+    def open_crystal_collection(self):
+        """Open Crystal Collection from the Breakthrough card, pressing again while the press does not take.
+
+        At the start of a season the card plays an animation lasting a few seconds, and the button is drawn throughout it without yet being live, so the
+        press is accepted by nothing and the screen stays where it was. One press is therefore not proof of arrival.
+
+        Arrival is read off Claim All, which the collection screen carries whether or not there is anything to claim, so it says the screen is up without
+        also saying something about what is on it.
+
+        Returns:
+            True once the collection screen is up, False when it was never reached.
+        """
+        for _ in range(CRYSTAL_OPEN_ATTEMPTS):
+            if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
+                return False
+            if self.wait_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=CRYSTAL_ARRIVAL_TIME_OUT):
+                return True
+            self.log_info('the Crystal Collection press did not take, the card is probably still animating in')
+        return False
+
+    def dispatch_crystals(self):
+        """Send dolls out to any empty collection slot.
+
+        The button is only on screen while a slot is empty, so nothing here has to work out how many are, and a run that finds no button has nothing to
+        send rather than a problem. Claiming does not free the slots up again in the same visit, so this normally acts on the visit after a claim.
+
+        Returns:
+            True when dolls were dispatched.
+        """
+        if not self.wait_click_ocr(match=DISPATCH, box=self.box.bottom_right, time_out=3, after_sleep=2):
+            return False
+        self.log_info('dispatched dolls to the empty collection slots')
+        self.wait_pop_up(time_out=5, count=2)
+        return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////

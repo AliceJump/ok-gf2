@@ -309,6 +309,97 @@ class TestActivityStart(unittest.TestCase):
         self.assertTrue(any('no scene started' in message for message in screen.logged))
 
 
+class _Collection:
+    """A stand-in for the daily task, scripted with how many presses the season-start animation eats.
+
+    Borrows the real methods for the same reason `_CardScreen` does. Arrival is modelled as a flag the press flips only once it is no longer being
+    swallowed, which is what the retry has to notice.
+    """
+    open_crystal_collection = GlobalDailyTask.open_crystal_collection
+    dispatch_crystals = GlobalDailyTask.dispatch_crystals
+
+    def __init__(self, animating_presses=0, has_dispatch=False, button_present=True):
+        self.animating_presses = animating_presses
+        self.has_dispatch = has_dispatch
+        self.button_present = button_present
+        self.arrived = False
+        self.presses = 0
+        self.dispatches = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(bottom_right=None)
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.CRYSTAL_COLLECTION:
+            if self.arrived or not self.button_present:
+                return None
+            self.presses += 1
+            # A press landing during the season-start animation is accepted by nothing.
+            if self.animating_presses > 0:
+                self.animating_presses -= 1
+            else:
+                self.arrived = True
+            return Box(1344, 991, 190, 60, name='Crystal Collection')
+        if match is daily.DISPATCH and self.has_dispatch:
+            self.dispatches += 1
+            return Box(1341, 1007, 220, 60, name='One-Click Dispatch')
+        return None
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.CLAIM_ALL and self.arrived:
+            return [Box(1694, 1007, 190, 60, name='Claim All')]
+        return []
+
+    def wait_pop_up(self, **kwargs):
+        return None
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestCrystalCollection(unittest.TestCase):
+    """At the start of a season the Breakthrough card animates for a few seconds with the Crystal Collection button drawn but not yet live.
+
+    A press during that is accepted by nothing and the screen does not change, so the flow used to wait out a Claim All that was never coming and go home
+    having collected nothing, without saying so.
+    """
+
+    def test_it_opens_on_the_first_press_when_nothing_is_animating(self):
+        screen = _Collection()
+        self.assertTrue(screen.open_crystal_collection())
+        self.assertEqual(1, screen.presses)
+
+    def test_a_press_eaten_by_the_animation_is_repeated(self):
+        screen = _Collection(animating_presses=1)
+        self.assertTrue(screen.open_crystal_collection())
+        self.assertEqual(2, screen.presses, 'the swallowed press was never followed by another')
+
+    def test_it_gives_up_rather_than_pressing_forever(self):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        screen = _Collection(animating_presses=99)
+        self.assertFalse(screen.open_crystal_collection())
+        self.assertEqual(daily.CRYSTAL_OPEN_ATTEMPTS, screen.presses)
+
+    def test_a_missing_button_is_not_a_retry(self):
+        """No button at all is a different screen, not a press that needs repeating."""
+        screen = _Collection(button_present=False)
+        self.assertFalse(screen.open_crystal_collection())
+        self.assertEqual(0, screen.presses)
+
+    def test_dispatch_runs_only_when_the_button_is_there(self):
+        """The button is on screen only while a slot is empty, so its absence means there is nothing to send."""
+        self.assertFalse(_Collection().dispatch_crystals())
+        self.assertTrue(_Collection(has_dispatch=True).dispatch_crystals())
+
+    def test_dispatch_is_told_apart_from_the_other_buttons_beside_it(self):
+        """Claim All and Rewards Preview share the bottom of the same screen, and Crystal Collection is the button that got us here."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.DISPATCH.search('One-Click Dispatch'))
+        for other in ('Claim All', 'Rewards Preview', 'Choose Echelon', 'Crystal Collection'):
+            self.assertIsNone(daily.DISPATCH.search(other), f'DISPATCH matches {other!r}')
+
+
 class TestActiveDishes(unittest.TestCase):
     """The dish buff does not stack, so cooking while one is in effect spends ingredients for nothing.
 
