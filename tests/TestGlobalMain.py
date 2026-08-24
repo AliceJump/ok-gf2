@@ -88,6 +88,53 @@ class TestPurchaseSafety(unittest.TestCase):
         for name, px, py in (('background price', 817, 970), ('background Purchase', 875, 1020), ('currency total', 1810, 47)):
             self.assertFalse(inside(px, py), f'{name} is the page behind the dialog and must not be read')
 
+    def test_the_card_grid_covers_every_page_a_free_box_appears_on(self):
+        """Reading only the bottom-right corner claimed nothing at all on any page but Premium Selections.
+
+        Positions are read off real 1920x1080 screenshots of the three pages a free box turns up on. The corner that used to be searched holds the box on
+        the landing page only, so the two Quality Selection tabs went unclaimed without anything being reported.
+        """
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        x, y, to_x, to_y = daily.CARD_GRID
+        x0, y0, x1, y1 = x * 1920, y * 1080, to_x * 1920, to_y * 1080
+
+        def inside(px, py):
+            return x0 <= px <= x1 and y0 <= py <= y1
+
+        for name, px, py in (('Treasured tab Weekly Joy Supply Box', 461, 848),
+                             ('Regular tab Daily Supply Box', 461, 493),
+                             ('Premium Selections Daily Supply Box', 1556, 1026)):
+            self.assertTrue(inside(px, py), f'{name} is a claimable free box and must be read')
+        for name, px, py in (('Quality Selection category', 141, 385), ('Treasured Gift Pack tab', 723, 144)):
+            self.assertFalse(inside(px, py), f'{name} is navigation, not a box, and clicking it is not claiming')
+
+    def test_the_old_corner_missed_the_quality_selection_pages(self):
+        """The regression itself, written down so the reason for the wider region survives."""
+        x0, y0 = 0.5 * 1920, 0.5 * 1080
+        for name, px, py in (('Weekly Joy Supply Box', 461, 848), ('Daily Supply Box in Regular Gift Pack', 461, 493)):
+            self.assertFalse(x0 <= px and y0 <= py, f'{name} was already reachable, so the wider grid would be pointless')
+
+    def test_the_category_and_tabs_are_told_apart(self):
+        """All three are clicked by one distinctive word, so any overlap would navigate somewhere unintended."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        treasured, regular = daily.FREE_BOX_TABS
+        self.assertTrue(treasured.search('Treasured Gift Pack'))
+        self.assertTrue(regular.search('Regular Gift Pack'))
+        self.assertTrue(daily.QUALITY_SELECTION.search('Quality'), 'the label wraps, so the first word alone has to match')
+        for label in ('Treasured Gift Pack', 'Beginner Package', 'Standard Package', 'Quality Selection'):
+            self.assertIsNone(regular.search(label), f'the Regular tab pattern also matches {label!r}')
+        for label in ('Regular Gift Pack', 'Beginner Package', 'Standard Package'):
+            self.assertIsNone(treasured.search(label), f'the Treasured tab pattern also matches {label!r}')
+        for label in ('Premium Selections', 'Outfit Boutique', 'Custom Skin', 'Trading Post'):
+            self.assertIsNone(daily.QUALITY_SELECTION.search(label), f'the category pattern also matches {label!r}')
+
+    def test_free_stays_anchored_to_the_whole_label(self):
+        """The wider grid takes in prices and Locked badges that the old corner never saw."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.FREE.search('Free'))
+        for other in ('$ 4.99', 'Locked', 'Freebie', 'Free Trial'):
+            self.assertIsNone(daily.FREE.search(other), f'FREE matches {other!r}, which is not a claimable box')
+
     def test_cancel_and_purchase_never_match_each_other(self):
         """Closing the popup once it has switched to its paid tab must not be able to buy that pack.
 

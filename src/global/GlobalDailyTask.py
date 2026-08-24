@@ -78,12 +78,26 @@ LOOP_ENDED = re.compile(r'Loop\s*ended', re.I)
 LOOP_TIME_OUT = 600
 LOOP_POLL_INTERVAL = 5
 
-# Shop. The supply boxes sit along the bottom-right of the landing page, each with its price where a
-# button would be - the claimable ones read "Free". Matching on the price rather than on a box name
-# covers the daily and the weekly box without hardcoding either, and a box on cooldown shows a timer
-# instead, so it simply stops matching once claimed.
+# Shop. Each supply box carries its price where a button would be - the claimable ones read "Free".
+# Matching on the price rather than on a box name covers the daily and the weekly box without hardcoding
+# either, and a box on cooldown shows a timer instead, so it simply stops matching once claimed.
 FREE = re.compile(r'^Free$', re.I)
 PURCHASE = re.compile(r'Purchase', re.I)
+
+# Where the shop opens is not fixed: with a free pack waiting the game drops straight into Quality
+# Selection, otherwise it opens on Premium Selections. Rather than depend on that, the category and each
+# tab holding a free box are opened by name. "Quality Selection" wraps onto two lines that OCR splits
+# apart, so it is matched on its first word alone - the same reason `CRYSTAL_COLLECTION` is.
+QUALITY_SELECTION = re.compile(r'Quality', re.I)
+# The two tabs carrying a free box, in the order they are visited: Treasured holds the Weekly Joy Supply
+# Box, Regular the Daily Supply Box. Matched on the one distinctive word, since OCR splits the three-word
+# tab labels unpredictably and neither word appears in another tab or in the category list.
+FREE_BOX_TABS = (re.compile(r'Treasured', re.I), re.compile(r'Regular', re.I))
+
+# The card grid - everything right of the category sidebar and below the tab strip. Which card is the free
+# one moves from tab to tab, so the whole grid is read rather than a measured corner. Reading only the
+# bottom-right corner is what made this claim nothing at all on any page but Premium Selections.
+CARD_GRID = (0.15, 0.18, 1.0, 1.0)
 
 # Any sign of a real-money price. The free box and the paid one are two tabs of a single popup and carry
 # an identical Purchase button, and claiming the free box switches the popup to the paid tab, so the item
@@ -359,16 +373,39 @@ class GlobalDailyTask(BaseGlobalTask):
     # Shop
 
     def shopping(self):
-        """Open the shop and claim every supply box that is currently free."""
+        """Open the shop and claim every supply box that is currently free.
+
+        The category and both tabs are opened by name rather than the shop being read wherever it happened to land. The landing page moves - a waiting free
+        pack redirects into Quality Selection - and the free box sits somewhere different on each, so reading only the page the shop opened on missed both
+        the weekly box and the daily one.
+        """
         self.info_set('current_task', 'shopping')
         self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        claimed = 0
+        if self.click_ocr_word(QUALITY_SELECTION, box=self.box.left, time_out=5, after_sleep=2):
+            for tab in FREE_BOX_TABS:
+                if self.click_ocr_word(tab, box=self.box.top, time_out=5, after_sleep=2):
+                    claimed += self.claim_free_boxes()
+        else:
+            # Without the category this is on a page it does not recognise, and the page is still worth
+            # reading before giving up - it is where the daily box used to be claimed from.
+            self.log_info('No Quality Selection category in the shop, claiming from the landing page instead.')
+            claimed += self.claim_free_boxes()
+        self.log_info(f'claimed {claimed} free supply box(es)')
+        self.go_home()
+
+    def claim_free_boxes(self):
+        """Claim every free box on the page that is open.
+
+        Returns:
+            How many boxes were claimed.
+        """
         claimed = 0
         for _ in range(MAX_FREE_BOXES):
             if not self.claim_free_box():
                 break
             claimed += 1
-        self.log_info(f'claimed {claimed} free supply box(es)')
-        self.go_home()
+        return claimed
 
     def claim_free_box(self):
         """Claim one supply box priced Free, if there is one.
@@ -376,7 +413,7 @@ class GlobalDailyTask(BaseGlobalTask):
         Returns:
             True when a box was claimed, False when none was free or the purchase did not go through.
         """
-        free = self.wait_ocr(match=FREE, box=self.box.bottom_right, time_out=3)
+        free = self.wait_ocr(match=FREE, box=self.box_of_screen(*CARD_GRID), time_out=3)
         if not free:
             return False
         self.click(free[0], after_sleep=1.5)
