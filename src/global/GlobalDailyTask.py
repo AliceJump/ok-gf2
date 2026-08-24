@@ -154,6 +154,12 @@ SUMMARY_CONFIRM_TIME_OUT = 3
 # it, the clearing loop reads the transition before the scene as the activity already being over.
 ACTIVITY_START_TIME_OUT = 15
 
+# Budgets for looks taken at a screen already known to be sitting still. A skip pass that found nothing
+# has just spent its own budget watching that screen, and a scene that is genuinely playing offers Skip
+# straight away, so waiting the full amount again only adds dead time to the end of every activity.
+QUIET_CONFIRM_TIME_OUT = 1
+SCENE_RECHECK_TIME_OUT = 0.5
+
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
 INGREDIENT_SPOTS = ((0.236, 0.283), (0.308, 0.283))
@@ -563,7 +569,7 @@ class GlobalDailyTask(BaseGlobalTask):
         A scene is skipped first if one is still playing. Escape does not exit a scene, so backing out of one means pressing it at a screen that cannot
         answer until the scene ends by itself, which reads in the log as the bot hanging.
         """
-        self.skip_scene('leaving the Crew Deck')
+        self.skip_scene('leaving the Crew Deck', time_out=SCENE_RECHECK_TIME_OUT)
         self.ensure_main(time_out=60)
 
     def enter_crew_deck(self):
@@ -710,7 +716,12 @@ class GlobalDailyTask(BaseGlobalTask):
             self.log_info(f'{label}: no scene started, clearing whatever is on screen instead')
         for _ in range(MAX_ACTIVITY_SCREENS):
             skipped = self.skip_scene(label)
-            confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=SUMMARY_CONFIRM_TIME_OUT, after_sleep=2)
+            # A skip pass that found nothing has already waited out its own budget at a screen that did not
+            # change, so the summary check does not need to be patient as well - a Confirm worth clicking
+            # would have been there throughout. Only a pass that skipped something is followed by a screen
+            # still in motion, and that one keeps the full budget.
+            confirm_time_out = SUMMARY_CONFIRM_TIME_OUT if skipped else QUIET_CONFIRM_TIME_OUT
+            confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=confirm_time_out, after_sleep=2)
             if confirmed:
                 self.log_info(f'{label}: cleared a Confirm')
             if not skipped and not confirmed:
@@ -718,7 +729,7 @@ class GlobalDailyTask(BaseGlobalTask):
         self.wait_pop_up(time_out=10, count=3)
         self.dump_screen(f'crew_deck_{label}_after')
 
-    def skip_scene(self, label):
+    def skip_scene(self, label, time_out=SCENE_SKIP_TIME_OUT):
         """Press Skip until it stops appearing.
 
         One press is not always enough. The dish ends on a line of dialogue, where Skip advances rather than exits, so it takes a press per line. Each look
@@ -726,13 +737,15 @@ class GlobalDailyTask(BaseGlobalTask):
 
         Args:
             label: The station name, for the log.
+            time_out: How long each look waits for Skip. Callers checking a screen that should already be settled pass a shorter one, since a scene that is
+                playing offers Skip straight away and only a scene mid-transition needs waiting for.
 
         Returns:
             How many times Skip was pressed.
         """
         presses = 0
         for _ in range(MAX_SCENE_SKIPS):
-            if not self.wait_click_ocr(match=SKIP, box=self.box.top_right, time_out=SCENE_SKIP_TIME_OUT, after_sleep=2):
+            if not self.wait_click_ocr(match=SKIP, box=self.box.top_right, time_out=time_out, after_sleep=2):
                 break
             presses += 1
         if presses:
