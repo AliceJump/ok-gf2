@@ -390,7 +390,8 @@ class GlobalDailyTask(BaseGlobalTask):
         deliberately not automated here.
         """
         self.info_set('current_task', 'start_loop')
-        self.click_relative(*LOOP_ICON, after_sleep=3)
+        # No sleep: the wait below is for the screen this click opens, so it already covers the loading.
+        self.click_relative(*LOOP_ICON)
         if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('Clicking the Loop icon did not open the Dispatch Room, skipping.')
         if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=SCREEN_SETTLE_TIME_OUT, after_sleep=2):
@@ -416,7 +417,8 @@ class GlobalDailyTask(BaseGlobalTask):
         the weekly box and the daily one.
         """
         self.info_set('current_task', 'shopping')
-        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        # No sleep: the category click below waits for the shop's own rail to appear.
+        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
         claimed = 0
         if self.click_ocr_word(QUALITY_SELECTION, box=self.box.left, time_out=5, after_sleep=2):
             for tab in FREE_BOX_TABS:
@@ -511,7 +513,8 @@ class GlobalDailyTask(BaseGlobalTask):
         Select All is never touched. It comes up already ticked, so clicking it would clear the selection and buy nothing.
         """
         self.info_set('current_task', 'buy_wishlist')
-        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        # No sleep: the Wishlist click below waits for the shop to be up.
+        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
         if not self.click_ocr_word(WISHLIST, box=self.box.bottom_left, time_out=5, after_sleep=2):
             return self.stop_flow('No Wishlist in the shop, skipping.', dump='wishlist_missing')
         flagged = self.flagged_categories()
@@ -590,7 +593,12 @@ class GlobalDailyTask(BaseGlobalTask):
         Every event has the same shape behind a differently-named banner, so nothing here matches the event's own title.
         """
         self.info_set('current_task', 'run_event_supply')
-        self.click_relative(*EVENT_BANNER, after_sleep=3)
+        # None of the clicks through this flow sleep afterwards. Each is followed by a wait for whatever it
+        # is meant to bring up, and those waits return the moment it appears - a fixed sleep in front of one
+        # is time spent whether or not the game needed it. The two clicks that do still sleep are the ones
+        # whose effect no wait covers: the stage list is read outright, and Max only changes a number on a
+        # dialog that is already up.
+        self.click_relative(*EVENT_BANNER)
         if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('No event banner on the home screen, skipping.')
         # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
@@ -603,15 +611,15 @@ class GlobalDailyTask(BaseGlobalTask):
         if not stage:
             return self.stop_flow('Found no Supply stages on the map, skipping.')
         self.log_info(f'running event supply stage {stage.name}')
-        self.click(stage, after_sleep=2)
-        if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5, after_sleep=2):
+        self.click(stage)
+        if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5):
             return self.stop_flow('Found no Auto button on the stage panel, skipping.')
         if not self.wait_ocr(match=AUTO_DIALOG, box=self.box.center, time_out=5):
             return self.stop_flow('The Auto Mode dialog did not open, skipping.')
         # Take the maximum the remaining Expenditure allows. Missing this button costs a smaller run,
         # not a wrong one, so it is not worth failing over.
         self.click_relative(*MAX_BATTLES, after_sleep=1)
-        if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5, after_sleep=3):
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5):
             return self.stop_flow('Could not confirm the auto battles, skipping.')
         # Whole frame rather than a region: the summary title sits at the top and the overlay prompt at
         # the bottom, and either can be the thing on screen when the battles end.

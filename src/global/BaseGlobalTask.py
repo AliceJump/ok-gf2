@@ -524,7 +524,9 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             True when the Regular Commissions tab opened, False when it could not be reached.
         """
-        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
+        # No sleep after the first click: the tab row it opens is what the second click waits for, and that
+        # wait returns as soon as the row is there rather than after a fixed guess at how long it takes.
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, raise_if_not_found=True)
         return bool(self.click_ocr_word(REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
 
     def is_main(self, recheck_time=0.0, esc=True):
