@@ -580,13 +580,29 @@ class TestGoHomePolling(unittest.TestCase):
     def test_it_waits_between_looks_rather_than_spinning(self):
         base = importlib.import_module('src.global.BaseGlobalTask')
         task, looks = self.go_home([])
-        self.assertLessEqual(len(looks), base.HOME_BUTTON_PRESSES * self.per_press(), 'polling faster than the interval wastes OCR on an unchanged screen')
+        self.assertLessEqual(len(looks), self.per_press(), 'polling faster than the interval wastes OCR on an unchanged screen')
         self.assertGreater(len(looks), 1, 'it should look more than once before giving up')
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count)
 
-    def test_it_presses_again_when_the_first_press_is_swallowed(self):
-        """A flow ending on a reward screen leaves an overlay that eats the first press, which used to read as a dead button."""
-        task, _ = self.go_home([False] * self.per_press() + [True])
-        self.assertEqual(2, task.click_relative.call_count)
+    def test_the_button_is_pressed_at_least_twice(self):
+        """Pinned to a number, not just to the constant.
+
+        The other tests here compare what happened against `HOME_BUTTON_PRESSES`, so they agree with themselves whatever it is set to. Dropping it to one
+        would put back the original bug - a swallowed press reading as a dead button - without failing any of them.
+        """
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        self.assertGreaterEqual(base.HOME_BUTTON_PRESSES, 2, 'one press is swallowed by a reward overlay, so a second is what makes this work')
+
+    def test_every_press_goes_in_before_the_screen_is_checked(self):
+        """A flow ending on a reward screen has its first press swallowed dismissing it.
+
+        Checking in between would spend a whole poll window on a screen that cannot have moved, so the presses go in together and the screen is read once
+        afterwards. The spare press costs nothing on the home screen, where the button's spot is empty.
+        """
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        task, looks = self.go_home([True])
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count, 'both presses should fire whether or not the first one took')
+        self.assertEqual(1, len(looks), 'the screen should be read after the presses, not between them')
         task.ensure_main.assert_not_called()
 
     def test_it_falls_back_to_backing_out(self):

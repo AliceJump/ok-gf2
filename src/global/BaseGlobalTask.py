@@ -97,9 +97,11 @@ HOME_BUTTON = (0.076, 0.048)
 HOME_BUTTON_TIME_OUT = 3
 HOME_BUTTON_CHECK_INTERVAL = 1
 
-# How many times to press the home button before giving up on it. A flow that ends on a reward screen
-# leaves an overlay sitting over the page, and the first press is spent dismissing that rather than
-# reaching home, so a single press reads as a dead button on screens where it would have worked.
+# How many times the home button is pressed, every time, before the screen is checked at all. A flow that
+# ends on a reward screen leaves an overlay sitting over the page, and the first press is spent dismissing
+# that rather than reaching home, so a single press reads as a dead button on screens where it would have
+# worked. Unconditional because checking between the presses only spends the check's own window watching a
+# screen that has not moved, and a spare press on the home screen lands on empty space.
 HOME_BUTTON_PRESSES = 2
 
 # Per-look timeout when clearing overlays, and how long a match must hold before it is acted on. Both
@@ -570,9 +572,12 @@ class BaseGlobalTask(BaseGfTask):
     def go_home(self, time_out=30):
         """Return to the home screen, preferring the in-game home button.
 
-        The button gets there from anywhere that has it, instead of unwinding screen by screen with Escape. It is pressed up to `HOME_BUTTON_PRESSES`
-        times, since a leftover reward overlay swallows the first press without the screen changing. Falls back to `ensure_main` when the button is
+        The button gets there from anywhere that has it, instead of unwinding screen by screen with Escape. Falls back to `ensure_main` when the button is
         missing or did not take, so this is never worse than backing out.
+
+        `HOME_BUTTON_PRESSES` presses go in before anything is checked. A flow that ends on a reward screen has its first press swallowed dismissing that,
+        and checking in between only spends the check's own window watching a screen that has not moved. Pressing again on the home screen is harmless -
+        the button's spot is empty there.
 
         Args:
             time_out: Seconds the fallback gets to reach the home screen.
@@ -581,18 +586,18 @@ class BaseGlobalTask(BaseGfTask):
             Exception: The home screen was not reached, raised by the fallback.
         """
         self.info_set('current_task', 'go_home')
-        for press in range(1, HOME_BUTTON_PRESSES + 1):
+        for _ in range(HOME_BUTTON_PRESSES):
             self.click_relative(*HOME_BUTTON, after_sleep=2)
-            # Polled by hand rather than with `wait_until`, which has no gap between checks and would spend
-            # the whole window hammering OCR at a screen that cannot change until the next press.
-            deadline = time.time() + HOME_BUTTON_TIME_OUT
-            while True:
-                if self.is_main(esc=False):
-                    self.log_info(f'home button worked on press {press}')
-                    return
-                if time.time() >= deadline:
-                    break
-                self.sleep(HOME_BUTTON_CHECK_INTERVAL)
+        # Polled by hand rather than with `wait_until`, which has no gap between checks and would spend
+        # the whole window hammering OCR at a screen that cannot change until something is pressed.
+        deadline = time.time() + HOME_BUTTON_TIME_OUT
+        while True:
+            if self.is_main(esc=False):
+                self.log_info('home button worked')
+                return
+            if time.time() >= deadline:
+                break
+            self.sleep(HOME_BUTTON_CHECK_INTERVAL)
         # Not an error - the button is not on every screen, and backing out always works. Logged so a
         # run makes it obvious which route was taken rather than leaving the button's usefulness assumed.
         self.log_info('home button did not reach the home screen, backing out with Escape instead')
