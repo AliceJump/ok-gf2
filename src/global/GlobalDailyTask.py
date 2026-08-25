@@ -173,6 +173,10 @@ DISPATCH = re.compile(r'Dispatch', re.I)
 # changes. Arrival is confirmed rather than assumed, and the press repeated while it has not happened.
 CRYSTAL_OPEN_ATTEMPTS = 3
 CRYSTAL_ARRIVAL_TIME_OUT = 6
+# How long to wait for the button itself once the card has been opened. Covers the card screen loading as
+# well, which is why it is longer than a wait for something on a screen already up - the press that gets
+# here does not sleep afterwards, so this budget is the whole allowance rather than a second helping.
+CRYSTAL_BUTTON_TIME_OUT = 8
 
 # Crew Deck. Unlike every other screen this is a walkable 3D area, so its two stations are reached by
 # holding movement keys for a fixed time rather than by clicking anything. Entering always drops the
@@ -708,7 +712,8 @@ class GlobalDailyTask(BaseGlobalTask):
             self.dump_screen('boundary_push_progress_unreadable')
         elif progress[0] >= progress[1]:
             return self.stop_flow(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.')
-        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3, boxes=card):
+        # No sleep: `open_crystal_collection` waits for the button this opens, and its budget covers the load.
+        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=0, boxes=card):
             return self.stop_flow('Found no Breakthrough card to open, skipping.', dump='boundary_push_no_breakthrough')
         if not self.open_crystal_collection():
             return self.stop_flow('Could not open Crystal Collection, skipping.', dump='boundary_push_no_crystal')
@@ -730,7 +735,7 @@ class GlobalDailyTask(BaseGlobalTask):
             True once the collection screen is up, False when it was never reached.
         """
         for _ in range(CRYSTAL_OPEN_ATTEMPTS):
-            if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=CRYSTAL_BUTTON_TIME_OUT, after_sleep=2):
                 return False
             if self.wait_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=CRYSTAL_ARRIVAL_TIME_OUT):
                 return True
@@ -794,7 +799,9 @@ class GlobalDailyTask(BaseGlobalTask):
         Returns:
             True once the walkable deck is up, False when it was not reached.
         """
-        if not self.wait_click_ocr(match=CREW_DECK, box=self.box.right, time_out=5, after_sleep=3):
+        # No sleep: `is_free_layer` below waits for the movement key hints, which appear only once the deck
+        # has finished loading, so it already covers everything this sleep was covering.
+        if not self.wait_click_ocr(match=CREW_DECK, box=self.box.right, time_out=5):
             self.log_info('No Crew Deck entry on the home screen.')
             return False
         # Confirmed by the movement key hints along the top, which read the same in every language. Waiting

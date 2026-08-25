@@ -17,8 +17,10 @@ REWARDS = re.compile(r'^Rewards$', re.I)
 # it is matched on its first word, and looked for in the bottom left, where the popup's own centred title
 # of the same name cannot be mistaken for it.
 PERIODIC_RETURNS = re.compile(r'Periodic', re.I)
-# How long to let the popup open on its own before going to the button for it.
-PERIODIC_POPUP_TIME_OUT = 5
+# How long to let the popup open on its own before going to the button for it. Covers the Peak Value screen
+# loading too, since the press that gets here does not sleep afterwards - the seconds it used to spend blind
+# are spent watching for the popup instead, which ends as soon as the popup is up rather than always.
+PERIODIC_POPUP_TIME_OUT = 8
 
 # The flows this task performs: (config key, method, settings text). See `GlobalDailyTask.FLOWS`.
 FLOWS = (
@@ -76,7 +78,8 @@ class GlobalWeeklyTask(BaseGlobalTask):
             return self.stop_flow(f'Peak Value rewards are already at {rewards[0]}/{rewards[1]}, nothing to collect.')
         # Extreme Peak sits directly below with an identical Proceed, so the card is named rather than the
         # button clicked by whichever OCR returned first.
-        if not self.click_card_button(PEAK_VALUE, PROCEED, after_sleep=3, boxes=card):
+        # No sleep: `open_periodic_returns` waits for the popup this leads to, and its budget covers the load.
+        if not self.click_card_button(PEAK_VALUE, PROCEED, after_sleep=0, boxes=card):
             return self.stop_flow('Found no Peak Value card to open, skipping.', dump='peak_value_no_card')
         if not self.open_periodic_returns():
             return self.stop_flow('No Periodic Returns rewards to claim.', dump='peak_value_no_returns')
