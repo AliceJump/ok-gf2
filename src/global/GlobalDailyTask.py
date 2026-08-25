@@ -49,6 +49,11 @@ EVENT_BATTLE_TIME_OUT = 900
 # Single source for the toggles, the settings descriptions, and the run order. `VerifyTasks` also reads
 # it, so a flow added here becomes individually runnable without any further wiring.
 FLOWS = (
+    # First, because the food and drink buffs only apply to battles fought after they are picked up, and
+    # every flow that fights comes later - Start Loop waits out the whole in-game Loop, and Run Event
+    # Supply auto-battles as well. Running this last spent the day's buffs on nothing.
+    ('Crew Deck', 'crew_deck',
+     'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
     ('Start Loop', 'start_loop',
      'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.'),
     ('Claim Free Packs', 'shopping',
@@ -59,16 +64,12 @@ FLOWS = (
      'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
     ('Claim Boundary Push Rewards', 'claim_boundary_push',
      'Collects the Breakthrough rewards under Commissions.'),
-    # Last for now because it is unfinished. Once the station dialogs are filled in this belongs ahead
-    # of Start Loop, since the food and drink buffs apply to the battles the Loop then runs.
-    ('Crew Deck', 'crew_deck',
-     'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
 )
 
-# Flows that stay switched off until they are asked for. Crew Deck because it reaches each station but does
-# not yet complete either activity. Buy Wishlist Items because it is the only flow that spends anything, and
-# spending on the first run after an update is not something to decide on someone's behalf.
-FLOWS_OFF_BY_DEFAULT = ('Crew Deck', 'Buy Wishlist Items')
+# Flows that stay switched off until they are asked for. Buy Wishlist Items because it is the only flow
+# that spends anything, and spending on the first run after an update is not something to decide on
+# someone's behalf.
+FLOWS_OFF_BY_DEFAULT = ('Buy Wishlist Items',)
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
@@ -253,6 +254,17 @@ SCREEN_SETTLE_TIME_OUT = 5
 # each attempt costs up to the framework's scene timeout of 10s, so 25 was a four-minute stall.
 CREW_DECK_LOAD_ATTEMPTS = 3
 STATION_PROMPT_TIME_OUT = 4
+
+# The movement key hints along the top of the walkable deck. Seeing them means an activity is well and
+# truly over - the deck is only walkable again once its scenes and summaries have closed themselves - so
+# they are what says an activity has finished, rather than repeatedly failing to find a Skip or a Confirm.
+# Failing to find something costs a whole timeout each time it is asked, and asking four times over on a
+# screen that had already gone back to the deck is what made the end of every activity take nine seconds.
+#
+# The same list and threshold `is_free_layer` uses, since it is the same evidence about the same screen.
+# Read in one shot here rather than through that method, which polls on a timeout of its own.
+DECK_KEY_HINTS = ['Esc', 'P', 'M', 'F1', 'F2', 'F3', 'F4']
+DECK_KEYS_NEEDED = 5
 
 
 class Station(NamedTuple):
@@ -781,6 +793,15 @@ class GlobalDailyTask(BaseGlobalTask):
             # Back to the entrance between stations, so the next walk starts where its timings were measured.
             self.leave_crew_deck()
 
+    def in_walkable_deck(self):
+        """Whether the walkable Crew Deck is on screen, in one look.
+
+        Returns:
+            True when enough of the movement key hints are up to mean the deck is back.
+        """
+        hints = self.find_boxes(self.ocr(box=self.box.top), match=DECK_KEY_HINTS)
+        return len(hints) >= DECK_KEYS_NEEDED
+
     def leave_crew_deck(self):
         """Back out to the home screen with Escape.
 
@@ -788,9 +809,11 @@ class GlobalDailyTask(BaseGlobalTask):
         panel rather than going anywhere. Backing out unwinds these screens reliably, and `is_main` answers the leave-the-deck confirmation on the way.
 
         A scene is skipped first if one is still playing. Escape does not exit a scene, so backing out of one means pressing it at a screen that cannot
-        answer until the scene ends by itself, which reads in the log as the bot hanging.
+        answer until the scene ends by itself, which reads in the log as the bot hanging. Skipped when the deck is already walkable, because a scene and
+        the walkable deck cannot both be on screen.
         """
-        self.skip_scene('leaving the Crew Deck', time_out=SCENE_RECHECK_TIME_OUT)
+        if not self.in_walkable_deck():
+            self.skip_scene('leaving the Crew Deck', time_out=SCENE_RECHECK_TIME_OUT)
         self.ensure_main(time_out=60)
 
     def enter_crew_deck(self):
@@ -922,8 +945,10 @@ class GlobalDailyTask(BaseGlobalTask):
 
         Committing an activity plays one or more scenes, each offering Skip in the top right, and ends on a reward summary behind a Confirm. The drink plays
         one scene and the dish two, and skipping can raise a confirmation of its own, so this alternates between the two buttons until neither is on screen
-        rather than assuming a fixed number of either. The screen is dumped at the end either way, so a run says whether the activity finished rather than
-        leaving it assumed.
+        rather than assuming a fixed number of either.
+
+        The loop ends on the walkable deck coming back, which is positive proof the activity is over and costs one look. Falling out of the bottom instead -
+        finding neither button - is the unexplained ending, and that one is dumped so a run says what was left on screen rather than leaving it assumed.
 
         The dish's closing screen puts `To Battle!` next to Confirm, so the Confirm is matched by name. Clicking either by position would be a coin flip
         between finishing and starting a battle.
@@ -938,6 +963,11 @@ class GlobalDailyTask(BaseGlobalTask):
         if not self.wait_ocr(match=SKIP, box=self.box.top_right, time_out=ACTIVITY_START_TIME_OUT):
             self.log_info(f'{label}: no scene started, clearing whatever is on screen instead')
         for _ in range(MAX_ACTIVITY_SCREENS):
+            # Asked first, and before anything is waited for. Every other ending here has to be established
+            # by failing to find something, which costs that look's whole budget each time it is asked.
+            if self.in_walkable_deck():
+                self.log_info(f'{label}: back in the Crew Deck, so the activity is done')
+                return
             skipped = self.skip_scene(label)
             # A skip pass that found nothing has already waited out its own budget at a screen that did not
             # change, so the summary check does not need to be patient as well - a Confirm worth clicking

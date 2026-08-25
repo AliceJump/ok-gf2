@@ -242,17 +242,32 @@ class _Activity:
     finish_activity = GlobalDailyTask.finish_activity
     skip_scene = GlobalDailyTask.skip_scene
     confirm_summary = GlobalDailyTask.confirm_summary
+    in_walkable_deck = GlobalDailyTask.in_walkable_deck
 
-    def __init__(self, scene_at, presses_to_clear=1, summary_swallows=0):
+    def __init__(self, scene_at, presses_to_clear=1, summary_swallows=0, deck_back_at=None):
         self.scene_at = scene_at
         self.presses_left = presses_to_clear
         self.summary_swallows = summary_swallows
         self.summary_up = True
+        # When the walkable deck comes back. None means it never does, which is what the older scripts
+        # assume - they were written before the deck was what ended the loop.
+        self.deck_back_at = deck_back_at
         self.now = 0.0
         self.skips = 0
         self.confirms = 0
+        self.deck_looks = 0
         self.logged = []
-        self.box = types.SimpleNamespace(top_right=None, bottom=None)
+        self.box = types.SimpleNamespace(top_right=None, bottom=None, top=None)
+
+    def ocr(self, box=None, **kwargs):
+        self.deck_looks += 1
+        if self.deck_back_at is None or self.now < self.deck_back_at:
+            return []
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        return [Box(30 + 100 * i, 83, 40, 30, name=key) for i, key in enumerate(daily.DECK_KEY_HINTS)]
+
+    def find_boxes(self, boxes, match=None, boundary=None):
+        return find_boxes_by_name(boxes, match) if match else boxes
 
     def scene_is_up(self):
         return self.scene_at <= self.now and self.presses_left > 0
@@ -347,6 +362,31 @@ class TestActivityStart(unittest.TestCase):
         screen = _Activity(scene_at=0, summary_swallows=1)
         screen.finish_activity('Tea Time')
         self.assertFalse(screen.summary_up)
+
+    def test_the_deck_coming_back_ends_the_loop_at_once(self):
+        """The walkable deck is positive proof the activity is over.
+
+        Every other ending has to be established by failing to find a button, and each of those failures costs its whole timeout - four of them in a row on
+        a screen that had already gone back to the deck is what made the end of an activity take nine seconds.
+        """
+        screen = _Activity(scene_at=0, deck_back_at=0)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(0, screen.skips, 'nothing should have been waited for once the deck was up')
+        self.assertEqual(0, screen.confirms)
+        self.assertTrue(any('back in the Crew Deck' in message for message in screen.logged))
+
+    def test_the_deck_is_only_checked_once_per_pass(self):
+        """It costs an OCR, so it earns its place by replacing waits rather than adding to them."""
+        screen = _Activity(scene_at=0, deck_back_at=0)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(1, screen.deck_looks)
+
+    def test_an_activity_still_running_is_not_cut_short(self):
+        """The scene has to be skipped and the summary confirmed before the deck comes back."""
+        screen = _Activity(scene_at=0, deck_back_at=99)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(1, screen.skips)
+        self.assertEqual(1, screen.confirms)
 
     def test_a_scene_that_never_starts_still_clears_the_screen(self):
         """Falling through rather than returning keeps an activity that goes straight to a summary working as before."""
@@ -1103,6 +1143,31 @@ class TestWishlistButtons(unittest.TestCase):
         keys = {key for key, _, _ in daily.FLOWS}
         for key in daily.FLOWS_OFF_BY_DEFAULT:
             self.assertIn(key, keys, f'{key!r} is switched off by default but is not a flow')
+
+
+class TestFlowOrder(unittest.TestCase):
+    """`FLOWS` is the run order, so where a flow sits in it is behaviour rather than presentation."""
+
+    def order(self):
+        """Read the flow keys in the order the daily task runs them.
+
+        Returns:
+            The config keys from `FLOWS`, in table order.
+        """
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        return [key for key, _, _ in daily.FLOWS]
+
+    def test_the_crew_deck_runs_before_anything_that_fights(self):
+        """The food and drink buffs only apply to battles fought after they are picked up, so a Crew Deck that runs later spends the day's buffs on nothing."""
+        order = self.order()
+        crew = order.index('Crew Deck')
+        for key in ('Start Loop', 'Run Event Supply'):
+            self.assertLess(crew, order.index(key), f'{key!r} fights, so the Crew Deck buffs have to be collected first')
+
+    def test_the_crew_deck_is_on_out_of_the_box(self):
+        """It was left off while its station dialogs were unfinished. They are filled in now, and the buffs are free, so there is nothing left to opt into."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertNotIn('Crew Deck', daily.FLOWS_OFF_BY_DEFAULT)
 
 
 class _PeakValue:
