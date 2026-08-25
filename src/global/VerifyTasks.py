@@ -125,6 +125,13 @@ class RunShop(_SingleDailyFlow):
     label = 'Claim Free Packs'
 
 
+class RunWishlist(_SingleDailyFlow):
+    """Buys everything waiting in the shop Wishlist. Spends in-game currency, so it acts on its own account rather than only reporting."""
+
+    flow = 'buy_wishlist'
+    label = 'Buy Wishlist Items'
+
+
 class RunEventSupply(_SingleDailyFlow):
     """Auto-battles the last Supply stage of the current event. Spends Expenditure."""
 

@@ -33,6 +33,7 @@ GLOBAL_TASKS = [
     ["src.global.VerifyTasks", "RunBoundaryPush"],
     ["src.global.VerifyTasks", "RunPeakValue"],
     ["src.global.VerifyTasks", "RunCrewDeck"],
+    ["src.global.VerifyTasks", "RunWishlist"],
 ]
 
 region_option = ConfigOption(

@@ -23,6 +23,9 @@ COMMISSIONS = re.compile(r'Commissions', re.I)
 # Expansion Drills, Boss Fight, Peak Value Assessment and Boundary Push.
 REGULAR_COMMISSIONS = re.compile(r'Regular Commissions', re.I)
 SKIP = re.compile(r'Skip', re.I)
+# The button that opens a mode from its card in Regular Commissions. Every card carries one, so it is only
+# ever safe to click through `click_card_button`, which picks the one belonging to a named card.
+PROCEED = re.compile(r'Proceed', re.I)
 # Collects everything a reward screen is holding. Used by both task modules, which had drifted to two
 # patterns - the looser of the two also matched a bare Claim, which is a different button on some screens.
 CLAIM_ALL = re.compile(r'Claim All', re.I)
@@ -93,6 +96,13 @@ HOME_BUTTON = (0.076, 0.048)
 # spends the whole window re-reading a screen that is not going to change until something is pressed.
 HOME_BUTTON_TIME_OUT = 3
 HOME_BUTTON_CHECK_INTERVAL = 1
+
+# How many times the home button is pressed, every time, before the screen is checked at all. A flow that
+# ends on a reward screen leaves an overlay sitting over the page, and the first press is spent dismissing
+# that rather than reaching home, so a single press reads as a dead button on screens where it would have
+# worked. Unconditional because checking between the presses only spends the check's own window watching a
+# screen that has not moved, and a spare press on the home screen lands on empty space.
+HOME_BUTTON_PRESSES = 2
 
 # Per-look timeout when clearing overlays, and how long a match must hold before it is acted on. Both
 # small: overlays appear immediately once the screen they belong to is up, so a longer wait only delays
@@ -514,7 +524,9 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             True when the Regular Commissions tab opened, False when it could not be reached.
         """
-        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, after_sleep=2, raise_if_not_found=True)
+        # No sleep after the first click: the tab row it opens is what the second click waits for, and that
+        # wait returns as soon as the row is there rather than after a fixed guess at how long it takes.
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, raise_if_not_found=True)
         return bool(self.click_ocr_word(REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
 
     def is_main(self, recheck_time=0.0, esc=True):
@@ -562,8 +574,12 @@ class BaseGlobalTask(BaseGfTask):
     def go_home(self, time_out=30):
         """Return to the home screen, preferring the in-game home button.
 
-        One press gets there from anywhere that has the button, instead of unwinding screen by screen with Escape. Falls back to `ensure_main` when the
-        button is missing or did not take, so this is never worse than backing out.
+        The button gets there from anywhere that has it, instead of unwinding screen by screen with Escape. Falls back to `ensure_main` when the button is
+        missing or did not take, so this is never worse than backing out.
+
+        `HOME_BUTTON_PRESSES` presses go in before anything is checked. A flow that ends on a reward screen has its first press swallowed dismissing that,
+        and checking in between only spends the check's own window watching a screen that has not moved. Pressing again on the home screen is harmless -
+        the button's spot is empty there.
 
         Args:
             time_out: Seconds the fallback gets to reach the home screen.
@@ -572,9 +588,10 @@ class BaseGlobalTask(BaseGfTask):
             Exception: The home screen was not reached, raised by the fallback.
         """
         self.info_set('current_task', 'go_home')
-        self.click_relative(*HOME_BUTTON, after_sleep=2)
-        # Polled by hand rather than with `wait_until`, which has no gap between checks and would spend the
-        # whole window hammering OCR at a screen that cannot change until the next press.
+        for _ in range(HOME_BUTTON_PRESSES):
+            self.click_relative(*HOME_BUTTON, after_sleep=2)
+        # Polled by hand rather than with `wait_until`, which has no gap between checks and would spend
+        # the whole window hammering OCR at a screen that cannot change until something is pressed.
         deadline = time.time() + HOME_BUTTON_TIME_OUT
         while True:
             if self.is_main(esc=False):

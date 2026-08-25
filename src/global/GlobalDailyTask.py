@@ -5,7 +5,7 @@ from ok import Box
 
 from src.tasks.BaseGfTask import map_re, parse_time_option
 
-from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, SHOP, SKIP, BaseGlobalTask
+from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, PROCEED, SHOP, SKIP, BaseGlobalTask
 
 # Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
 # running its banner appears directly below this one - not supported, since two at once is rare.
@@ -49,19 +49,27 @@ EVENT_BATTLE_TIME_OUT = 900
 # Single source for the toggles, the settings descriptions, and the run order. `VerifyTasks` also reads
 # it, so a flow added here becomes individually runnable without any further wiring.
 FLOWS = (
+    # First, because the food and drink buffs only apply to battles fought after they are picked up, and
+    # every flow that fights comes later - Start Loop waits out the whole in-game Loop, and Run Event
+    # Supply auto-battles as well. Running this last spent the day's buffs on nothing.
+    ('Crew Deck', 'crew_deck',
+     'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
     ('Start Loop', 'start_loop',
      'Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish.'),
     ('Claim Free Packs', 'shopping',
      'Claims the shop supply boxes that are currently free.'),
+    ('Buy Wishlist Items', 'buy_wishlist',
+     'Buys everything waiting in the shop Wishlist, one in-game shop at a time. Spends in-game currency, never real money, and only on what is already on the Wishlist.'),
     ('Run Event Supply', 'run_event_supply',
      'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
     ('Claim Boundary Push Rewards', 'claim_boundary_push',
      'Collects the Breakthrough rewards under Commissions.'),
-    # Last for now because it is unfinished. Once the station dialogs are filled in this belongs ahead
-    # of Start Loop, since the food and drink buffs apply to the battles the Loop then runs.
-    ('Crew Deck', 'crew_deck',
-     'Visits the Crew Deck stations - Tea Time at the coffee machine, Delicious Cuisine at the kitchen. Walks there on a timer, so the walk settings below may need adjusting.'),
 )
+
+# Flows that stay switched off until they are asked for. Buy Wishlist Items because it is the only flow
+# that spends anything, and spending on the first run after an update is not something to decide on
+# someone's behalf.
+FLOWS_OFF_BY_DEFAULT = ('Buy Wishlist Items',)
 
 # In-game Loop automation. The client runs the dailies itself once this is started, which is why the
 # Global task set is so much smaller than the CN one.
@@ -78,16 +86,61 @@ LOOP_ENDED = re.compile(r'Loop\s*ended', re.I)
 LOOP_TIME_OUT = 600
 LOOP_POLL_INTERVAL = 5
 
-# Shop. The supply boxes sit along the bottom-right of the landing page, each with its price where a
-# button would be - the claimable ones read "Free". Matching on the price rather than on a box name
-# covers the daily and the weekly box without hardcoding either, and a box on cooldown shows a timer
-# instead, so it simply stops matching once claimed.
+# Shop. Each supply box carries its price where a button would be - the claimable ones read "Free".
+# Matching on the price rather than on a box name covers the daily and the weekly box without hardcoding
+# either, and a box on cooldown shows a timer instead, so it simply stops matching once claimed.
 FREE = re.compile(r'^Free$', re.I)
 PURCHASE = re.compile(r'Purchase', re.I)
 
-# Any sign of a real-money price. The paid boxes sit directly beside the free one and carry an identical
-# Purchase button, and the shop moves its own selection on after a claim, so the item that is open is not
-# necessarily the one that was clicked. Nothing is ever bought without checking this first.
+# Where the shop opens is not fixed: with a free pack waiting the game drops straight into Quality
+# Selection, otherwise it opens on Premium Selections. Rather than depend on that, the category and each
+# tab holding a free box are opened by name. "Quality Selection" wraps onto two lines that OCR splits
+# apart, so it is matched on its first word alone - the same reason `CRYSTAL_COLLECTION` is.
+QUALITY_SELECTION = re.compile(r'Quality', re.I)
+# The two tabs carrying a free box, in the order they are visited: Treasured holds the Weekly Joy Supply
+# Box, Regular the Daily Supply Box. Matched on the one distinctive word, since OCR splits the three-word
+# tab labels unpredictably and neither word appears in another tab or in the category list.
+FREE_BOX_TABS = (re.compile(r'Treasured', re.I), re.compile(r'Regular', re.I))
+
+# The card grid - everything right of the category sidebar and below the tab strip. Which card is the free
+# one moves from tab to tab, so the whole grid is read rather than a measured corner. Reading only the
+# bottom-right corner is what made this claim nothing at all on any page but Premium Selections.
+CARD_GRID = (0.15, 0.18, 1.0, 1.0)
+
+# Wishlist, reached from the bottom-left of the shop. It gathers what has been picked out for later across
+# six in-game shops, each its own category in a left rail. Every label there wraps onto two lines that OCR
+# splits apart, so each is matched on its distinctive first word.
+WISHLIST = re.compile(r'Wishlist', re.I)
+WISHLIST_CATEGORIES = (
+    re.compile(r'Furniture', re.I),
+    re.compile(r'Platoon', re.I),
+    re.compile(r'Dispatch', re.I),
+    re.compile(r'Battlelog', re.I),
+    re.compile(r'Neural', re.I),
+    re.compile(r'Growth', re.I),
+)
+
+# A category holding something shows a count in a badge to the right of its name and level with it. Reading
+# the rail once and opening only the categories that carry one costs a single look on a quiet day instead
+# of six. A badge missed by OCR therefore means a purchase missed, never a purchase made by mistake - what
+# is actually bought is decided by `PURCHASE_ALL` being on the category's own page.
+BADGE = re.compile(r'^\d+$')
+# How far apart a badge and its category's name may sit vertically, as a fraction of frame height. Generous
+# because the name wraps onto two lines and OCR returns whichever line it pleases, while the badge sits
+# level with the middle of both.
+BADGE_ROW_TOLERANCE = 0.04
+
+# The two buy buttons. "Purchase All" is only drawn on a category that has something in it, so its presence
+# is the check for whether there is anything to buy here - a spent category shows Sold Out rows and no
+# button at all. Both are matched in the bottom right, which takes in the buttons but not the dialog's
+# "Confirm Purchase(s)" heading over on its left. Deliberately not the existing `PURCHASE`, which is a bare
+# "Purchase" and would match that heading and the dialog's own title just as readily as either button.
+PURCHASE_ALL = re.compile(r'Purchase All', re.I)
+PURCHASE_CONFIRM = re.compile(r'Purchase\(?s\)?', re.I)
+
+# Any sign of a real-money price. The free box and the paid one are two tabs of a single popup and carry
+# an identical Purchase button, and claiming the free box switches the popup to the paid tab, so the item
+# that is open is not necessarily the one that was clicked. Nothing is ever bought without checking this first.
 PRICE = re.compile(r'[$€£¥]|\d+\.\d{2}')
 
 # The purchase dialog's own area. Scoped tightly on purpose: the shop page stays visible around the
@@ -110,8 +163,21 @@ BOUNDARY_PUSH = re.compile(r'Boundary Push', re.I)
 REWARD_PROGRESS = re.compile(r'Reward Progress', re.I)
 
 BREAKTHROUGH = re.compile(r'Breakthrough', re.I)
-PROCEED = re.compile(r'Proceed', re.I)
 CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
+# The collection screen's own dispatch button, on screen only while at least one of the four slots is
+# still empty. That makes its presence the check for whether there is anything to send out, which beats
+# reading the plus symbol drawn in an empty slot - OCR has no word to give back for that.
+DISPATCH = re.compile(r'Dispatch', re.I)
+
+# Opening the collection screen at the start of a season. The card plays an animation for a few seconds
+# during which the button is drawn but not yet live, so the press lands on nothing and the screen never
+# changes. Arrival is confirmed rather than assumed, and the press repeated while it has not happened.
+CRYSTAL_OPEN_ATTEMPTS = 3
+CRYSTAL_ARRIVAL_TIME_OUT = 6
+# How long to wait for the button itself once the card has been opened. Covers the card screen loading as
+# well, which is why it is longer than a wait for something on a screen already up - the press that gets
+# here does not sleep afterwards, so this budget is the whole allowance rather than a second helping.
+CRYSTAL_BUTTON_TIME_OUT = 8
 
 # Crew Deck. Unlike every other screen this is a walkable 3D area, so its two stations are reached by
 # holding movement keys for a fixed time rather than by clicking anything. Entering always drops the
@@ -146,8 +212,25 @@ ACTIVE_DISHES = re.compile(r'at once\s*(\d+)\s*/\s*\d+', re.I)
 # like a button but never goes away.
 MAX_ACTIVITY_SCREENS = 4
 MAX_SCENE_SKIPS = 10
+MAX_SUMMARY_CONFIRMS = 3
 SCENE_SKIP_TIME_OUT = 2
 SUMMARY_CONFIRM_TIME_OUT = 3
+
+# How long to give the first scene to come up after an activity is committed. Generous because it is only
+# ever waited out when something has gone wrong - the normal path returns the moment Skip appears. Without
+# it, the clearing loop reads the transition before the scene as the activity already being over.
+ACTIVITY_START_TIME_OUT = 15
+
+# Budgets for looks taken at a screen already known to be sitting still. A skip pass that found nothing
+# has just spent its own budget watching that screen, and a scene that is genuinely playing offers Skip
+# straight away, so waiting the full amount again only adds dead time to the end of every activity.
+QUIET_CONFIRM_TIME_OUT = 1
+SCENE_RECHECK_TIME_OUT = 0.5
+
+# How long Confirm has to hold still before it is clicked. The button animates in, and a click that lands
+# during that is swallowed - the summary stays up having done nothing. Waiting for the match to settle
+# stops the press being thrown away rather than noticing afterwards that it was.
+CONFIRM_SETTLE = 0.5
 
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
@@ -171,6 +254,17 @@ SCREEN_SETTLE_TIME_OUT = 5
 # each attempt costs up to the framework's scene timeout of 10s, so 25 was a four-minute stall.
 CREW_DECK_LOAD_ATTEMPTS = 3
 STATION_PROMPT_TIME_OUT = 4
+
+# The movement key hints along the top of the walkable deck. Seeing them means an activity is well and
+# truly over - the deck is only walkable again once its scenes and summaries have closed themselves - so
+# they are what says an activity has finished, rather than repeatedly failing to find a Skip or a Confirm.
+# Failing to find something costs a whole timeout each time it is asked, and asking four times over on a
+# screen that had already gone back to the deck is what made the end of every activity take nine seconds.
+#
+# The same list and threshold `is_free_layer` uses, since it is the same evidence about the same screen.
+# Read in one shot here rather than through that method, which polls on a timeout of its own.
+DECK_KEY_HINTS = ['Esc', 'P', 'M', 'F1', 'F2', 'F3', 'F4']
+DECK_KEYS_NEEDED = 5
 
 
 class Station(NamedTuple):
@@ -295,8 +389,7 @@ class GlobalDailyTask(BaseGlobalTask):
         self.config_description.update({key: description for key, _, description in WALK_OPTIONS})
         # Nest the walk timings under their flow, so they only show when the flow is on.
         self.default_config_group.update({'Crew Deck': [key for key, _, _ in WALK_OPTIONS]})
-        # Off by default: the flow reaches each station but does not yet complete either activity.
-        self.default_config['Crew Deck'] = False
+        self.default_config.update({key: False for key in FLOWS_OFF_BY_DEFAULT})
 
     def run(self):
         """Run every enabled daily flow, in the order `FLOWS` lists them."""
@@ -313,7 +406,8 @@ class GlobalDailyTask(BaseGlobalTask):
         deliberately not automated here.
         """
         self.info_set('current_task', 'start_loop')
-        self.click_relative(*LOOP_ICON, after_sleep=3)
+        # No sleep: the wait below is for the screen this click opens, so it already covers the loading.
+        self.click_relative(*LOOP_ICON)
         if not self.wait_ocr(match=LOOP_SCREEN, box=self.box.left, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('Clicking the Loop icon did not open the Dispatch Room, skipping.')
         if not self.wait_click_ocr(match=START_LOOP, box=self.box.bottom_left, time_out=SCREEN_SETTLE_TIME_OUT, after_sleep=2):
@@ -332,16 +426,40 @@ class GlobalDailyTask(BaseGlobalTask):
     # Shop
 
     def shopping(self):
-        """Open the shop and claim every supply box that is currently free."""
+        """Open the shop and claim every supply box that is currently free.
+
+        The category and both tabs are opened by name rather than the shop being read wherever it happened to land. The landing page moves - a waiting free
+        pack redirects into Quality Selection - and the free box sits somewhere different on each, so reading only the page the shop opened on missed both
+        the weekly box and the daily one.
+        """
         self.info_set('current_task', 'shopping')
-        self.click_ocr_word(SHOP, box=self.box.right, after_sleep=2, raise_if_not_found=True)
+        # No sleep: the category click below waits for the shop's own rail to appear.
+        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
+        claimed = 0
+        if self.click_ocr_word(QUALITY_SELECTION, box=self.box.left, time_out=5, after_sleep=2):
+            for tab in FREE_BOX_TABS:
+                if self.click_ocr_word(tab, box=self.box.top, time_out=5, after_sleep=2):
+                    claimed += self.claim_free_boxes()
+        else:
+            # Without the category this is on a page it does not recognise, and the page is still worth
+            # reading before giving up - it is where the daily box used to be claimed from.
+            self.log_info('No Quality Selection category in the shop, claiming from the landing page instead.')
+            claimed += self.claim_free_boxes()
+        self.log_info(f'claimed {claimed} free supply box(es)')
+        self.go_home()
+
+    def claim_free_boxes(self):
+        """Claim every free box on the page that is open.
+
+        Returns:
+            How many boxes were claimed.
+        """
         claimed = 0
         for _ in range(MAX_FREE_BOXES):
             if not self.claim_free_box():
                 break
             claimed += 1
-        self.log_info(f'claimed {claimed} free supply box(es)')
-        self.go_home()
+        return claimed
 
     def claim_free_box(self):
         """Claim one supply box priced Free, if there is one.
@@ -349,7 +467,7 @@ class GlobalDailyTask(BaseGlobalTask):
         Returns:
             True when a box was claimed, False when none was free or the purchase did not go through.
         """
-        free = self.wait_ocr(match=FREE, box=self.box.bottom_right, time_out=3)
+        free = self.wait_ocr(match=FREE, box=self.box_of_screen(*CARD_GRID), time_out=3)
         if not free:
             return False
         self.click(free[0], after_sleep=1.5)
@@ -372,21 +490,20 @@ class GlobalDailyTask(BaseGlobalTask):
             return False
         self.click(purchase[0], after_sleep=1.5)
         self.wait_pop_up(time_out=5, count=2)
-        self.cancel_paid_pack()
+        self.close_pack_dialog()
         return True
 
-    def cancel_paid_pack(self):
-        """Close a paid pack's dialog if dismissing the reward overlay opened one.
+    def close_pack_dialog(self):
+        """Close the supply box popup, which is left showing a priced pack once the free one has been claimed.
 
-        The overlay says to click anywhere, and anywhere includes the packs behind it - the dismissing click lands in the middle of the grid and can open a
-        paid one. Nothing here would ever buy it, since `claim_free_box` requires a dialog that reads Free and shows no price, but leaving it open blocks
-        the way out of the shop.
+        The free box and the paid one are two tabs of the same popup, and claiming the free box switches the popup over to the paid tab by itself. A
+        priced dialog here is the normal end of a successful claim, not a misclick, but leaving it open blocks the way out of the shop.
 
         A price and a Cancel button both have to be present before anything is clicked. The shop page itself carries prices, so a price alone is not a
         dialog, and acting on one would mean pressing things on an ordinary page.
 
         Returns:
-            True when a dialog was cancelled.
+            True when a dialog was closed.
         """
         dialog = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
         priced = self.find_boxes(dialog, match=PRICE)
@@ -394,8 +511,92 @@ class GlobalDailyTask(BaseGlobalTask):
         if not (priced and cancel):
             return False
         # Matched by name, never by position: Purchase sits directly beside Cancel in this dialog.
-        self.log_info(f'the reward overlay opened a paid pack ({priced[0].name}), cancelling it', notify=True)
+        self.log_info(f'closing the supply box popup, left showing the paid tab ({priced[0].name})')
         self.click(cancel[0], after_sleep=1.5)
+        return True
+
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # //////////////////////////////////////////////////////////////////////////////////////////////////
+    # Wishlist
+
+    def buy_wishlist(self):
+        """Buy everything waiting in the shop Wishlist, one in-game shop at a time.
+
+        The only flow that spends anything, so it is off until it is switched on, and it is built to fail towards buying nothing: it opens only categories
+        whose rail badge says they hold something, presses Purchase All only where the game draws one, and reads the confirmation dialog for a real-money
+        price before pressing anything in it.
+
+        Select All is never touched. It comes up already ticked, so clicking it would clear the selection and buy nothing.
+        """
+        self.info_set('current_task', 'buy_wishlist')
+        # No sleep: the Wishlist click below waits for the shop to be up.
+        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
+        if not self.click_ocr_word(WISHLIST, box=self.box.bottom_left, time_out=5, after_sleep=2):
+            return self.stop_flow('No Wishlist in the shop, skipping.', dump='wishlist_missing')
+        flagged = self.flagged_categories()
+        if not flagged:
+            return self.stop_flow('Nothing waiting on the Wishlist.')
+        bought = 0
+        for category in flagged:
+            if not self.click_ocr_word(category, box=self.box.left, time_out=5, after_sleep=2):
+                self.log_info(f'could not open the {category.pattern} category, skipping it')
+                continue
+            if self.purchase_category(category.pattern):
+                bought += 1
+        self.log_info(f'bought from {bought} of {len(flagged)} Wishlist category(ies)', notify=True)
+        self.go_home()
+
+    def flagged_categories(self):
+        """Which Wishlist categories carry a count badge.
+
+        Read off one look at the rail rather than by opening each category in turn. The badge sits to the right of its category's name and level with it, so
+        it is paired by position the same way `read_counter_under` pairs a counter with its heading.
+
+        Returns:
+            The patterns of the categories holding something, in rail order.
+        """
+        rail = self.ocr(box=self.box.left, log=True)
+        badges = [box for box in rail if BADGE.match(box.name.strip())]
+        tolerance = self.height * BADGE_ROW_TOLERANCE
+        flagged = []
+        for category in WISHLIST_CATEGORIES:
+            found = self.find_boxes(rail, match=category)
+            if not found:
+                continue
+            name = found[0]
+            middle = name.y + name.height / 2
+            if any(badge.x > name.x and abs(badge.y + badge.height / 2 - middle) <= tolerance for badge in badges):
+                flagged.append(category)
+        self.log_info(f'Wishlist categories holding something: {[category.pattern for category in flagged] or "none"}')
+        return flagged
+
+    def purchase_category(self, label):
+        """Buy everything selected in the category that is open.
+
+        Args:
+            label: The category's name, for the log.
+
+        Returns:
+            True when a purchase went through.
+        """
+        # A category with nothing left shows Sold Out rows and no button at all, so this is the check for
+        # whether there is anything here rather than a step that is expected to succeed.
+        if not self.wait_click_ocr(match=PURCHASE_ALL, box=self.box.bottom_right, time_out=3, after_sleep=2):
+            return False
+        # Everything on the Wishlist trades in an in-game currency, so a real-money price here means this is
+        # not the dialog it looks like. Checked before anything in it is pressed, the same way a free supply
+        # box is checked before its Purchase.
+        dialog = self.ocr(box=self.box_of_screen(*DIALOG_BAND), log=True)
+        if priced := self.find_boxes(dialog, match=PRICE):
+            self.log_info(f'{label}: the confirmation shows a real-money price ({priced[0].name}), backing out without buying', notify=True)
+            self.back(after_sleep=1)
+            return False
+        if not self.wait_click_ocr(match=PURCHASE_CONFIRM, box=self.box.bottom_right, time_out=5, after_sleep=2):
+            self.log_info(f'{label}: no confirm button on the Purchase Details dialog, backing out.', notify=True)
+            self.back(after_sleep=1)
+            return False
+        self.log_info(f'{label}: bought what was on the Wishlist')
+        self.wait_pop_up(time_out=5, count=2)
         return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -408,7 +609,12 @@ class GlobalDailyTask(BaseGlobalTask):
         Every event has the same shape behind a differently-named banner, so nothing here matches the event's own title.
         """
         self.info_set('current_task', 'run_event_supply')
-        self.click_relative(*EVENT_BANNER, after_sleep=3)
+        # None of the clicks through this flow sleep afterwards. Each is followed by a wait for whatever it
+        # is meant to bring up, and those waits return the moment it appears - a fixed sleep in front of one
+        # is time spent whether or not the game needed it. The two clicks that do still sleep are the ones
+        # whose effect no wait covers: the stage list is read outright, and Max only changes a number on a
+        # dialog that is already up.
+        self.click_relative(*EVENT_BANNER)
         if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
             return self.stop_flow('No event banner on the home screen, skipping.')
         # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
@@ -421,15 +627,15 @@ class GlobalDailyTask(BaseGlobalTask):
         if not stage:
             return self.stop_flow('Found no Supply stages on the map, skipping.')
         self.log_info(f'running event supply stage {stage.name}')
-        self.click(stage, after_sleep=2)
-        if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5, after_sleep=2):
+        self.click(stage)
+        if not self.wait_click_ocr(match=AUTO, box=self.box.bottom_right, time_out=5):
             return self.stop_flow('Found no Auto button on the stage panel, skipping.')
         if not self.wait_ocr(match=AUTO_DIALOG, box=self.box.center, time_out=5):
             return self.stop_flow('The Auto Mode dialog did not open, skipping.')
         # Take the maximum the remaining Expenditure allows. Missing this button costs a smaller run,
         # not a wrong one, so it is not worth failing over.
         self.click_relative(*MAX_BATTLES, after_sleep=1)
-        if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5, after_sleep=3):
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.center, time_out=5):
             return self.stop_flow('Could not confirm the auto battles, skipping.')
         # Whole frame rather than a region: the summary title sits at the top and the overlay prompt at
         # the bottom, and either can be the thing on screen when the battles end.
@@ -518,13 +724,50 @@ class GlobalDailyTask(BaseGlobalTask):
             self.dump_screen('boundary_push_progress_unreadable')
         elif progress[0] >= progress[1]:
             return self.stop_flow(f'Breakthrough rewards are already at {progress[0]}/{progress[1]}, nothing to collect.')
-        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=3, boxes=card):
+        # No sleep: `open_crystal_collection` waits for the button this opens, and its budget covers the load.
+        if not self.click_card_button(BREAKTHROUGH, PROCEED, after_sleep=0, boxes=card):
             return self.stop_flow('Found no Breakthrough card to open, skipping.', dump='boundary_push_no_breakthrough')
-        if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=5, after_sleep=2):
-            return self.stop_flow('Nothing to collect in Crystal Collection, skipping.', dump='boundary_push_no_crystal')
+        if not self.open_crystal_collection():
+            return self.stop_flow('Could not open Crystal Collection, skipping.', dump='boundary_push_no_crystal')
         if self.wait_click_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=5, after_sleep=2):
             self.wait_pop_up(time_out=5, count=2)
+        self.dispatch_crystals()
         self.go_home()
+
+    def open_crystal_collection(self):
+        """Open Crystal Collection from the Breakthrough card, pressing again while the press does not take.
+
+        At the start of a season the card plays an animation lasting a few seconds, and the button is drawn throughout it without yet being live, so the
+        press is accepted by nothing and the screen stays where it was. One press is therefore not proof of arrival.
+
+        Arrival is read off Claim All, which the collection screen carries whether or not there is anything to claim, so it says the screen is up without
+        also saying something about what is on it.
+
+        Returns:
+            True once the collection screen is up, False when it was never reached.
+        """
+        for _ in range(CRYSTAL_OPEN_ATTEMPTS):
+            if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=CRYSTAL_BUTTON_TIME_OUT, after_sleep=2):
+                return False
+            if self.wait_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=CRYSTAL_ARRIVAL_TIME_OUT):
+                return True
+            self.log_info('the Crystal Collection press did not take, the card is probably still animating in')
+        return False
+
+    def dispatch_crystals(self):
+        """Send dolls out to any empty collection slot.
+
+        The button is only on screen while a slot is empty, so nothing here has to work out how many are, and a run that finds no button has nothing to
+        send rather than a problem. Claiming does not free the slots up again in the same visit, so this normally acts on the visit after a claim.
+
+        Returns:
+            True when dolls were dispatched.
+        """
+        if not self.wait_click_ocr(match=DISPATCH, box=self.box.bottom_right, time_out=3, after_sleep=2):
+            return False
+        self.log_info('dispatched dolls to the empty collection slots')
+        self.wait_pop_up(time_out=5, count=2)
+        return True
 
     # //////////////////////////////////////////////////////////////////////////////////////////////////
     # //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -550,12 +793,27 @@ class GlobalDailyTask(BaseGlobalTask):
             # Back to the entrance between stations, so the next walk starts where its timings were measured.
             self.leave_crew_deck()
 
+    def in_walkable_deck(self):
+        """Whether the walkable Crew Deck is on screen, in one look.
+
+        Returns:
+            True when enough of the movement key hints are up to mean the deck is back.
+        """
+        hints = self.find_boxes(self.ocr(box=self.box.top), match=DECK_KEY_HINTS)
+        return len(hints) >= DECK_KEYS_NEEDED
+
     def leave_crew_deck(self):
         """Back out to the home screen with Escape.
 
         Deliberately not `go_home`. The station screens have no home button - the spot it clicks holds an info button instead, so pressing it there opens a
         panel rather than going anywhere. Backing out unwinds these screens reliably, and `is_main` answers the leave-the-deck confirmation on the way.
+
+        A scene is skipped first if one is still playing. Escape does not exit a scene, so backing out of one means pressing it at a screen that cannot
+        answer until the scene ends by itself, which reads in the log as the bot hanging. Skipped when the deck is already walkable, because a scene and
+        the walkable deck cannot both be on screen.
         """
+        if not self.in_walkable_deck():
+            self.skip_scene('leaving the Crew Deck', time_out=SCENE_RECHECK_TIME_OUT)
         self.ensure_main(time_out=60)
 
     def enter_crew_deck(self):
@@ -564,7 +822,9 @@ class GlobalDailyTask(BaseGlobalTask):
         Returns:
             True once the walkable deck is up, False when it was not reached.
         """
-        if not self.wait_click_ocr(match=CREW_DECK, box=self.box.right, time_out=5, after_sleep=3):
+        # No sleep: `is_free_layer` below waits for the movement key hints, which appear only once the deck
+        # has finished loading, so it already covers everything this sleep was covering.
+        if not self.wait_click_ocr(match=CREW_DECK, box=self.box.right, time_out=5):
             self.log_info('No Crew Deck entry on the home screen.')
             return False
         # Confirmed by the movement key hints along the top, which read the same in every language. Waiting
@@ -645,7 +905,7 @@ class GlobalDailyTask(BaseGlobalTask):
         # Make raises a Caution dialog - "Do you wish to make X? N time(s) remaining today" - with Cancel
         # sitting beside Confirm. Matched by name rather than clicked by position, so the wrong one of the
         # two can never be hit. Nothing is made until this lands.
-        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, after_sleep=2):
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, settle_time=CONFIRM_SETTLE, after_sleep=2):
             self.log_info('Tea Time: the Make confirmation never appeared, so no drink was made.', notify=True)
             self.dump_screen('crew_deck_Tea_Time_no_confirm')
             return False
@@ -685,8 +945,10 @@ class GlobalDailyTask(BaseGlobalTask):
 
         Committing an activity plays one or more scenes, each offering Skip in the top right, and ends on a reward summary behind a Confirm. The drink plays
         one scene and the dish two, and skipping can raise a confirmation of its own, so this alternates between the two buttons until neither is on screen
-        rather than assuming a fixed number of either. The screen is dumped at the end either way, so a run says whether the activity finished rather than
-        leaving it assumed.
+        rather than assuming a fixed number of either.
+
+        The loop ends on the walkable deck coming back, which is positive proof the activity is over and costs one look. Falling out of the bottom instead -
+        finding neither button - is the unexplained ending, and that one is dumped so a run says what was left on screen rather than leaving it assumed.
 
         The dish's closing screen puts `To Battle!` next to Confirm, so the Confirm is matched by name. Clicking either by position would be a coin flip
         between finishing and starting a battle.
@@ -694,17 +956,31 @@ class GlobalDailyTask(BaseGlobalTask):
         Args:
             label: The station name, for the log and the screenshot filename.
         """
+        # The scene does not start the instant the activity is committed - the game plays a transition
+        # first, and a loop that looks during it finds nothing and concludes the activity is already over.
+        # Waited on Skip alone rather than on Skip or Confirm, because the Caution dialog's own Confirm can
+        # still be fading when this is reached and would satisfy the wait without the scene having started.
+        if not self.wait_ocr(match=SKIP, box=self.box.top_right, time_out=ACTIVITY_START_TIME_OUT):
+            self.log_info(f'{label}: no scene started, clearing whatever is on screen instead')
         for _ in range(MAX_ACTIVITY_SCREENS):
+            # Asked first, and before anything is waited for. Every other ending here has to be established
+            # by failing to find something, which costs that look's whole budget each time it is asked.
+            if self.in_walkable_deck():
+                self.log_info(f'{label}: back in the Crew Deck, so the activity is done')
+                return
             skipped = self.skip_scene(label)
-            confirmed = self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=SUMMARY_CONFIRM_TIME_OUT, after_sleep=2)
-            if confirmed:
-                self.log_info(f'{label}: cleared a Confirm')
+            # A skip pass that found nothing has already waited out its own budget at a screen that did not
+            # change, so the summary check does not need to be patient as well - a Confirm worth clicking
+            # would have been there throughout. Only a pass that skipped something is followed by a screen
+            # still in motion, and that one keeps the full budget.
+            confirm_time_out = SUMMARY_CONFIRM_TIME_OUT if skipped else QUIET_CONFIRM_TIME_OUT
+            confirmed = self.confirm_summary(label, time_out=confirm_time_out)
             if not skipped and not confirmed:
                 break
         self.wait_pop_up(time_out=10, count=3)
         self.dump_screen(f'crew_deck_{label}_after')
 
-    def skip_scene(self, label):
+    def skip_scene(self, label, time_out=SCENE_SKIP_TIME_OUT):
         """Press Skip until it stops appearing.
 
         One press is not always enough. The dish ends on a line of dialogue, where Skip advances rather than exits, so it takes a press per line. Each look
@@ -712,15 +988,44 @@ class GlobalDailyTask(BaseGlobalTask):
 
         Args:
             label: The station name, for the log.
+            time_out: How long each look waits for Skip. Callers checking a screen that should already be settled pass a shorter one, since a scene that is
+                playing offers Skip straight away and only a scene mid-transition needs waiting for.
 
         Returns:
             How many times Skip was pressed.
         """
         presses = 0
         for _ in range(MAX_SCENE_SKIPS):
-            if not self.wait_click_ocr(match=SKIP, box=self.box.top_right, time_out=SCENE_SKIP_TIME_OUT, after_sleep=2):
+            if not self.wait_click_ocr(match=SKIP, box=self.box.top_right, time_out=time_out, after_sleep=2):
                 break
             presses += 1
         if presses:
             self.log_info(f'{label}: pressed Skip {presses} time(s)')
+        return presses
+
+    def confirm_summary(self, label, time_out=SUMMARY_CONFIRM_TIME_OUT):
+        """Press Confirm until it stops appearing.
+
+        One press is not proof it took. The button animates in, and a click landing before it has settled is swallowed, leaving the summary up with nothing
+        having happened. Pressing until the button is gone covers that without the loop above having to spend a whole extra pass discovering it.
+
+        Re-read and matched by name every time rather than simply clicked twice. The dish's closing screen puts `To Battle!` beside Confirm, so a second
+        click at the same spot once the summary has closed would be a coin flip between doing nothing and starting a battle.
+
+        Args:
+            label: The station name, for the log.
+            time_out: How long the first look waits for Confirm. Later looks are always brief, since by then the screen has been clicked and waited on and
+                a button still there is there to stay.
+
+        Returns:
+            How many times Confirm was pressed.
+        """
+        presses = 0
+        for _ in range(MAX_SUMMARY_CONFIRMS):
+            if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=time_out, settle_time=CONFIRM_SETTLE, after_sleep=2):
+                break
+            presses += 1
+            time_out = QUIET_CONFIRM_TIME_OUT
+        if presses:
+            self.log_info(f'{label}: pressed Confirm {presses} time(s)')
         return presses

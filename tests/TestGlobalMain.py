@@ -88,10 +88,57 @@ class TestPurchaseSafety(unittest.TestCase):
         for name, px, py in (('background price', 817, 970), ('background Purchase', 875, 1020), ('currency total', 1810, 47)):
             self.assertFalse(inside(px, py), f'{name} is the page behind the dialog and must not be read')
 
-    def test_cancel_and_purchase_never_match_each_other(self):
-        """Cancelling an accidentally-opened paid pack must not be able to buy it.
+    def test_the_card_grid_covers_every_page_a_free_box_appears_on(self):
+        """Reading only the bottom-right corner claimed nothing at all on any page but Premium Selections.
 
-        The two buttons sit side by side in the same dialog, so a pattern that matched both would turn the safety into the accident.
+        Positions are read off real 1920x1080 screenshots of the three pages a free box turns up on. The corner that used to be searched holds the box on
+        the landing page only, so the two Quality Selection tabs went unclaimed without anything being reported.
+        """
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        x, y, to_x, to_y = daily.CARD_GRID
+        x0, y0, x1, y1 = x * 1920, y * 1080, to_x * 1920, to_y * 1080
+
+        def inside(px, py):
+            return x0 <= px <= x1 and y0 <= py <= y1
+
+        for name, px, py in (('Treasured tab Weekly Joy Supply Box', 461, 848),
+                             ('Regular tab Daily Supply Box', 461, 493),
+                             ('Premium Selections Daily Supply Box', 1556, 1026)):
+            self.assertTrue(inside(px, py), f'{name} is a claimable free box and must be read')
+        for name, px, py in (('Quality Selection category', 141, 385), ('Treasured Gift Pack tab', 723, 144)):
+            self.assertFalse(inside(px, py), f'{name} is navigation, not a box, and clicking it is not claiming')
+
+    def test_the_old_corner_missed_the_quality_selection_pages(self):
+        """The regression itself, written down so the reason for the wider region survives."""
+        x0, y0 = 0.5 * 1920, 0.5 * 1080
+        for name, px, py in (('Weekly Joy Supply Box', 461, 848), ('Daily Supply Box in Regular Gift Pack', 461, 493)):
+            self.assertFalse(x0 <= px and y0 <= py, f'{name} was already reachable, so the wider grid would be pointless')
+
+    def test_the_category_and_tabs_are_told_apart(self):
+        """All three are clicked by one distinctive word, so any overlap would navigate somewhere unintended."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        treasured, regular = daily.FREE_BOX_TABS
+        self.assertTrue(treasured.search('Treasured Gift Pack'))
+        self.assertTrue(regular.search('Regular Gift Pack'))
+        self.assertTrue(daily.QUALITY_SELECTION.search('Quality'), 'the label wraps, so the first word alone has to match')
+        for label in ('Treasured Gift Pack', 'Beginner Package', 'Standard Package', 'Quality Selection'):
+            self.assertIsNone(regular.search(label), f'the Regular tab pattern also matches {label!r}')
+        for label in ('Regular Gift Pack', 'Beginner Package', 'Standard Package'):
+            self.assertIsNone(treasured.search(label), f'the Treasured tab pattern also matches {label!r}')
+        for label in ('Premium Selections', 'Outfit Boutique', 'Custom Skin', 'Trading Post'):
+            self.assertIsNone(daily.QUALITY_SELECTION.search(label), f'the category pattern also matches {label!r}')
+
+    def test_free_stays_anchored_to_the_whole_label(self):
+        """The wider grid takes in prices and Locked badges that the old corner never saw."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.FREE.search('Free'))
+        for other in ('$ 4.99', 'Locked', 'Freebie', 'Free Trial'):
+            self.assertIsNone(daily.FREE.search(other), f'FREE matches {other!r}, which is not a claimable box')
+
+    def test_cancel_and_purchase_never_match_each_other(self):
+        """Closing the popup once it has switched to its paid tab must not be able to buy that pack.
+
+        The two buttons sit side by side in the same dialog, so a pattern that matched both would turn the safety into a purchase.
         """
         base = importlib.import_module('src.global.BaseGlobalTask')
         daily = importlib.import_module('src.global.GlobalDailyTask')
@@ -182,6 +229,262 @@ class TestCardButtonSelection(unittest.TestCase):
         screen = _CardScreen([Box(1600, 360, 250, 50, name='Proceed')])
         self.assertIsNone(screen.click_card_button(daily.BREAKTHROUGH, daily.PROCEED))
         self.assertEqual([], screen.clicked)
+
+
+class _Activity:
+    """A stand-in for the daily task, scripted with when the scene appears rather than with what each look returns.
+
+    Borrows the real `finish_activity` and `skip_scene` for the same reason `_CardScreen` borrows its method - the harness is a process-wide singleton and
+    nothing here needs a live executor. The looks are answered off a virtual clock so that a wait with a long budget can outlast the transition while the
+    clearing loop's short looks cannot, which is the whole difference being tested.
+    """
+
+    finish_activity = GlobalDailyTask.finish_activity
+    skip_scene = GlobalDailyTask.skip_scene
+    confirm_summary = GlobalDailyTask.confirm_summary
+    in_walkable_deck = GlobalDailyTask.in_walkable_deck
+
+    def __init__(self, scene_at, presses_to_clear=1, summary_swallows=0, deck_back_at=None):
+        self.scene_at = scene_at
+        self.presses_left = presses_to_clear
+        self.summary_swallows = summary_swallows
+        self.summary_up = True
+        # When the walkable deck comes back. None means it never does, which is what the older scripts
+        # assume - they were written before the deck was what ended the loop.
+        self.deck_back_at = deck_back_at
+        self.now = 0.0
+        self.skips = 0
+        self.confirms = 0
+        self.deck_looks = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(top_right=None, bottom=None, top=None)
+
+    def ocr(self, box=None, **kwargs):
+        self.deck_looks += 1
+        if self.deck_back_at is None or self.now < self.deck_back_at:
+            return []
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        return [Box(30 + 100 * i, 83, 40, 30, name=key) for i, key in enumerate(daily.DECK_KEY_HINTS)]
+
+    def find_boxes(self, boxes, match=None, boundary=None):
+        return find_boxes_by_name(boxes, match) if match else boxes
+
+    def scene_is_up(self):
+        return self.scene_at <= self.now and self.presses_left > 0
+
+    def spend(self, time_out):
+        """Run the clock forward the way a look that found nothing does."""
+        self.now += time_out
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        if self.scene_at <= self.now + time_out and self.presses_left > 0:
+            self.now = max(self.now, self.scene_at)
+            return [Box(1770, 19, 104, 49, name='I Skip')]
+        self.spend(time_out)
+        return []
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.SKIP:
+            if not self.scene_is_up():
+                self.spend(time_out)
+                return None
+            self.presses_left -= 1
+            self.skips += 1
+            self.spend(time_out)
+            return Box(1770, 19, 104, 49, name='I Skip')
+        if match is daily.CONFIRM and self.summary_up and not self.scene_is_up():
+            self.confirms += 1
+            self.spend(time_out)
+            # A press that the button swallows is still a press, but the summary stays up behind it.
+            if self.summary_swallows > 0:
+                self.summary_swallows -= 1
+            else:
+                self.summary_up = False
+            return Box(960, 900, 200, 60, name='Confirm')
+        self.spend(time_out)
+        return None
+
+    def wait_pop_up(self, **kwargs):
+        return None
+
+    def dump_screen(self, name):
+        pass
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestActivityStart(unittest.TestCase):
+    """An activity is committed before its scene appears, and the clearing loop used to read that gap as the activity being over.
+
+    A Tea Time run gave up about five seconds after Make was confirmed, then spent 26 seconds pressing Escape at a scene that ignores it. The dump taken on
+    the way out listed the scene's own `I Skip` button, so it was on screen the whole time - nothing was looking for it any more.
+    """
+
+    def test_it_waits_out_the_transition_before_the_scene(self):
+        """Six seconds outlasts the clearing loop's own looks, so only the start wait can bridge it."""
+        screen = _Activity(scene_at=6)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(1, screen.skips, 'gave up during the transition and never skipped the scene')
+
+    def test_the_transition_it_bridges_is_longer_than_the_loop_alone_would_survive(self):
+        """Without the start wait the loop quits after one empty skip look plus one empty confirm look."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        loop_alone = daily.SCENE_SKIP_TIME_OUT + daily.SUMMARY_CONFIRM_TIME_OUT
+        self.assertGreater(6, loop_alone, 'the scripted transition must be one the loop could not have survived on its own')
+        self.assertGreaterEqual(daily.ACTIVITY_START_TIME_OUT, 6, 'the start wait must be long enough to cover it')
+
+    def test_a_scene_already_up_is_not_waited_on(self):
+        """The normal path costs nothing - the wait returns on the first look and the clock does not move."""
+        screen = _Activity(scene_at=0)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(1, screen.skips)
+        self.assertNotIn('Tea Time: no scene started, clearing whatever is on screen instead', screen.logged)
+
+    def test_a_swallowed_confirm_is_pressed_again_within_the_pass(self):
+        """The button animates in, so the first press can land on nothing and leave the summary up.
+
+        Driven straight at `confirm_summary`, because the loop around it would eventually press again on its own - the point of pressing inside one pass is
+        that the recovery does not cost a whole extra pass first.
+        """
+        screen = _Activity(scene_at=999, summary_swallows=1)
+        self.assertEqual(2, screen.confirm_summary('Tea Time'), 'a swallowed press left the summary up and was never retried')
+        self.assertFalse(screen.summary_up, 'the summary should be gone once the presser returns')
+
+    def test_a_confirm_that_takes_is_not_pressed_again(self):
+        """Pressing a second time into empty space is how the dish screen starts a battle instead of finishing."""
+        screen = _Activity(scene_at=999)
+        self.assertEqual(1, screen.confirm_summary('Tea Time'))
+
+    def test_the_summary_is_gone_by_the_time_the_activity_finishes(self):
+        """End to end, whichever press clears it."""
+        screen = _Activity(scene_at=0, summary_swallows=1)
+        screen.finish_activity('Tea Time')
+        self.assertFalse(screen.summary_up)
+
+    def test_the_deck_coming_back_ends_the_loop_at_once(self):
+        """The walkable deck is positive proof the activity is over.
+
+        Every other ending has to be established by failing to find a button, and each of those failures costs its whole timeout - four of them in a row on
+        a screen that had already gone back to the deck is what made the end of an activity take nine seconds.
+        """
+        screen = _Activity(scene_at=0, deck_back_at=0)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(0, screen.skips, 'nothing should have been waited for once the deck was up')
+        self.assertEqual(0, screen.confirms)
+        self.assertTrue(any('back in the Crew Deck' in message for message in screen.logged))
+
+    def test_the_deck_is_only_checked_once_per_pass(self):
+        """It costs an OCR, so it earns its place by replacing waits rather than adding to them."""
+        screen = _Activity(scene_at=0, deck_back_at=0)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(1, screen.deck_looks)
+
+    def test_an_activity_still_running_is_not_cut_short(self):
+        """The scene has to be skipped and the summary confirmed before the deck comes back."""
+        screen = _Activity(scene_at=0, deck_back_at=99)
+        screen.finish_activity('Delicious Cuisine')
+        self.assertEqual(1, screen.skips)
+        self.assertEqual(1, screen.confirms)
+
+    def test_a_scene_that_never_starts_still_clears_the_screen(self):
+        """Falling through rather than returning keeps an activity that goes straight to a summary working as before."""
+        screen = _Activity(scene_at=999)
+        screen.finish_activity('Tea Time')
+        self.assertEqual(0, screen.skips)
+        self.assertTrue(any('no scene started' in message for message in screen.logged))
+
+
+class _Collection:
+    """A stand-in for the daily task, scripted with how many presses the season-start animation eats.
+
+    Borrows the real methods for the same reason `_CardScreen` does. Arrival is modelled as a flag the press flips only once it is no longer being
+    swallowed, which is what the retry has to notice.
+    """
+    open_crystal_collection = GlobalDailyTask.open_crystal_collection
+    dispatch_crystals = GlobalDailyTask.dispatch_crystals
+
+    def __init__(self, animating_presses=0, has_dispatch=False, button_present=True):
+        self.animating_presses = animating_presses
+        self.has_dispatch = has_dispatch
+        self.button_present = button_present
+        self.arrived = False
+        self.presses = 0
+        self.dispatches = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(bottom_right=None)
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.CRYSTAL_COLLECTION:
+            if self.arrived or not self.button_present:
+                return None
+            self.presses += 1
+            # A press landing during the season-start animation is accepted by nothing.
+            if self.animating_presses > 0:
+                self.animating_presses -= 1
+            else:
+                self.arrived = True
+            return Box(1344, 991, 190, 60, name='Crystal Collection')
+        if match is daily.DISPATCH and self.has_dispatch:
+            self.dispatches += 1
+            return Box(1341, 1007, 220, 60, name='One-Click Dispatch')
+        return None
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.CLAIM_ALL and self.arrived:
+            return [Box(1694, 1007, 190, 60, name='Claim All')]
+        return []
+
+    def wait_pop_up(self, **kwargs):
+        return None
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestCrystalCollection(unittest.TestCase):
+    """At the start of a season the Breakthrough card animates for a few seconds with the Crystal Collection button drawn but not yet live.
+
+    A press during that is accepted by nothing and the screen does not change, so the flow used to wait out a Claim All that was never coming and go home
+    having collected nothing, without saying so.
+    """
+
+    def test_it_opens_on_the_first_press_when_nothing_is_animating(self):
+        screen = _Collection()
+        self.assertTrue(screen.open_crystal_collection())
+        self.assertEqual(1, screen.presses)
+
+    def test_a_press_eaten_by_the_animation_is_repeated(self):
+        screen = _Collection(animating_presses=1)
+        self.assertTrue(screen.open_crystal_collection())
+        self.assertEqual(2, screen.presses, 'the swallowed press was never followed by another')
+
+    def test_it_gives_up_rather_than_pressing_forever(self):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        screen = _Collection(animating_presses=99)
+        self.assertFalse(screen.open_crystal_collection())
+        self.assertEqual(daily.CRYSTAL_OPEN_ATTEMPTS, screen.presses)
+
+    def test_a_missing_button_is_not_a_retry(self):
+        """No button at all is a different screen, not a press that needs repeating."""
+        screen = _Collection(button_present=False)
+        self.assertFalse(screen.open_crystal_collection())
+        self.assertEqual(0, screen.presses)
+
+    def test_dispatch_runs_only_when_the_button_is_there(self):
+        """The button is on screen only while a slot is empty, so its absence means there is nothing to send."""
+        self.assertFalse(_Collection().dispatch_crystals())
+        self.assertTrue(_Collection(has_dispatch=True).dispatch_crystals())
+
+    def test_dispatch_is_told_apart_from_the_other_buttons_beside_it(self):
+        """Claim All and Rewards Preview share the bottom of the same screen, and Crystal Collection is the button that got us here."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.DISPATCH.search('One-Click Dispatch'))
+        for other in ('Claim All', 'Rewards Preview', 'Choose Echelon', 'Crystal Collection'):
+            self.assertIsNone(daily.DISPATCH.search(other), f'DISPATCH matches {other!r}')
 
 
 class TestActiveDishes(unittest.TestCase):
@@ -304,6 +607,11 @@ class TestGoHomePolling(unittest.TestCase):
             base.BaseGlobalTask.go_home(task)
         return task, looks
 
+    def per_press(self):
+        """How many looks one press gets before its window runs out."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        return int(base.HOME_BUTTON_TIME_OUT / base.HOME_BUTTON_CHECK_INTERVAL) + 1
+
     def test_it_stops_as_soon_as_the_button_takes(self):
         task, looks = self.go_home([True])
         self.assertEqual(1, len(looks))
@@ -312,13 +620,36 @@ class TestGoHomePolling(unittest.TestCase):
     def test_it_waits_between_looks_rather_than_spinning(self):
         base = importlib.import_module('src.global.BaseGlobalTask')
         task, looks = self.go_home([])
-        expected = base.HOME_BUTTON_TIME_OUT / base.HOME_BUTTON_CHECK_INTERVAL + 1
-        self.assertLessEqual(len(looks), expected, 'polling faster than the interval wastes OCR on an unchanged screen')
+        self.assertLessEqual(len(looks), self.per_press(), 'polling faster than the interval wastes OCR on an unchanged screen')
         self.assertGreater(len(looks), 1, 'it should look more than once before giving up')
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count)
+
+    def test_the_button_is_pressed_at_least_twice(self):
+        """Pinned to a number, not just to the constant.
+
+        The other tests here compare what happened against `HOME_BUTTON_PRESSES`, so they agree with themselves whatever it is set to. Dropping it to one
+        would put back the original bug - a swallowed press reading as a dead button - without failing any of them.
+        """
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        self.assertGreaterEqual(base.HOME_BUTTON_PRESSES, 2, 'one press is swallowed by a reward overlay, so a second is what makes this work')
+
+    def test_every_press_goes_in_before_the_screen_is_checked(self):
+        """A flow ending on a reward screen has its first press swallowed dismissing it.
+
+        Checking in between would spend a whole poll window on a screen that cannot have moved, so the presses go in together and the screen is read once
+        afterwards. The spare press costs nothing on the home screen, where the button's spot is empty.
+        """
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        task, looks = self.go_home([True])
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count, 'both presses should fire whether or not the first one took')
+        self.assertEqual(1, len(looks), 'the screen should be read after the presses, not between them')
+        task.ensure_main.assert_not_called()
 
     def test_it_falls_back_to_backing_out(self):
         """Screens without a home button are normal - the event map is one - so this is not an error."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
         task, _ = self.go_home([])
+        self.assertEqual(base.HOME_BUTTON_PRESSES, task.click_relative.call_count, 'every press in the budget should be spent before backing out')
         task.ensure_main.assert_called_once()
 
     def test_the_poll_never_presses_escape(self):
@@ -715,6 +1046,200 @@ class TestNoUndefinedNames(unittest.TestCase):
                     used = instruction.argval
                     self.assertTrue(hasattr(module, used) or hasattr(builtins, used),
                                     f'{name}.{function.__qualname__} uses {used!r}, which that module neither defines nor imports')
+
+
+class _Rail:
+    """A stand-in for the daily task holding one fixed Wishlist rail, so the badge pairing can be checked without a game.
+
+    Borrows the real method for the same reason `_CardScreen` does. `find_boxes` is the real matcher, and the frame is the 1080-high one the coordinates
+    below were measured on.
+    """
+
+    flagged_categories = GlobalDailyTask.flagged_categories
+    height = 1080
+
+    def __init__(self, boxes):
+        self.boxes = boxes
+        self.box = types.SimpleNamespace(left=None)
+
+    def ocr(self, *args, **kwargs):
+        return self.boxes
+
+    def find_boxes(self, boxes, match=None, boundary=None):
+        return find_boxes_by_name(boxes, match) if match else boxes
+
+    def log_info(self, message, notify=False):
+        pass
+
+
+class TestWishlistBadges(unittest.TestCase):
+    """The rail is read once and only the categories carrying a count are opened.
+
+    Coordinates come from a real 1920x1080 Wishlist screenshot: names down the left at x~90-200, badges in their yellow squares at x~232, level with the
+    middle of a name that wraps onto two lines. A badge missed here costs a purchase, so the pairing is worth pinning down.
+    """
+
+    def rail(self):
+        """The real rail: Platoon, Dispatch and Battlelog hold something, the other three do not."""
+        return [Box(88, 155, 110, 50, name='Furniture'), Box(88, 190, 60, 32, name='Shop'),
+                Box(88, 262, 90, 32, name='Platoon'), Box(88, 296, 60, 32, name='Shop'), Box(226, 272, 20, 24, name='1'),
+                Box(88, 366, 100, 32, name='Dispatch'), Box(88, 400, 60, 32, name='Shop'), Box(226, 376, 20, 24, name='9'),
+                Box(88, 468, 105, 32, name='Battlelog'), Box(88, 502, 90, 32, name='Trading'), Box(226, 478, 20, 24, name='2'),
+                Box(88, 572, 90, 32, name='Neural'), Box(88, 606, 120, 32, name='Integration'),
+                Box(88, 674, 90, 32, name='Growth'), Box(88, 708, 60, 32, name='Stack')]
+
+    def flagged(self, boxes):
+        return [pattern.pattern for pattern in _Rail(boxes).flagged_categories()]
+
+    def test_only_the_categories_with_a_badge_are_opened(self):
+        self.assertEqual(['Platoon', 'Dispatch', 'Battlelog'], self.flagged(self.rail()))
+
+    def test_a_rail_with_nothing_waiting_opens_nothing(self):
+        """Every category is spent, so the flow should buy nothing rather than tour all six."""
+        quiet = [box for box in self.rail() if not box.name.isdigit()]
+        self.assertEqual([], self.flagged(quiet))
+
+    def test_a_badge_belongs_to_the_row_it_sits_on(self):
+        """One badge must not flag a neighbour - the rows are only ~100px apart, so the tolerance has to stay under that."""
+        one_badge = [box for box in self.rail() if not box.name.isdigit()]
+        one_badge.append(Box(226, 376, 20, 24, name='9'))
+        self.assertEqual(['Dispatch'], self.flagged(one_badge))
+
+    def test_a_badge_left_of_the_name_is_not_its_own(self):
+        """Badges sit to the right. Anything to the left is another column and not this category's count."""
+        stray = [box for box in self.rail() if not box.name.isdigit()]
+        stray.append(Box(40, 376, 20, 24, name='9'))
+        self.assertEqual([], self.flagged(stray))
+
+
+class TestWishlistButtons(unittest.TestCase):
+    """The Wishlist is the one flow that spends, so what it is willing to press is worth pinning down."""
+
+    def test_the_two_buy_buttons_never_match_each_other(self):
+        """Both sit in the bottom right - Purchase All on the page, Purchase(s) in the dialog over it."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertTrue(daily.PURCHASE_ALL.search('Purchase All'))
+        self.assertIsNone(daily.PURCHASE_ALL.search('Purchase(s)'), 'PURCHASE_ALL matches the dialog button')
+        self.assertTrue(daily.PURCHASE_CONFIRM.search('Purchase(s)'))
+        self.assertTrue(daily.PURCHASE_CONFIRM.search('Purchases'), 'OCR drops the brackets often enough to allow for it')
+        self.assertIsNone(daily.PURCHASE_CONFIRM.search('Purchase All'), 'PURCHASE_CONFIRM matches the page button')
+
+    def test_the_bare_purchase_pattern_is_not_reused_here(self):
+        """`PURCHASE` matches the dialog's title and heading as readily as its button, which is why the flow has its own patterns."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        for text in ('Purchase Details', 'Confirm Purchase(s)', 'Purchase All'):
+            self.assertTrue(daily.PURCHASE.search(text), f'{text!r} shows why PURCHASE is too loose for the Wishlist')
+
+    def test_wishlist_buying_is_off_until_it_is_asked_for(self):
+        """It is the only flow that spends anything, so a fresh install must not start buying on its own."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        keys = [key for key, method, _ in daily.FLOWS if method == 'buy_wishlist']
+        self.assertEqual(['Buy Wishlist Items'], keys)
+        self.assertIn('Buy Wishlist Items', daily.FLOWS_OFF_BY_DEFAULT)
+
+    def test_every_flow_left_off_is_a_real_flow(self):
+        """A renamed flow would otherwise leave a dead entry behind and quietly switch the flow back on."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        keys = {key for key, _, _ in daily.FLOWS}
+        for key in daily.FLOWS_OFF_BY_DEFAULT:
+            self.assertIn(key, keys, f'{key!r} is switched off by default but is not a flow')
+
+
+class TestFlowOrder(unittest.TestCase):
+    """`FLOWS` is the run order, so where a flow sits in it is behaviour rather than presentation."""
+
+    def order(self):
+        """Read the flow keys in the order the daily task runs them.
+
+        Returns:
+            The config keys from `FLOWS`, in table order.
+        """
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        return [key for key, _, _ in daily.FLOWS]
+
+    def test_the_crew_deck_runs_before_anything_that_fights(self):
+        """The food and drink buffs only apply to battles fought after they are picked up, so a Crew Deck that runs later spends the day's buffs on nothing."""
+        order = self.order()
+        crew = order.index('Crew Deck')
+        for key in ('Start Loop', 'Run Event Supply'):
+            self.assertLess(crew, order.index(key), f'{key!r} fights, so the Crew Deck buffs have to be collected first')
+
+    def test_the_crew_deck_is_on_out_of_the_box(self):
+        """It was left off while its station dialogs were unfinished. They are filled in now, and the buffs are free, so there is nothing left to opt into."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertNotIn('Crew Deck', daily.FLOWS_OFF_BY_DEFAULT)
+
+
+class _PeakValue:
+    """A stand-in for the weekly task, scripted with whether the popup opens itself.
+
+    Borrows the real method for the same reason `_CardScreen` does - it only looks for one label and clicks one button.
+    """
+
+    def __init__(self, opens_itself, has_button=True):
+        self.opens_itself = opens_itself
+        self.has_button = has_button
+        self.open = opens_itself
+        self.button_presses = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(bottom_right=None, bottom_left=None)
+
+    def open_periodic_returns(self):
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        return weekly.GlobalWeeklyTask.open_periodic_returns(self)
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        return [Box(1416, 837, 190, 60, name='Claim All')] if self.open else []
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        if match is not weekly.PERIODIC_RETURNS or not self.has_button:
+            return None
+        self.button_presses += 1
+        self.open = True
+        return Box(204, 1013, 280, 60, name='Periodic')
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestPeakValueRewards(unittest.TestCase):
+    """Selecting the mode in the rail only brings up its card - the rewards are two screens further in.
+
+    The flow used to look for a Claim All on the card itself, find none, and report that there was nothing to claim, which is not the same thing as never
+    having gone to look. Coordinates come from a real 1920x1080 capture of the card and of the Periodic Returns popup.
+    """
+
+    def test_the_reward_tally_is_not_read_off_the_reset_timer(self):
+        """The card carries `Rewards Reset In 6 days 11 hours` in its corner, which an unanchored pattern matches just as readily as the tally's heading."""
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        self.assertTrue(weekly.REWARDS.search('Rewards'))
+        for heading in ('Rewards Reset In 6 days 11 hours', 'Rewards Reset', 'Reward Progress'):
+            self.assertIsNone(weekly.REWARDS.search(heading), f'REWARDS matches {heading!r}, which is not the tally')
+
+    def test_the_card_and_its_button_are_told_apart_from_extreme_peak(self):
+        """Extreme Peak sits directly below with an identical Proceed, so the button is only safe to reach through the card's name."""
+        weekly = importlib.import_module('src.global.GlobalWeeklyTask')
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        self.assertTrue(weekly.PEAK_VALUE.search('Peak Value Assessment'))
+        self.assertIsNone(weekly.PEAK_VALUE.search('Extreme Peak'), 'the card pattern also matches the card below it')
+        self.assertTrue(base.PROCEED.search('Proceed'))
+
+    def test_a_popup_that_opens_itself_needs_no_button(self):
+        screen = _PeakValue(opens_itself=True)
+        self.assertTrue(screen.open_periodic_returns())
+        self.assertEqual(0, screen.button_presses)
+
+    def test_a_popup_that_stays_shut_is_opened_from_the_button(self):
+        """Once the weekly auto-open has been used and dismissed it does not happen again, so the rewards are only reachable this way."""
+        screen = _PeakValue(opens_itself=False)
+        self.assertTrue(screen.open_periodic_returns())
+        self.assertEqual(1, screen.button_presses)
+
+    def test_no_popup_and_no_button_gives_up(self):
+        """Rather than pressing on to a Claim All that is not there."""
+        screen = _PeakValue(opens_itself=False, has_button=False)
+        self.assertFalse(screen.open_periodic_returns())
 
 
 class TestGlobalFlowWiring(unittest.TestCase):
