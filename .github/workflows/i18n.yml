@@ -1,7 +1,7 @@
 name: i18n
 
 # The app only ever reads the compiled .mo files, so a .po edit that was never compiled is invisible
-# at runtime. build.yml runs only on v* tags, which is far too late to catch that.
+# at runtime. release-en.yml only runs when a release is cut, which is far too late to catch that.
 on:
   push:
     branches: [ master ]
