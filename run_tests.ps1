@@ -1,4 +1,4 @@
-# Only files named Test*.py are picked up, matching .github/workflows/build.yml.
+# Only files named Test*.py are picked up, matching .github/workflows/release-en.yml.
 # Runs each test module in its own process. The ok framework installs a process-wide singleton,
 # so a second init in the same process fails.
 $env:PYTHONIOENCODING = 'UTF-8'

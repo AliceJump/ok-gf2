@@ -1,14 +1,13 @@
 name: Build release on demand
 
-# Upstream's build.yml releases on a v* tag push and cannot run here: its release job waits on a sync
-# job that pushes to upstream's update repos with secrets this fork does not have. This one builds and
-# releases the same installers from a button, with nothing to sync.
+# The only release path for this fork. Upstream's build.yml was deleted here: its release job waited on
+# a sync job that pushed to upstream's update repos with secrets this fork does not have.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release, as 1.0.0. Tagged as en-v1.0.0.'
+        description: 'Version to release, as YEAR.MONTH.DAY. Tagged as v2026.8.26.'
         required: true
         type: string
       prerelease:
@@ -27,17 +26,19 @@ jobs:
       PYTHONIOENCODING: 'UTF-8'
 
     steps:
-      # Tagged en-v* rather than v*, so cutting a release here can never wake upstream's build.yml.
+      # pyappify only sees tags matching ^v?\d+\.\d+\.\d+$, so no "en" marker can go in the tag name.
+      # Versions are CalVer (year.month.day) to stay clear of upstream's v1.2.x line. The parts are
+      # compared as numbers, so a second release on one day just needs a higher third part.
       - name: Check the version and settle the tag
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            Write-Error "Version must look like 1.0.0, got '$version'."
+            Write-Error "Version must look like 2026.8.26, got '$version'."
             exit 1
           }
-          "TAG=en-v$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Releasing as en-v$version"
+          "TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Releasing as v$version"
 
       - name: Configure git
         shell: pwsh
@@ -73,26 +74,26 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-      # The manifest upstream ships points its self-update at upstream's own repos, so an installer
-      # built from this fork would replace this fork's code with theirs on first update. Rewritten here
-      # rather than in the committed file, so pyappify.yml keeps merging from upstream untouched.
-      - name: Point the build at this fork
+      # pyappify re-reads pyappify.yml from the checked-out tree on every launch and replaces the
+      # installed profile list with it, so a merge that brings back upstream's china / global profiles
+      # would ship an installer that swaps itself for upstream's code. Fail the release instead.
+      - name: Check pyappify.yml points at this fork
         shell: pwsh
         run: |
-          $url = "${{ github.server_url }}/${{ github.repository }}.git"
-          @(
-            'name: "ok-gf2"'
-            'uac: true'
-            'profiles:'
-            '  - name: "en"'
-            "    git_url: `"$url`""
-            '    admin: true'
-            '    main_script: "main.py"'
-            '    requires_python: "3.12"'
-            '    requirements: "requirements.txt"'
-            '    use_pythonw: true'
-            '    show_add_defender: true'
-          ) | Set-Content -Path pyappify.yml -Encoding utf8
+          $expected = "${{ github.server_url }}/${{ github.repository }}.git"
+          $urls = Select-String -Path pyappify.yml -Pattern 'git_url:\s*"?([^"\s]+)"?' -AllMatches |
+            ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value }
+          if (-not $urls) {
+            Write-Error "pyappify.yml declares no git_url."
+            exit 1
+          }
+          foreach ($url in $urls) {
+            if ($url -ne $expected) {
+              Write-Error "pyappify.yml points at '$url', expected '$expected'."
+              exit 1
+            }
+          }
+          Write-Host "pyappify.yml points at $expected"
           Get-Content pyappify.yml
 
       # Does three jobs at once: writes the tag into src/config.py so the app reports its own version,
@@ -122,7 +123,8 @@ jobs:
           generate_release_notes: true
           files: pyappify_dist/**
           body: |
-            Windows installers for the Global (Steam, English) client, built from `${{ github.ref_name }}`.
+            Windows installers for the Global (Steam, English) client, built from `${{ github.ref_name }}`
+            and released as `${{ env.TAG }}`.
 
             Download an installer below. Do not download the source archives - they do not include the
             packaged dependencies.
