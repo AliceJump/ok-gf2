@@ -116,6 +116,28 @@ POP_UP_AFTER_CLICK = 1.5
 START_TIME_OUT = 90
 START_RECHECK = 2
 
+# How long to wait between finding a button and pressing it. Buttons are drawn while their page is still
+# animating in and are not live yet, so a press sent the moment the text appears is accepted by nothing and
+# the screen stays where it was. Applies to every press made by text - pass `pause=0` for a button on a
+# screen that is already still.
+#
+# A plain wait, deliberately, rather than the framework's `settle_time`. Settling demands the text be found
+# on every pass for the whole second and starts over on any miss, and this game's OCR drops a word often
+# enough that a button plainly on screen can never settle - which turned Claim All on the Crystal
+# Collection screen into a five-second timeout on a screen that had been showing it the whole time.
+BUTTON_PAUSE = 1
+
+# How long to let a page finish drawing once it has been recognised, before anything is read off it. An
+# arrival check returns on the first word to appear, which says the page is arriving - not that it is
+# there. A run once read the event's ticket corner 18ms after arrival, while the event's own name was
+# still materialising a few letters at a time, and took the half-drawn counter for an empty one.
+PAGE_DRAW_PAUSE = 1
+
+# Pressing a button on a page that is still animating in. Defaults for `press_until`: how many presses to
+# make, and how long to give the screen each one should open to appear before calling that press swallowed.
+PRESS_ATTEMPTS = 3
+PRESS_ARRIVAL_TIME_OUT = 6
+
 # Where a poll starts before backing off toward its caller's interval.
 POLL_MIN_INTERVAL = 1
 
@@ -283,6 +305,29 @@ class BaseGlobalTask(BaseGfTask):
         """
         return self.despite_cursor_error(super().click, 'click', *args, **kwargs)
 
+    def wait_click_ocr(self, *args, after_sleep=0, pause=BUTTON_PAUSE, **kwargs):
+        """Press a button by its text, waiting a beat after finding it so the press is not sent the moment it appears.
+
+        Reimplemented rather than delegated because the framework presses as soon as the text is read and offers no hook in between. See `BUTTON_PAUSE` for
+        why this is a plain wait and not the framework's `settle_time`.
+
+        Args:
+            *args: Passed to `wait_ocr`.
+            after_sleep: Seconds to wait after pressing.
+            pause: Seconds to wait between finding the text and pressing it.
+            **kwargs: Passed to `wait_ocr`.
+
+        Returns:
+            The boxes that were found, or None when the text never appeared.
+        """
+        found = self.wait_ocr(*args, **kwargs)
+        if not found:
+            self.log_debug(f'nothing matching {kwargs.get("match")} to press')
+            return None
+        self.sleep(pause)
+        self.click_box(found, after_sleep=after_sleep)
+        return found
+
     def swipe(self, *args, **kwargs):
         """Swipe, surviving the cursor being fought over.
 
@@ -333,7 +378,7 @@ class BaseGlobalTask(BaseGfTask):
         """
         return self.box_of_screen(0, NAV_STRIP_TOP)
 
-    def click_ocr_word(self, match, box=None, time_out=5, after_sleep=0, raise_if_not_found=False):
+    def click_ocr_word(self, match, box=None, time_out=5, after_sleep=0, pause=BUTTON_PAUSE, raise_if_not_found=False):
         """Click a word, even when OCR merged it into a box with its neighbour.
 
         English labels sit close together on the bottom nav, and OCR regularly returns two adjacent buttons as one box - `Voyage Formation`, or
@@ -345,6 +390,7 @@ class BaseGlobalTask(BaseGfTask):
             box: Region to search in.
             time_out: Seconds to wait for the text to appear.
             after_sleep: Seconds to wait after clicking.
+            pause: Seconds to wait between finding the text and pressing it.
             raise_if_not_found: Raise instead of returning None when the text never appears.
 
         Returns:
@@ -353,8 +399,63 @@ class BaseGlobalTask(BaseGfTask):
         result = self.wait_ocr(match=match, box=box, time_out=time_out, raise_if_not_found=raise_if_not_found)
         if not result:
             return None
+        # The same beat `wait_click_ocr` waits, and for the same reason - this is a press like any other.
+        self.sleep(pause)
         self.click_box_by_match_position(result, match, after_sleep=after_sleep)
         return result[0]
+
+    def wait_page(self, match, box=None, time_out=0, pause=PAGE_DRAW_PAUSE, log=False):
+        """Wait for a page to arrive, then let it finish drawing before anything is read off it.
+
+        Use this wherever the next thing to happen is a read. `wait_ocr` on its own returns on the first word to appear, which is the right answer to "is
+        this the page?" and the wrong one to "is the page ready to be read?".
+
+        Args:
+            match: Pattern, or list of patterns, that the page carries.
+            box: Where to look.
+            time_out: Seconds to wait for the page.
+            pause: Seconds to let it draw once it is recognised.
+            log: Log what was read.
+
+        Returns:
+            The boxes that matched, or None when the page never arrived.
+        """
+        found = self.wait_ocr(match=match, box=box, time_out=time_out, log=log)
+        if not found:
+            return None
+        self.sleep(pause)
+        return found
+
+    def press_until(self, press, arrival, box=None, attempts=PRESS_ATTEMPTS, time_out=PRESS_ARRIVAL_TIME_OUT, pause=PAGE_DRAW_PAUSE, what=''):
+        """Press a button until the screen it opens actually comes up.
+
+        A page still animating in draws its buttons before they are live, so the press is accepted by nothing and the screen stays where it was. One press
+        is therefore not proof of arrival, and a flow that took it as proof carried on reading the page it had meant to leave - which is how a run once read
+        the Story map's stage codes after pressing Supply, and how the shop was claimed from its landing page after pressing a category.
+
+        Read arrival off something the new screen carries whether or not there is anything on it to act on, so it says the screen is up without also saying
+        something about what is on it.
+
+        Args:
+            press: Called to press the button once. Whatever it returns is only checked for truth - falsy means the button is not there at all, which is a
+                different screen rather than a press worth repeating, so it ends the attempt.
+            arrival: Pattern, or list of patterns, that the screen being opened carries.
+            box: Where to look for `arrival`.
+            attempts: How many presses to make before giving up.
+            time_out: Seconds to wait for `arrival` after each press.
+            pause: Seconds to let the screen draw once it is up, since callers read it straight away.
+            what: Named in the log line written when a press does not take.
+
+        Returns:
+            True once the screen is up, False when it was never reached.
+        """
+        for _ in range(attempts):
+            if not press():
+                return False
+            if self.wait_page(arrival, box=box, time_out=time_out, pause=pause):
+                return True
+            self.log_info(f'the {what} press did not take, the page is probably still animating in')
+        return False
 
     def poll_ocr(self, match, box=None, time_out=60, interval=5):
         """Watch for text over a long stretch without pinning the CPU.
@@ -524,10 +625,10 @@ class BaseGlobalTask(BaseGfTask):
         Returns:
             True when the Regular Commissions tab opened, False when it could not be reached.
         """
-        # No sleep after the first click: the tab row it opens is what the second click waits for, and that
-        # wait returns as soon as the row is there rather than after a fixed guess at how long it takes.
-        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, raise_if_not_found=True)
-        return bool(self.click_ocr_word(REGULAR_COMMISSIONS, box=self.box.top, time_out=10, after_sleep=2))
+        # No sleeps: every caller follows this with a wait for its own entry, and the second click waits for
+        # the tab row the first opens. `pause=0` because the home screen was already still.
+        self.click_ocr_word(COMMISSIONS, box=self.nav_strip, pause=0, raise_if_not_found=True)
+        return bool(self.click_ocr_word(REGULAR_COMMISSIONS, box=self.box.top, time_out=10))
 
     def is_main(self, recheck_time=0.0, esc=True):
         """Decide whether the home screen is showing.
