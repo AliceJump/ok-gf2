@@ -266,8 +266,11 @@ msgstr "Delicious Cuisine"
 msgid "社区每日"
 msgstr "Community Daily Check-In"
 
-msgid "情报补给"
-msgstr "Event Reward Track"
+msgid "情报/战前补给"
+msgstr "Event Reward Track / Pre-Battle Supply"
+
+msgid "战前补给"
+msgstr "Pre-Battle Supply"
 
 msgid "闪耀星愿"
 msgstr "Event Bonus Stages"
@@ -364,7 +367,10 @@ msgid "自动领取邮件中的所有奖励"
 msgstr "Claims every attachment in your mailbox."
 
 msgid "自动领取活动页面中的情报补给奖励"
-msgstr "Claims the rewards from the Event reward track."
+msgstr "Claims the rewards from the Event reward track and the Pre-Battle Supply."
+
+msgid "自动领取活动页面中的战前补给奖励"
+msgstr "Claims the rewards from the Pre-Battle Supply."
 
 msgid "自动完成活动页面中的闪耀星愿关卡"
 msgstr "Completes the bonus stages on the Event page."

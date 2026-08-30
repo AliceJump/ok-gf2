@@ -245,6 +245,10 @@ msgstr "活动"
 msgid "Intel Supply"
 msgstr "情报补给"
 
+# From activity_stamina: self.wait_click_ocr(match=['战前补给'], ...)
+msgid "Pre-Battle Supply"
+msgstr "战前补给"
+
 # From activity_stamina: self.wait_click_ocr(match=['领取'], ...)
 msgid "Claim"
 msgstr "领取"
