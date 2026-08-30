@@ -65,7 +65,8 @@ class DailyTask(CommunityMixin, BaseGfTask):
             ),
             '社区每日': '自动完成社区每日任务（需填写用户名和密码）',
             '邮件': '自动领取邮件中的所有奖励',
-            '情报补给': '自动领取活动页面中的情报补给奖励',
+            '情报/战前补给': '自动领取活动页面中的情报补给奖励',
+            '战前补给': '自动领取活动页面中的战前补给奖励',
             '闪耀星愿': '自动完成活动页面中的闪耀星愿关卡',
             '活动自律': (
                 '自动进入限时开启活动并挑战物资关卡\n'
@@ -98,7 +99,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             '吃饭': '1.0',
             "社区每日": False,
             '邮件': True,
-            "情报补给": False,
+            '情报/战前补给': False,
             '闪耀星愿': False,
             '活动自律': True,
             '活动层': True,
@@ -140,6 +141,9 @@ class DailyTask(CommunityMixin, BaseGfTask):
             "自动刷体力": ["体力本"],
             "班组": ["尘烟"],
         })
+        for group, keys in self.default_config_group.items():
+            self.config_type.update({group: {'sub_configs': {True: keys}}})
+
     def run(self):
         if not self.config.get('已确认启用游戏内全局自动功能'):
             self.confirm_auto_battle_up()
@@ -150,7 +154,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 time_out=90
             )),
             ('邮件', self.mail),
-            ('情报补给', self.activities),
+            ('情报/战前补给', self.activities),
             ('活动自律', self.activity),
             ('活动层', self.free_time_layer),
             ('公共区/调度室', self.gongongqu),
@@ -199,7 +203,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         if not self.wait_click_ocr(match=re.compile('领取'), box=self.box.bottom_right, time_out=2,
                                    raise_if_not_found=True, after_sleep=2, log=True):
             return
-        self.wait_pop_up()
+        self.wait_pop_up(count=1)
         if not self.wait_click_ocr(match=re.compile('派遣'), box=self.box.bottom_right, after_sleep=2, time_out=2,
                                    raise_if_not_found=False, log=True):
             return
@@ -297,7 +301,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     self.send_key("f2", after_sleep=2)
                     self.wait_click_ocr(match=re.compile('领取'), box=self.box_of_screen(0.151, 0.772, 0.385, 0.883),
                                         time_out=10, raise_if_not_found=False, log=True)
-                    self.wait_pop_up()
+                    self.wait_pop_up(count=1)
             else:
                 self.log_error('没检测到活动层页面')
             self.ensure_main(time_out=60)
@@ -305,11 +309,13 @@ class DailyTask(CommunityMixin, BaseGfTask):
     def activities(self):
         self.info_set('current_task', 'activity_stamina')
         self.wait_click_ocr(match=['活动'], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
-        if self.wait_click_ocr(match=['情报补给'], box=self.box.left, time_out=3, raise_if_not_found=False):
-            while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
-                                      raise_if_not_found=False,
-                                      after_sleep=0.2):
-                self.wait_pop_up(time_out=6)
+        reward_activities = ['情报补给', '战前补给']
+        for reward_activity in reward_activities:
+            if self.wait_click_ocr(match=reward_activity, box=self.box.left, time_out=3, raise_if_not_found=False):
+                while self.wait_click_ocr(match=['领取'], box=self.box.right, time_out=3,
+                                        raise_if_not_found=False,
+                                        after_sleep=0.2):
+                    self.wait_pop_up(time_out=6, count=1)
         self.ensure_main()
 
     def star_wish(self):
@@ -322,7 +328,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                                    after_sleep=0.5):
             if self.wait_click_ocr(match=re.compile("一{0,1}键领取"), box=self.box.bottom_right, time_out=3, settle_time=0.5,
                                    after_sleep=0.5):
-                self.wait_pop_up()
+                self.wait_pop_up(count=1)
                 self.ensure_main()
                 return
             self.log_info('闪耀星愿未找到开始作战和一键领取，尝试跳过对话框后重试', notify=True)
@@ -351,7 +357,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if results:
                 if results[0].name == '领取全部':
                     self.click(results[0])
-                    self.wait_pop_up(time_out=4)
+                    self.wait_pop_up(time_out=4, count=1)
                 elif results[0].name == '已全部领取':
                     pass
                 else:
@@ -658,7 +664,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self.sleep(1)
         self.click_relative(0.89, 0.05)  # 模拟战斗
         self.wait_click_ocr(match=['实兵演习'], box=self.box.bottom, after_sleep=0.5, raise_if_not_found=True)
-        self.wait_pop_up(time_out=15)
+        self.wait_pop_up(time_out=15, count=1)
         remaining_count = self.arena_remaining()
         if remaining_count > 1:
             self.wait_click_ocr_with_pop_up("进攻", box=self.box.bottom_right)
@@ -715,7 +721,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if result := self.wait_ocr(match=['领取全部'], box=self.box.bottom_right, time_out=4,
                                        raise_if_not_found=False):
                 self.click_box(result)
-                self.wait_pop_up()
+                self.wait_pop_up(count=1)
             self.back()
             self.sleep(1)
         self.ensure_main()
