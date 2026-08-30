@@ -198,7 +198,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         if not self.wait_click_ocr(match=re.compile('领取'), box=self.box.bottom_right, time_out=2,
                                    raise_if_not_found=True, after_sleep=2, log=True):
             return
-        self.wait_pop_up()
+        self.wait_pop_up(count=1)
         if not self.wait_click_ocr(match=re.compile('派遣'), box=self.box.bottom_right, after_sleep=2, time_out=2,
                                    raise_if_not_found=False, log=True):
             return
@@ -296,7 +296,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                     self.send_key("f2", after_sleep=2)
                     self.wait_click_ocr(match=re.compile('领取'), box=self.box_of_screen(0.151, 0.772, 0.385, 0.883),
                                         time_out=10, raise_if_not_found=False, log=True)
-                    self.wait_pop_up()
+                    self.wait_pop_up(count=1)
             else:
                 self.log_error('没检测到活动层页面')
             self.ensure_main(time_out=60)
@@ -308,7 +308,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
                                       raise_if_not_found=False,
                                       after_sleep=0.2):
-                self.wait_pop_up(time_out=6)
+                self.wait_pop_up(time_out=6, count=1)
         self.ensure_main()
 
     def star_wish(self):
@@ -321,7 +321,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                                    after_sleep=0.5):
             if self.wait_click_ocr(match=re.compile("一{0,1}键领取"), box=self.box.bottom_right, time_out=3, settle_time=0.5,
                                    after_sleep=0.5):
-                self.wait_pop_up()
+                self.wait_pop_up(count=1)
                 self.ensure_main()
                 return
             self.log_info('闪耀星愿未找到开始作战和一键领取，尝试跳过对话框后重试', notify=True)
@@ -350,7 +350,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if results:
                 if results[0].name == '领取全部':
                     self.click(results[0])
-                    self.wait_pop_up(time_out=4)
+                    self.wait_pop_up(time_out=4, count=1)
                 elif results[0].name == '已全部领取':
                     pass
                 else:
@@ -657,7 +657,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
         self.sleep(1)
         self.click_relative(0.89, 0.05)  # 模拟战斗
         self.wait_click_ocr(match=['实兵演习'], box=self.box.bottom, after_sleep=0.5, raise_if_not_found=True)
-        self.wait_pop_up(time_out=15)
+        self.wait_pop_up(time_out=15, count=1)
         remaining_count = self.arena_remaining()
         if remaining_count > 1:
             self.wait_click_ocr_with_pop_up("进攻", box=self.box.bottom_right)
@@ -714,7 +714,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             if result := self.wait_ocr(match=['领取全部'], box=self.box.bottom_right, time_out=4,
                                        raise_if_not_found=False):
                 self.click_box(result)
-                self.wait_pop_up()
+                self.wait_pop_up(count=1)
             self.back()
             self.sleep(1)
         self.ensure_main()

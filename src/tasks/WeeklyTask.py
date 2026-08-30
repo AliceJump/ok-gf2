@@ -46,6 +46,7 @@ class WeeklyTask(BaseGfTask):
         self.wait_click_ocr(match=re.compile('战役推进'), box='top_right', after_sleep=0.5, raise_if_not_found=True)
         self.wait_click_ocr(match=re.compile('模拟作战'), box='top_right', raise_if_not_found=True, after_sleep=2)
         self.wait_click_ocr(match=re.compile('峰值推定'), raise_if_not_found=True, after_sleep=2)
+        self.wait_pop_up(count=1)
         self.wait_click_ocr(match=re.compile('常规峰值'), box='bottom_right', time_out=2, after_sleep=2)
         max_retry = 3
         for attempt in range(max_retry):

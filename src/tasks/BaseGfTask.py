@@ -11,7 +11,7 @@ from src.data.FeatureList import FeatureList as fL
 from src.interaction.ScreenPosition import ScreenPosition
 
 logger = Logger.get_logger(__name__)
-pop_ups = ['点击空白处关闭', '点击屏幕任意位置继续', '点击任意位置继续', '新周期开启']
+pop_ups = ['点击空白处关闭', '点击屏幕任意位置继续', '点击任意位置继续', '新周期开启', '周期已重置']
 number_re = re.compile(r"^\d+$")
 stamina_re = re.compile(r"^\d+/\d+")
 map_re = re.compile(r"^.{0,2}\s*-?\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$")
