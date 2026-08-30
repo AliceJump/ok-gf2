@@ -65,7 +65,8 @@ class DailyTask(CommunityMixin, BaseGfTask):
             ),
             '社区每日': '自动完成社区每日任务（需填写用户名和密码）',
             '邮件': '自动领取邮件中的所有奖励',
-            '情报补给': '自动领取活动页面中的情报补给奖励',
+            '情报/战前补给': '自动领取活动页面中的情报补给奖励',
+            '战前补给': '自动领取活动页面中的战前补给奖励',
             '闪耀星愿': '自动完成活动页面中的闪耀星愿关卡',
             '活动自律': (
                 '自动进入限时开启活动并挑战物资关卡\n'
@@ -97,7 +98,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
             '吃饭': '1.0',
             "社区每日": False,
             '邮件': True,
-            "情报补给": False,
+            '情报/战前补给': False,
             '闪耀星愿': False,
             '活动自律': True,
             '活动层': True,
@@ -149,7 +150,7 @@ class DailyTask(CommunityMixin, BaseGfTask):
                 time_out=90
             )),
             ('邮件', self.mail),
-            ('情报补给', self.activities),
+            ('情报/战前补给', self.activities),
             ('活动自律', self.activity),
             ('活动层', self.free_time_layer),
             ('公共区/调度室', self.gongongqu),
@@ -304,11 +305,13 @@ class DailyTask(CommunityMixin, BaseGfTask):
     def activities(self):
         self.info_set('current_task', 'activity_stamina')
         self.wait_click_ocr(match=['活动'], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
-        if self.wait_click_ocr(match=['情报补给'], box=self.box.left, time_out=3, raise_if_not_found=False):
-            while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
-                                      raise_if_not_found=False,
-                                      after_sleep=0.2):
-                self.wait_pop_up(time_out=6, count=1)
+        reward_activities = ['情报补给', '战前补给']
+        for reward_activity in reward_activities:
+            if self.wait_click_ocr(match=reward_activity, box=self.box.left, time_out=3, raise_if_not_found=False):
+                while self.wait_click_ocr(match=['领取'], box=self.box.bottom_right, time_out=3,
+                                        raise_if_not_found=False,
+                                        after_sleep=0.2):
+                    self.wait_pop_up(time_out=6, count=1)
         self.ensure_main()
 
     def star_wish(self):
