@@ -26,7 +26,7 @@ Runs each enabled step in order, starting from the home screen. Every step is a 
 |---|---|
 | `Start Loop` | Opens the Dispatch Room and starts the in-game Loop automation, then waits for it to finish |
 | `Claim Free Packs` | Claims the shop supply boxes that are currently free |
-| `Run Event Supply` | Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can |
+| `Run Event Supply` | Auto-battles the last Supply stage of each running event, spending as much Expenditure as it can |
 | `Claim Boundary Push Rewards` | Collects the Breakthrough rewards under Commissions |
 | `Crew Deck` | Visits Tea Time at the coffee machine and Delicious Cuisine at the kitchen |
 
@@ -40,8 +40,9 @@ Each step checks whether its work is already done before spending anything:
 
 - **Claim Free Packs** only buys a box whose own dialog reads `Free` and shows no price. A paid pack
   opened by accident is cancelled rather than left blocking the shop.
-- **Run Event Supply** reads the ticket count in the top-right of the event page and stops there if
-  it is `0`, rather than walking the map to a stage it cannot run.
+- **Run Event Supply** reads the ticket count in the top-right of each event page and moves on if
+  it is `0`, rather than walking the map to a stage it cannot run. A banner slot with no event behind
+  it is reported and skipped the same way - see [Event banners](#event-banners).
 - **Claim Boundary Push Rewards** reads the Breakthrough card's reward progress and stops if it is
   already complete.
 - **Crew Deck** reads the counter on each station's prompt, so a station already used today is
@@ -57,6 +58,45 @@ Each step checks whether its work is already done before spending anything:
 
 Boss Fight and Expansion Drills are **not** included. Both need an English auto-battle routine, which
 does not exist yet.
+
+---
+
+## Event banners
+
+Events are opened from the banners stacked down the top-left of the home screen. Which banner holds
+the event you want is not fixed - a new event can push an older one down, and two can run at once - so
+one setting names the positions to open. It belongs to the `Run Event Supply` step and is ignored when
+that step is switched off:
+
+| Setting | What it means | Default |
+|---|---|---|
+| `Event Banner Slots` | Banner positions, counting from the top | `1` |
+
+Count from the top banner, which is slot `1`. Write a single number for one event, or a comma-separated
+list for two, up to slot `3`:
+
+| Setting | What runs |
+|---|---|
+| `1` | The top banner only |
+| `2` | The second banner only, when the event you want sits below another one |
+| `1,2` | Both, top one first |
+| `2,3` | The second and third banners, in that order |
+
+Each slot is opened, run and returned from in turn, so two events each get their own ticket check and
+spend their own Expenditure. A slot with no banner behind it logs `No event banner in slot N on the
+home screen` and the run moves on to the next one.
+
+Only the top banner's position is measured - the rest are stepped down from it, since every event
+draws its own art and there is nothing fixed to recognise. If a slot reports no banner when one is
+plainly there, that step is off for your resolution. The constants are `EVENT_BANNER` and
+`BANNER_PITCH` in `src/global/GlobalDailyTask.py`.
+
+### Events split into parts
+
+Later events have no `Supply` button of their own. They divide into parts, one card each along the
+bottom of the event page, and the bot opens the highest-numbered part that is not marked
+`Not enabled`, then switches from the `Story` tab it lands on to `Supply`. Nothing needs setting for
+this - it is picked up from the page.
 
 ---
 
@@ -86,7 +126,9 @@ walked is not one the bot knows. Backspace clears a fluffed attempt without rest
 ## The `Run: ` tasks
 
 Each of these runs exactly **one** step and nothing else, which is how you check a single flow
-without sitting through the rest. They take no settings.
+without sitting through the rest. They carry only the settings their own step reads - `Run: Event
+Supply` keeps `Event Banner Slots`, `Run: Crew Deck` keeps the walk timings, and the rest take no
+settings at all.
 
 | Task | Runs |
 |---|---|

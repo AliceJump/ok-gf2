@@ -173,6 +173,7 @@ only ever run against the English client.
 | Start Loop | Global Daily setting |
 | Claim Free Packs | Global Daily setting, same label as the CN one above |
 | Run Event Supply | Global Daily setting |
+| Event Banner Slots | Which home screen banners to open, nested under `Run Event Supply` |
 | Claim Boundary Push Rewards | Global Daily setting, same label as the CN one above |
 | Crew Deck | Global Daily setting, off by default |
 | Tea Time Walk | Walk timing, nested under `Crew Deck` |

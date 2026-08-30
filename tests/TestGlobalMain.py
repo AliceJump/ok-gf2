@@ -10,7 +10,7 @@ import pywintypes
 from unittest import mock
 
 from ok import Box, find_boxes_by_name
-from ok.task.task import BaseTask
+from ok.task.task import OCR, BaseTask, ExecutorOperation
 from ok.gui.common.config import Language
 from ok.test.TaskTestCase import TaskTestCase
 from src.config import config
@@ -45,6 +45,57 @@ class TestGlobalMain(TaskTestCase):
         names = [b.name for b in boxes]
         self.assertTrue(any(re.search('Recruitment', n, re.I) for n in names), f'expected English text, got {names}')
         self.assertFalse(any('招募' in n for n in names), f'text was translated into Chinese: {names}')
+
+    def press(self, method, found, **kwargs):
+        """Run one press with the reads and the input stubbed out.
+
+        Args:
+            method: The press method under test.
+            found: What the stubbed read returns.
+            **kwargs: Passed to `method`.
+
+        Returns:
+            A (done, looked) pair - what it did in order, as ('sleep', seconds) and ('press',) entries, and the mock standing in for the read.
+        """
+        done = []
+        with (
+            mock.patch.object(OCR, 'wait_ocr', return_value=found) as looked,
+            mock.patch.object(ExecutorOperation, 'sleep', side_effect=lambda seconds: done.append(('sleep', seconds))),
+            mock.patch.object(ExecutorOperation, 'click_box', side_effect=lambda *a, **k: done.append(('press',))),
+            mock.patch.object(BaseGlobalTask, 'click_box_by_match_position', side_effect=lambda *a, **k: done.append(('press',))),
+        ):
+            method(**kwargs)
+        return done, looked
+
+    def test_a_caller_can_still_press_without_waiting(self):
+        """A button on a screen that is already still has nothing to wait for, and the caller is what knows that."""
+        found = [Box(1694, 1007, 190, 60, name='Claim All')]
+        done, _ = self.press(self.task.wait_click_ocr, found, match=re.compile('Claim All'), pause=0)
+        self.assertEqual([('sleep', 0), ('press',)], done)
+
+    def test_a_button_is_not_pressed_the_moment_it_appears(self):
+        """A button drawn while its page is still animating in is not live, and a press sent then is accepted by nothing.
+
+        The pause is a plain wait: `settle_time` starts over on any pass that misses the text, and this game's OCR drops a word often enough that a button on
+        screen never settles. Asking for it turned Claim All into a five-second timeout on a screen that had been showing it the whole time.
+        """
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        found = [Box(1694, 1007, 190, 60, name='Claim All')]
+        done, looked = self.press(self.task.wait_click_ocr, found, match=re.compile('Claim All'))
+        self.assertEqual([('sleep', base.BUTTON_PAUSE), ('press',)], done, 'the pause has to come between finding the button and pressing it')
+        self.assertNotIn('settle_time', looked.call_args.kwargs)
+
+    def test_a_button_that_never_appears_is_not_pressed(self):
+        done, _ = self.press(self.task.wait_click_ocr, None, match=re.compile('Claim All'))
+        self.assertEqual([], done)
+
+    def test_the_nav_bar_press_waits_the_same_beat(self):
+        """`click_ocr_word` aims at a word inside a merged box, but it is still a press onto a page that may still be animating in."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        found = [Box(1341, 1007, 220, 60, name='Voyage Formation')]
+        done, looked = self.press(self.task.click_ocr_word, found, match=re.compile('Formation'))
+        self.assertEqual([('sleep', base.BUTTON_PAUSE), ('press',)], done)
+        self.assertNotIn('settle_time', looked.call_args.kwargs)
 
 
 class TestMenuLabelFilter(unittest.TestCase):
@@ -404,6 +455,8 @@ class _Collection:
     """
     open_crystal_collection = GlobalDailyTask.open_crystal_collection
     dispatch_crystals = GlobalDailyTask.dispatch_crystals
+    press_until = BaseGlobalTask.press_until
+    wait_page = BaseGlobalTask.wait_page
 
     def __init__(self, animating_presses=0, has_dispatch=False, button_present=True):
         self.animating_presses = animating_presses
@@ -441,6 +494,9 @@ class _Collection:
     def wait_pop_up(self, **kwargs):
         return None
 
+    def sleep(self, seconds):
+        pass
+
     def log_info(self, message, notify=False):
         self.logged.append(message)
 
@@ -463,10 +519,10 @@ class TestCrystalCollection(unittest.TestCase):
         self.assertEqual(2, screen.presses, 'the swallowed press was never followed by another')
 
     def test_it_gives_up_rather_than_pressing_forever(self):
-        daily = importlib.import_module('src.global.GlobalDailyTask')
+        base = importlib.import_module('src.global.BaseGlobalTask')
         screen = _Collection(animating_presses=99)
         self.assertFalse(screen.open_crystal_collection())
-        self.assertEqual(daily.CRYSTAL_OPEN_ATTEMPTS, screen.presses)
+        self.assertEqual(base.PRESS_ATTEMPTS, screen.presses)
 
     def test_a_missing_button_is_not_a_retry(self):
         """No button at all is a different screen, not a press that needs repeating."""
@@ -583,6 +639,319 @@ class TestEventTickets(unittest.TestCase):
     def test_nothing_readable_is_unknown_rather_than_empty(self):
         """Returning 0 here would skip the event every run, and silently."""
         self.assertIsNone(self.parse([]))
+
+
+class TestBannerSlots(unittest.TestCase):
+    """Which of the home screen banners holds the event is not fixed, and two events can run at once.
+
+    The setting is free text, so it is parsed where it is used rather than on entry - this repo has no config-entry validator.
+    """
+
+    def slots(self, option):
+        return importlib.import_module('src.global.GlobalDailyTask').parse_banner_slots(option)
+
+    def test_the_default_is_the_top_banner(self):
+        """The default has to keep doing what the flow did before there was a setting at all."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertEqual([1], self.slots(daily.BANNER_SLOTS_DEFAULT))
+
+    def test_a_lone_second_slot_is_read(self):
+        """The case this setting exists for - one event, sitting below another banner."""
+        self.assertEqual([2], self.slots('2'))
+
+    def test_two_slots_run_in_the_order_written(self):
+        self.assertEqual([1, 2], self.slots('1,2'))
+        self.assertEqual([2, 3], self.slots('2,3'))
+
+    def test_spaces_around_the_numbers_are_ignored(self):
+        """Someone typing a list types spaces, and the order they wrote is the order the events are run in."""
+        self.assertEqual([2, 1], self.slots(' 2 , 1 '))
+
+    def test_a_repeated_slot_is_only_visited_once(self):
+        self.assertEqual([1], self.slots('1,1'))
+
+    def test_settings_that_name_no_usable_slot_are_rejected(self):
+        """The flow catches this and says so. Falling back on slot 1 would quietly spend another event's Expenditure."""
+        for option in ('', '   ', 'a', '0', '4', '1,', '1;2', '1.5'):
+            with self.subTest(option=option):
+                with self.assertRaises(ValueError):
+                    self.slots(option)
+
+
+class TestBannerPosition(unittest.TestCase):
+    """Only the first banner has a measured position - the rest are stepped down from it, so the step is where this can go wrong."""
+
+    def daily(self):
+        return importlib.import_module('src.global.GlobalDailyTask')
+
+    def test_the_first_slot_is_the_measured_point(self):
+        """Slot 1 is the default, so it must land exactly where the flow has always clicked."""
+        daily = self.daily()
+        self.assertEqual(daily.EVENT_BANNER, daily.banner_position(1))
+
+    def test_later_slots_step_down_by_one_pitch_each(self):
+        daily = self.daily()
+        x, y = daily.EVENT_BANNER
+        self.assertEqual((x, y + daily.BANNER_PITCH), daily.banner_position(2))
+        self.assertEqual((x, y + 2 * daily.BANNER_PITCH), daily.banner_position(3))
+
+    def test_every_slot_stays_on_screen(self):
+        daily = self.daily()
+        for slot in range(1, daily.EVENT_SLOTS + 1):
+            with self.subTest(slot=slot):
+                self.assertLess(daily.banner_position(slot)[1], 1.0, f'slot {slot} would be clicked off the bottom of the frame')
+
+
+class TestSuppliesLink(unittest.TestCase):
+    """Newer events have no Supply button of their own - each part carries its own Supplies link, and the parts that have not opened yet must be left alone.
+
+    Modelled on the Chiral Redundancy page at 1920 wide: Part 1's card along the bottom left, Part 2's along the bottom right.
+    """
+
+    WIDTH = 1920
+    LEFT_CARD = 300
+    RIGHT_CARD = 1580
+
+    def pick(self, boxes):
+        return importlib.import_module('src.global.GlobalDailyTask').pick_supplies_link(boxes, self.WIDTH)
+
+    def text(self, x, name):
+        """One thing OCR read on the part cards. Only the x matters - a card's own text is picked out by how close it sits."""
+        return Box(x, 900, 200, 30, name=name)
+
+    def card(self, x, number=None, locked=False):
+        """The text one part card puts on screen, in the order OCR returns it.
+
+        Args:
+            x: Where the card's title starts.
+            number: The part number in the title, or None for an event that does not split its title into parts.
+            locked: Whether the card carries the "Not enabled" notice a part that has not opened yet shows.
+
+        Returns:
+            A list of `Box`.
+        """
+        title = f'Chiral Redundancy - Part {number}' if number else 'Chiral Redundancy'
+        boxes = [self.text(x, title), self.text(x, 'Supplies 0%')]
+        if locked:
+            boxes.insert(0, self.text(x, 'Not enabled'))
+        return boxes
+
+    def test_the_open_part_is_chosen_over_the_locked_one(self):
+        """The page in the screenshots: Part 1 finished and open, Part 2 not enabled yet."""
+        picked = self.pick(self.card(self.LEFT_CARD, 1) + self.card(self.RIGHT_CARD, 2, locked=True))
+        self.assertEqual(self.LEFT_CARD, picked.x)
+
+    def test_the_later_part_wins_once_both_are_open(self):
+        """Part 1 is done with by then, so running it again would spend tickets on the wrong stage."""
+        picked = self.pick(self.card(self.LEFT_CARD, 1) + self.card(self.RIGHT_CARD, 2))
+        self.assertEqual(self.RIGHT_CARD, picked.x)
+
+    def test_a_locked_first_part_is_skipped(self):
+        picked = self.pick(self.card(self.LEFT_CARD, 1, locked=True) + self.card(self.RIGHT_CARD, 2))
+        self.assertEqual(self.RIGHT_CARD, picked.x)
+
+    def test_every_part_locked_is_nothing_to_open(self):
+        """The flow reports no Supply mode rather than clicking a lock and wandering off."""
+        self.assertIsNone(self.pick(self.card(self.LEFT_CARD, 1, locked=True) + self.card(self.RIGHT_CARD, 2, locked=True)))
+
+    def test_a_single_unnumbered_card_still_opens(self):
+        """An event that does not split into parts has no number to sort on, and its one card is still the card to open."""
+        picked = self.pick(self.card(self.LEFT_CARD))
+        self.assertEqual(self.LEFT_CARD, picked.x)
+
+    def test_the_rightmost_card_wins_when_no_number_could_be_read(self):
+        """OCR mangling both digits leaves the layout as the only evidence, and later parts sit to the right."""
+        picked = self.pick(self.card(self.LEFT_CARD) + self.card(self.RIGHT_CARD))
+        self.assertEqual(self.RIGHT_CARD, picked.x)
+
+    def test_a_lock_notice_belonging_to_something_else_does_not_close_a_card(self):
+        """The band is measured to exclude the mode entries up the sides of the page, but one leaking in must not cost the run."""
+        picked = self.pick(self.card(self.LEFT_CARD, 1) + [self.text(1000, 'Not enabled')])
+        self.assertEqual(self.LEFT_CARD, picked.x)
+
+    def test_a_page_with_no_supplies_link_is_nothing_to_open(self):
+        self.assertIsNone(self.pick([self.text(self.LEFT_CARD, 'Chiral Redundancy - Part 1'), self.text(self.LEFT_CARD, 'Story 100%')]))
+
+
+class _EventPage:
+    """A stand-in for the daily task, scripted with which layout the event uses and how many presses its fade-in eats.
+
+    Borrows the real methods for the same reason `_CardScreen` does. `supply_entry` is stubbed out rather than driven, since which box it picks is already
+    covered by `TestSuppliesLink` - what is under test here is what happens to the press afterwards.
+    """
+
+    open_supply_map = GlobalDailyTask.open_supply_map
+    press_until = BaseGlobalTask.press_until
+    wait_page = BaseGlobalTask.wait_page
+    # Referenced by `open_supply_map` as the thing to wait on. The stubbed `wait_until` below never calls it.
+    supply_entry = GlobalDailyTask.supply_entry
+
+    def __init__(self, parts=True, animating_presses=0, entry_found=True):
+        self.parts = parts
+        self.animating_presses = animating_presses
+        self.entry_found = entry_found
+        self.on_supply_map = False
+        self.presses = 0
+        self.card_clicks = 0
+        self.settled = 0
+        self.logged = []
+        self.box = types.SimpleNamespace(bottom_right=None)
+
+    def box_of_screen(self, *args):
+        return None
+
+    def wait_until(self, condition, time_out=0):
+        """Stand in for the landing page read. A part card reads "Supplies", the older layout's button reads "Supply"."""
+        if not self.entry_found:
+            return None
+        return Box(433, 954, 120, 30, name='Supplies 0%' if self.parts else 'Supply')
+
+    def click(self, box, **kwargs):
+        self.card_clicks += 1
+
+    def wait_click_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        self.presses += 1
+        # A press landing while the page is still fading in is accepted by nothing, and the map behind it
+        # stays on Story.
+        if self.animating_presses > 0:
+            self.animating_presses -= 1
+        else:
+            self.on_supply_map = True
+        return [Box(1809, 1043, 100, 30, name='Supply')]
+
+    def wait_ocr(self, match=None, box=None, time_out=0, **kwargs):
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        if match is daily.SUPPLY_MAP and self.on_supply_map:
+            return [Box(900, 83, 120, 40, name='Supply')]
+        return []
+
+    def sleep(self, seconds):
+        self.settled += seconds
+
+    def log_info(self, message, notify=False):
+        self.logged.append(message)
+
+
+class TestSupplyMapArrival(unittest.TestCase):
+    """A part opens on its Story map, and the Supply tab beside it is drawn while that map is still fading in.
+
+    A press during the fade is accepted by nothing, so the flow went on to read the Story map's own stage codes, ran the first of those, and found no Auto
+    button on it - having spent the trip without saying anything was wrong.
+    """
+
+    def test_a_press_eaten_by_the_fade_in_is_repeated(self):
+        """The reported bug: the tab was pressed 0.38s after the part card opened, and the Story map stayed put."""
+        page = _EventPage(animating_presses=1)
+        self.assertTrue(page.open_supply_map())
+        self.assertEqual(2, page.presses, 'the swallowed press was never followed by another')
+
+    def test_the_part_card_is_opened_before_the_tab_is_pressed(self):
+        page = _EventPage(parts=True)
+        page.open_supply_map()
+        self.assertEqual(1, page.card_clicks)
+        self.assertTrue(any('splits into parts' in line for line in page.logged))
+
+    def test_the_older_layout_presses_its_button_without_opening_a_card(self):
+        """That layout's Supply button is already the way to the map, so there is no card in front of it."""
+        page = _EventPage(parts=False)
+        self.assertTrue(page.open_supply_map())
+        self.assertEqual(0, page.card_clicks)
+        self.assertEqual(1, page.presses)
+
+    def test_the_map_is_given_time_to_draw_before_it_is_read(self):
+        """The caller reads the stage codes straight after this, and a map still fading in shows the Story codes it is replacing."""
+        base = importlib.import_module('src.global.BaseGlobalTask')
+        page = _EventPage()
+        page.open_supply_map()
+        self.assertEqual(base.PAGE_DRAW_PAUSE, page.settled)
+
+    def test_a_page_neither_layout_recognised_is_not_a_retry(self):
+        """Nothing to press is a different screen, not a press that needs repeating."""
+        page = _EventPage(entry_found=False)
+        self.assertFalse(page.open_supply_map())
+        self.assertEqual(0, page.presses)
+
+
+class _Commissions:
+    """A stand-in for the task, recording how each press through the commissions navigation was made.
+
+    Borrows the real method for the same reason `_CardScreen` does. `pause` defaults to None here so a press that was left to the real default can be told
+    apart from one that asked for a value.
+    """
+
+    open_regular_commissions = BaseGlobalTask.open_regular_commissions
+
+    def __init__(self):
+        self.presses = []
+        self.box = types.SimpleNamespace(top=None)
+        self.nav_strip = None
+
+    def click_ocr_word(self, match, box=None, time_out=5, after_sleep=0, pause=None, raise_if_not_found=False):
+        self.presses.append({'after_sleep': after_sleep, 'pause': pause})
+        return [Box(1341, 1007, 220, 60, name='Commissions Platoon')]
+
+
+class TestCommissionsNavigation(unittest.TestCase):
+    """Getting to Boundary Push took nine seconds, most of it waiting out guesses at how long a page takes to draw.
+
+    Both callers follow this with a wait for their own entry - Boundary Push, Peak Value - and those return the moment it is on screen.
+    """
+
+    def test_how_each_press_through_the_navigation_is_made(self):
+        """Neither sleeps - both callers follow this with a wait for their own entry. The first does not pause either, being on the still home screen, while
+        the second lands on a page still coming up and is left at the default that pauses.
+        """
+        nav = _Commissions()
+        nav.open_regular_commissions()
+        self.assertEqual([{'after_sleep': 0, 'pause': 0}, {'after_sleep': 0, 'pause': None}], nav.presses)
+
+
+class _Tickets:
+    """A stand-in for the task, scripted with what the ticket corner reads on each successive look."""
+
+    no_event_tickets = GlobalDailyTask.no_event_tickets
+
+    def __init__(self, *readings):
+        self.readings = list(readings)
+        self.looks = 0
+
+    def event_tickets(self):
+        self.looks += 1
+        return self.readings.pop(0)
+
+    def sleep(self, seconds):
+        pass
+
+    def log_info(self, message, notify=False):
+        pass
+
+
+class TestEmptyTicketCount(unittest.TestCase):
+    """0 is the only count that stops the run, and it is also what the corner reads while it is still drawing itself.
+
+    A run once read the corner 18ms after the page's first word appeared, took the 0, and reported an event with tickets left as a normal empty day.
+    """
+
+    def test_a_real_count_is_taken_at_once(self):
+        page = _Tickets(3)
+        self.assertFalse(page.no_event_tickets())
+        self.assertEqual(1, page.looks, 'any count but 0 lets the run go ahead, so there is nothing to confirm')
+
+    def test_a_zero_caught_mid_draw_is_not_acted_on(self):
+        """The reported bug: the corner had not finished drawing, and the second look reads what is really there."""
+        page = _Tickets(0, 3)
+        self.assertFalse(page.no_event_tickets())
+        self.assertEqual(2, page.looks)
+
+    def test_an_event_that_really_is_spent_still_stops_the_run(self):
+        page = _Tickets(0, 0)
+        self.assertTrue(page.no_event_tickets())
+
+    def test_an_unreadable_count_is_unknown_rather_than_empty(self):
+        """Stopping here would skip the event every run, and silently."""
+        page = _Tickets(None)
+        self.assertFalse(page.no_event_tickets())
+        self.assertEqual(1, page.looks)
 
 
 class TestGoHomePolling(unittest.TestCase):
@@ -999,9 +1368,13 @@ class TestSingleFlowConfig(unittest.TestCase):
         daily = importlib.import_module('src.global.GlobalDailyTask')
         task = types.SimpleNamespace(
             flow=flow,
-            default_config={key: True for key, _, _ in daily.FLOWS} | {key: default for key, default, _ in daily.WALK_OPTIONS},
+            default_config=({key: True for key, _, _ in daily.FLOWS} | {key: default for key, default, _ in daily.WALK_OPTIONS}
+                            | {daily.BANNER_SLOTS: daily.BANNER_SLOTS_DEFAULT}),
             config_description={},
-            default_config_group={'Crew Deck': [key for key, _, _ in daily.WALK_OPTIONS]},
+            default_config_group={
+                'Crew Deck': [key for key, _, _ in daily.WALK_OPTIONS],
+                'Run Event Supply': [daily.BANNER_SLOTS],
+            },
         )
         verify._strip_flow_toggles(task, daily.FLOWS)
         return task.default_config
@@ -1011,6 +1384,11 @@ class TestSingleFlowConfig(unittest.TestCase):
         remaining = self.strip('crew_deck')
         for key, _, _ in daily.WALK_OPTIONS:
             self.assertIn(key, remaining, f'the Crew Deck task needs {key!r} - it is how the walk is tuned')
+
+    def test_the_event_supply_task_keeps_its_banner_slots(self):
+        """Which banner to open is the one thing that task cannot work out for itself."""
+        daily = importlib.import_module('src.global.GlobalDailyTask')
+        self.assertIn(daily.BANNER_SLOTS, self.strip('run_event_supply'))
 
     def test_other_flows_are_left_with_nothing_to_set(self):
         self.assertEqual({}, self.strip('shopping'))

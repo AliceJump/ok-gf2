@@ -1,17 +1,42 @@
 import re
 from typing import NamedTuple
 
-from ok import Box
+from ok import Box, find_boxes_by_name
 
 from src.tasks.BaseGfTask import map_re, parse_time_option
 
-from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, PROCEED, SHOP, SKIP, BaseGlobalTask
+from .BaseGlobalTask import CANCEL, CLAIM_ALL, CLICK_ANYWHERE, CONFIRM, COUNTER, CREW_DECK, PAGE_DRAW_PAUSE, PROCEED, SHOP, SKIP, BaseGlobalTask
 
-# Event. The banner sits at a fixed spot in the top-left of the home screen. When a second event is
-# running its banner appears directly below this one - not supported, since two at once is rare.
+# Event. Banners stack down the top-left of the home screen, up to three at a time, and the event worth
+# running is not always the top one. Only the first banner has a measured position - every event draws its
+# own art, so there is nothing to match on, and the rest are stepped down from it by the pitch the list is
+# drawn with. A pitch that is wrong lands the click in the gap between two banners, which opens nothing
+# and is reported as there being no event there.
 EVENT_BANNER = (0.104, 0.157)
+BANNER_PITCH = 0.079
+EVENT_SLOTS = 3
 EVENT_PAGE = re.compile(r'Challenge|Supply|Story', re.I)
 SUPPLY = re.compile(r'\bSupply\b', re.I)
+
+# Newer events have no Supply button of their own. They split into parts, one card each along the bottom
+# of the event page carrying that part's own Story and Supplies links, and a part that has not opened yet
+# shows "Not enabled" beside its title. Opening a card lands on its Story map with the Supply tab beside
+# it, so `SUPPLY` is still what gets clicked - one screen later than on the older layout.
+#
+# The band starts below the mode entries up the sides of the page, which carry "Not enabled" of their own.
+PART_BAND = (0.0, 0.72, 1.0, 1.0)
+# The map's own title, top centre, naming the tab that is open. This is what says the Supply map came up:
+# the strip along the bottom carries both words whichever tab is showing, and the stage codes are the
+# event's own, so neither says which of the two maps is being read.
+MAP_TITLE_BAND = (0.30, 0.03, 0.70, 0.14)
+SUPPLY_MAP = re.compile(r'^Supply$', re.I)
+SUPPLIES = re.compile(r'Supplies', re.I)
+NOT_ENABLED = re.compile(r'Not\s*enabled', re.I)
+PART_NUMBER = re.compile(r'Part\s*(\d+)', re.I)
+# How far from a card's Supplies link its own title and lock notice may sit, as a fraction of frame width.
+# The cards sit at opposite ends of the page, two thirds of the frame apart, so a span wide enough to take
+# in a whole card still reaches nowhere near its neighbour.
+CARD_SPREAD = 0.25
 # Anchored so it cannot match the "Auto Mode Preparation" dialog title that follows it.
 AUTO = re.compile(r'^Auto$', re.I)
 AUTO_DIALOG = re.compile(r'Number of Auto Battles', re.I)
@@ -31,6 +56,11 @@ TICKET_COUNT = re.compile(r'\d[\d,]*')
 # How much to enlarge that corner before reading it. Six times turns an 8x25 glyph into 48x150, which is
 # the size of ordinary on-screen text rather than something the detector has to be lucky to find.
 TICKETS_ZOOM = 6
+
+# How long to let the event page finish drawing before anything is read off it. Longer than the general
+# because this page fades in over a second or more: an arrival check once matched its first word and the
+# ticket corner was read 18ms later, while the event's own name was still materialising a letter at a time.
+EVENT_PAGE_DRAW_PAUSE = 3
 # What the end of a run of auto battles can look like. The reward summary is the expected outcome, but
 # the click-anywhere overlay is what actually blocks progress, and it is not always preceded by a title
 # the poll can see - so either one counts as done.
@@ -44,6 +74,15 @@ MAX_BATTLES = (0.653, 0.518)
 STAGE_BAND = (0.0, 0.38, 1.0, 0.62)
 STAGE_SWIPES = 5
 EVENT_BATTLE_TIME_OUT = 900
+
+# Which banners hold the events worth running. Free text rather than a drop-down, because two events can
+# overlap and either one, or both, can be the ones to run.
+BANNER_SLOTS = 'Event Banner Slots'
+BANNER_SLOTS_DEFAULT = '1'
+BANNER_SLOTS_TEXT = (
+    'Which of the home screen banners hold the events to run, counting from the top. "1" for the top banner, "2" when the event sits below another one, '
+    f'"1,2" or "2,3" when two events are running at once. Up to {EVENT_SLOTS}, opened in the order given.'
+)
 
 # The flows this task performs, in the order it performs them: (config key, method, settings text).
 # Single source for the toggles, the settings descriptions, and the run order. `VerifyTasks` also reads
@@ -61,7 +100,7 @@ FLOWS = (
     ('Buy Wishlist Items', 'buy_wishlist',
      'Buys everything waiting in the shop Wishlist, one in-game shop at a time. Spends in-game currency, never real money, and only on what is already on the Wishlist.'),
     ('Run Event Supply', 'run_event_supply',
-     'Auto-battles the last Supply stage of the current event, spending as much Expenditure as it can.'),
+     'Auto-battles the last Supply stage of each running event, spending as much Expenditure as it can. Which home screen banners to open is set below.'),
     ('Claim Boundary Push Rewards', 'claim_boundary_push',
      'Collects the Breakthrough rewards under Commissions.'),
 )
@@ -169,11 +208,6 @@ CRYSTAL_COLLECTION = re.compile(r'Crystal', re.I)
 # reading the plus symbol drawn in an empty slot - OCR has no word to give back for that.
 DISPATCH = re.compile(r'Dispatch', re.I)
 
-# Opening the collection screen at the start of a season. The card plays an animation for a few seconds
-# during which the button is drawn but not yet live, so the press lands on nothing and the screen never
-# changes. Arrival is confirmed rather than assumed, and the press repeated while it has not happened.
-CRYSTAL_OPEN_ATTEMPTS = 3
-CRYSTAL_ARRIVAL_TIME_OUT = 6
 # How long to wait for the button itself once the card has been opened. Covers the card screen loading as
 # well, which is why it is longer than a wait for something on a screen already up - the press that gets
 # here does not sleep afterwards, so this budget is the whole allowance rather than a second helping.
@@ -226,11 +260,6 @@ ACTIVITY_START_TIME_OUT = 15
 # straight away, so waiting the full amount again only adds dead time to the end of every activity.
 QUIET_CONFIRM_TIME_OUT = 1
 SCENE_RECHECK_TIME_OUT = 0.5
-
-# How long Confirm has to hold still before it is clicked. The button animates in, and a click that lands
-# during that is swallowed - the summary stays up having done nothing. Waiting for the match to settle
-# stops the press being thrown away rather than noticing afterwards that it was.
-CONFIRM_SETTLE = 0.5
 
 # The first two ingredient tiles on the cooking grid, measured off a 1920x1080 capture. Any two will do -
 # the dish is only worth the buff it gives - so this takes the first two rather than reading the grid.
@@ -347,6 +376,76 @@ def parse_uses_left(text):
     return max(0, total - used)
 
 
+def parse_banner_slots(option):
+    """Turn the banner slots setting into the home screen banners to open, in order.
+
+    Raises rather than falling back on the top banner, because a setting that reads as nothing sensible is a setting that has not been understood, and
+    opening the wrong event spends its Expenditure before anything says so.
+
+    Args:
+        option: The setting value, for example "1" or "2,3".
+
+    Returns:
+        A list of slot numbers in the order they were written, with repeats dropped.
+
+    Raises:
+        ValueError: The setting is empty, names something that is not a whole number, or names a slot outside 1 to `EVENT_SLOTS`.
+    """
+    slots = []
+    for piece in str(option).split(','):
+        slot = int(piece.strip())
+        if not 1 <= slot <= EVENT_SLOTS:
+            raise ValueError(f'banner slot {slot} is outside 1 to {EVENT_SLOTS}')
+        if slot not in slots:
+            slots.append(slot)
+    return slots
+
+
+def banner_position(slot):
+    """Where a banner slot's click point sits, as a fraction of the frame.
+
+    Args:
+        slot: The slot number, counting from 1 at the top of the list.
+
+    Returns:
+        An (x, y) pair for `click_relative`.
+    """
+    x, y = EVENT_BANNER
+    return x, y + (slot - 1) * BANNER_PITCH
+
+
+def pick_supplies_link(boxes, width):
+    """Choose which part's Supplies link to open, on an event page that splits its modes into parts.
+
+    The later part is the one worth running, and a part that has not opened yet says "Not enabled" beside its own title, so the pick is the highest numbered
+    part that does not. A card is grouped by how close its text sits, since the parts are drawn at opposite ends of the page. A card whose number could not
+    be read sorts below every numbered one and falls back on its position, which leaves a single-part event working without a case of its own.
+
+    Args:
+        boxes: What OCR read across the part cards.
+        width: Frame width in pixels, for measuring how far apart two boxes are.
+
+    Returns:
+        The `Supplies` Box to click, or None when nothing there was a part that has opened.
+    """
+    spread = width * CARD_SPREAD
+    numbered = [(box, int(found.group(1))) for box in boxes if box.name and (found := PART_NUMBER.search(box.name))]
+
+    def near(box, link):
+        """Whether `box` sits close enough to `link` to be part of the same card."""
+        return abs(box.x - link.x) < spread
+
+    def part_of(link):
+        """The part number on `link`'s own card, or 0 when none of them could be read."""
+        return max((number for box, number in numbered if near(box, link)), default=0)
+
+    locked = find_boxes_by_name(boxes, NOT_ENABLED)
+    open_links = [link for link in find_boxes_by_name(boxes, SUPPLIES) if not any(near(box, link) for box in locked)]
+    if not open_links:
+        return None
+    return max(open_links, key=lambda link: (part_of(link), link.x))
+
+
 def walk_times(option, key_count):
     """Turn a walk-timing setting into one hold duration per movement key.
 
@@ -387,8 +486,15 @@ class GlobalDailyTask(BaseGlobalTask):
         self.register_flows(FLOWS)
         self.default_config.update({key: default for key, default, _ in WALK_OPTIONS})
         self.config_description.update({key: description for key, _, description in WALK_OPTIONS})
-        # Nest the walk timings under their flow, so they only show when the flow is on.
-        self.default_config_group.update({'Crew Deck': [key for key, _, _ in WALK_OPTIONS]})
+        self.default_config[BANNER_SLOTS] = BANNER_SLOTS_DEFAULT
+        self.config_description[BANNER_SLOTS] = BANNER_SLOTS_TEXT
+        # Group each setting under the flow that reads it. On the Global tasks that is what keeps a `Run:`
+        # task down to its own flow's settings. It does not hide anything on the daily itself - that would
+        # need the framework's `config_type` sub-configs, which no Global task sets up.
+        self.default_config_group.update({
+            'Crew Deck': [key for key, _, _ in WALK_OPTIONS],
+            'Run Event Supply': [BANNER_SLOTS],
+        })
         self.default_config.update({key: False for key in FLOWS_OFF_BY_DEFAULT})
 
     def run(self):
@@ -434,16 +540,19 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         self.info_set('current_task', 'shopping')
         # No sleep: the category click below waits for the shop's own rail to appear.
-        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
+        self.click_ocr_word(SHOP, box=self.box.right, pause=0, raise_if_not_found=True)  # pause=0: the home screen is already still.
         claimed = 0
-        if self.click_ocr_word(QUALITY_SELECTION, box=self.box.left, time_out=5, after_sleep=2):
+        # Arrival is the tab strip the category opens with, whose two names appear in no other tab and in
+        # no category, so it says the category is open rather than merely pressed.
+        if self.press_until(lambda: self.click_ocr_word(QUALITY_SELECTION, box=self.box.left, time_out=SCREEN_SETTLE_TIME_OUT),
+                            list(FREE_BOX_TABS), box=self.box.top, what='Quality Selection'):
             for tab in FREE_BOX_TABS:
                 if self.click_ocr_word(tab, box=self.box.top, time_out=5, after_sleep=2):
                     claimed += self.claim_free_boxes()
         else:
             # Without the category this is on a page it does not recognise, and the page is still worth
             # reading before giving up - it is where the daily box used to be claimed from.
-            self.log_info('No Quality Selection category in the shop, claiming from the landing page instead.')
+            self.log_info('Could not open the Quality Selection category, claiming from the page the shop is on instead.')
             claimed += self.claim_free_boxes()
         self.log_info(f'claimed {claimed} free supply box(es)')
         self.go_home()
@@ -530,7 +639,7 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         self.info_set('current_task', 'buy_wishlist')
         # No sleep: the Wishlist click below waits for the shop to be up.
-        self.click_ocr_word(SHOP, box=self.box.right, raise_if_not_found=True)
+        self.click_ocr_word(SHOP, box=self.box.right, pause=0, raise_if_not_found=True)  # pause=0: the home screen is already still.
         if not self.click_ocr_word(WISHLIST, box=self.box.bottom_left, time_out=5, after_sleep=2):
             return self.stop_flow('No Wishlist in the shop, skipping.', dump='wishlist_missing')
         flagged = self.flagged_categories()
@@ -604,25 +713,40 @@ class GlobalDailyTask(BaseGlobalTask):
     # Event Supply
 
     def run_event_supply(self):
-        """Auto-battle the current event's last Supply stage.
-
-        Every event has the same shape behind a differently-named banner, so nothing here matches the event's own title.
-        """
+        """Auto-battle the last Supply stage of the event in each configured banner slot."""
         self.info_set('current_task', 'run_event_supply')
+        try:
+            slots = parse_banner_slots(self.config.get(BANNER_SLOTS))
+        except ValueError:
+            self.log_info(f'The {BANNER_SLOTS} setting is not a list of banner positions from 1 to {EVENT_SLOTS}, skipping Event Supply.', notify=True)
+            return
+        for slot in slots:
+            self.log_info(f'opening the event banner in slot {slot}')
+            self.event_supply_slot(slot)
+
+    def event_supply_slot(self, slot):
+        """Run one banner's event, from the home screen back to it.
+
+        Every event has the same shape behind a differently-named banner, so nothing here matches the event's own title. Both endings go through `go_home`,
+        so the next slot starts where this one did.
+
+        Args:
+            slot: Which banner to open, counting from 1 at the top.
+        """
         # None of the clicks through this flow sleep afterwards. Each is followed by a wait for whatever it
         # is meant to bring up, and those waits return the moment it appears - a fixed sleep in front of one
         # is time spent whether or not the game needed it. The two clicks that do still sleep are the ones
         # whose effect no wait covers: the stage list is read outright, and Max only changes a number on a
         # dialog that is already up.
-        self.click_relative(*EVENT_BANNER)
-        if not self.wait_ocr(match=EVENT_PAGE, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT, log=True):
-            return self.stop_flow('No event banner on the home screen, skipping.')
+        self.click_relative(*banner_position(slot))
+        if not self.wait_page(EVENT_PAGE, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT, pause=EVENT_PAGE_DRAW_PAUSE, log=True):
+            return self.stop_flow(f'No event banner in slot {slot} on the home screen, skipping.', dump=f'no_event_banner_slot_{slot}')
         # Checked here, before anything is navigated to or spent. Without tickets the stage cannot be run
         # at all, so the whole trip through the map and the auto dialog would be for nothing.
-        if self.event_tickets() == 0:
+        if self.no_event_tickets():
             return self.stop_flow('No event tickets left, so there is nothing to run.')
-        if not self.wait_click_ocr(match=SUPPLY, box=self.box.bottom_right, time_out=5, after_sleep=3):
-            return self.stop_flow('This event has no Supply mode, skipping.')
+        if not self.open_supply_map():
+            return self.stop_flow('This event has no Supply mode, skipping.', dump='no_supply_mode')
         stage = self.last_supply_stage()
         if not stage:
             return self.stop_flow('Found no Supply stages on the map, skipping.')
@@ -645,6 +769,22 @@ class GlobalDailyTask(BaseGlobalTask):
         else:
             self.log_info(f'Auto battles did not finish within {EVENT_BATTLE_TIME_OUT}s.', notify=True)
         self.go_home()
+
+    def no_event_tickets(self):
+        """Whether the event has no tickets left, confirmed rather than believed on one look.
+
+        0 is the only count that stops the run, and it is also what a counter still drawing itself reads as, so it is looked at twice before it is acted on.
+        The costs are not symmetric: going ahead on a stale count wastes a trip through the map, while stopping on a false one skips the event and reports it
+        as a normal empty day.
+
+        Returns:
+            True when the corner read 0 both times.
+        """
+        if self.event_tickets() != 0:
+            return False
+        self.log_info('the ticket count read 0, looking again in case the corner was still drawing')
+        self.sleep(PAGE_DRAW_PAUSE)
+        return self.event_tickets() == 0
 
     def event_tickets(self):
         """How many event tickets are left, read off the top-right corner of the event page.
@@ -669,6 +809,46 @@ class GlobalDailyTask(BaseGlobalTask):
         else:
             self.log_info(f'{tickets} event ticket(s) left')
         return tickets
+
+    def open_supply_map(self):
+        """Get from an event's landing page to its Supply map.
+
+        Two layouts. Older events put a Supply button straight on the landing page. Newer ones split the event into parts, each a card along the bottom with
+        a Supplies link of its own, and opening one lands on that part's Story map with the Supply tab beside it. Either way what is pressed next is a
+        `Supply` in the bottom right, so only reaching it differs.
+
+        Returns:
+            True once the Supply map is up, False when neither layout was recognised.
+        """
+        entry = self.wait_until(self.supply_entry, time_out=SCREEN_SETTLE_TIME_OUT)
+        if not entry:
+            return False
+        # Which layout was found is written on the box: `SUPPLY` cannot match a card's "Supplies", and
+        # `SUPPLIES` cannot match the button's "Supply".
+        if not SUPPLY.search(entry.name):
+            self.log_info(f'this event splits into parts, opening {entry.name!r}')
+            # No sleep: the press below waits for the tab strip this brings up.
+            self.click(entry)
+        return self.press_until(
+            lambda: self.wait_click_ocr(match=SUPPLY, box=self.box.bottom_right, time_out=SCREEN_SETTLE_TIME_OUT),
+            SUPPLY_MAP, box=self.box_of_screen(*MAP_TITLE_BAND), what='Supply')
+
+    def supply_entry(self):
+        """Find the way onwards on whichever layout this event's landing page uses.
+
+        One OCR pass answers for both. Asking for the direct button first with a wait of its own spent a whole timeout on every part-style event before
+        looking at the cards that had been on screen the entire time. Not logged: this is polled flat out, and a read of half the frame per pass fills the
+        log with the same screen twenty times over. The frame is saved once by the caller when none of the passes found anything.
+
+        Returns:
+            The Box to click, or None when neither layout was recognised.
+        """
+        boxes = self.ocr(box=self.box.bottom)
+        # The same pattern and the same corner as the older layout used on its own, so nothing changes for
+        # the events that carry a Supply button.
+        if direct := self.find_boxes(boxes, match=SUPPLY, boundary=self.box.bottom_right):
+            return direct[0]
+        return pick_supplies_link(self.find_boxes(boxes, boundary=self.box_of_screen(*PART_BAND)), self.width)
 
     def last_supply_stage(self):
         """Scroll the Supply map to its right end and return the furthest-right stage node.
@@ -746,13 +926,9 @@ class GlobalDailyTask(BaseGlobalTask):
         Returns:
             True once the collection screen is up, False when it was never reached.
         """
-        for _ in range(CRYSTAL_OPEN_ATTEMPTS):
-            if not self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=CRYSTAL_BUTTON_TIME_OUT, after_sleep=2):
-                return False
-            if self.wait_ocr(match=CLAIM_ALL, box=self.box.bottom_right, time_out=CRYSTAL_ARRIVAL_TIME_OUT):
-                return True
-            self.log_info('the Crystal Collection press did not take, the card is probably still animating in')
-        return False
+        return self.press_until(
+            lambda: self.wait_click_ocr(match=CRYSTAL_COLLECTION, box=self.box.bottom_right, time_out=CRYSTAL_BUTTON_TIME_OUT),
+            CLAIM_ALL, box=self.box.bottom_right, what='Crystal Collection')
 
     def dispatch_crystals(self):
         """Send dolls out to any empty collection slot.
@@ -905,7 +1081,7 @@ class GlobalDailyTask(BaseGlobalTask):
         # Make raises a Caution dialog - "Do you wish to make X? N time(s) remaining today" - with Cancel
         # sitting beside Confirm. Matched by name rather than clicked by position, so the wrong one of the
         # two can never be hit. Nothing is made until this lands.
-        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, settle_time=CONFIRM_SETTLE, after_sleep=2):
+        if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=6, after_sleep=2):
             self.log_info('Tea Time: the Make confirmation never appeared, so no drink was made.', notify=True)
             self.dump_screen('crew_deck_Tea_Time_no_confirm')
             return False
@@ -1022,7 +1198,7 @@ class GlobalDailyTask(BaseGlobalTask):
         """
         presses = 0
         for _ in range(MAX_SUMMARY_CONFIRMS):
-            if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=time_out, settle_time=CONFIRM_SETTLE, after_sleep=2):
+            if not self.wait_click_ocr(match=CONFIRM, box=self.box.bottom, time_out=time_out, after_sleep=2):
                 break
             presses += 1
             time_out = QUIET_CONFIRM_TIME_OUT
