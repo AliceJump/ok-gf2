@@ -98,12 +98,30 @@ class BaseGfTask(BaseTask):
                 self.back()
                 self.sleep(1)
             else:
-                if has_dialog:
+                if has_dialog and not self._is_loading_frame(boxes):
                     self.click_relative(0.95, 0.04)
                 self.sleep(2)
             self.next_frame()
         if raise_if_not_found:
             raise Exception('跳过剧情超时!')
+        
+    def _is_loading_frame(self, boxes):
+        """
+        判断当前帧是否为加载界面。
+        :param boxes: OCR 识别结果
+        :return: True 如果是加载界面，否则 False
+        """
+        if not boxes:
+            return True
+        for box in boxes:
+            name = box.name
+            if not name:
+                continue
+            if '资源加载中' in name:
+                return True
+            if re.search(r'\d{1,3}%', name):
+                return True
+        return False
 
     def auto_battle(self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False,
                     has_dialog_behind_start=False):
