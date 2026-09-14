@@ -1,146 +1,218 @@
 {
-    "images": [
-        {
-            "id": 1,
-            "file_name": "images/0.png",
-            "width": 2560,
-            "height": 1440
-        },
-        {
-            "id": 2,
-            "file_name": "images/0.png",
-            "width": 2560,
-            "height": 1440
-        },
-        {
-            "id": 3,
-            "file_name": "images/1.png",
-            "width": 1920,
-            "height": 1080
-        },
-        {
-            "id": 4,
-            "file_name": "images/1.png",
-            "width": 1920,
-            "height": 1080
-        },
-        {
-            "id": 5,
-            "file_name": "images/1.png",
-            "width": 1920,
-            "height": 1080
-        }
-    ],
-    "annotations": [
-        {
-            "id": 1,
-            "image_id": 1,
-            "category_id": 1,
-            "bbox": [
-                348,
-                560,
-                60,
-                67
-            ],
-            "area": 4020,
-            "iscrowd": 0
-        },
-        {
-            "id": 2,
-            "image_id": 2,
-            "category_id": 2,
-            "bbox": [
-                450,
-                668,
-                44,
-                44
-            ],
-            "area": 1936,
-            "iscrowd": 0
-        },
-        {
-            "id": 3,
-            "image_id": 3,
-            "category_id": 3,
-            "bbox": [
-                92,
-                833,
-                40,
-                37
-            ],
-            "area": 1480,
-            "iscrowd": 0
-        },
-        {
-            "id": 4,
-            "image_id": 3,
-            "category_id": 4,
-            "bbox": [
-                294,
-                955,
-                33,
-                24
-            ],
-            "area": 792,
-            "iscrowd": 0
-        },
-        {
-            "id": 5,
-            "image_id": 4,
-            "category_id": 5,
-            "bbox": [
-                553,
-                515,
-                24,
-                26
-            ],
-            "area": 624,
-            "iscrowd": 0
-        },
-        {
-            "id": 6,
-            "image_id": 5,
-            "category_id": 6,
-            "bbox": [
-                659,
-                401,
-                25,
-                13
-            ],
-            "area": 325,
-            "iscrowd": 0
-        }
-    ],
-    "categories": [
-        {
-            "id": 1,
-            "name": "free_eat_entry",
-            "supercategory": ""
-        },
-        {
-            "id": 2,
-            "name": "ggq_can_button",
-            "supercategory": ""
-        },
-        {
-            "id": 3,
-            "name": "dog_icon",
-            "supercategory": ""
-        },
-        {
-            "id": 4,
-            "name": "message_icon",
-            "supercategory": ""
-        },
-        {
-            "id": 5,
-            "name": "not_clear_one",
-            "supercategory": ""
-        },
-        {
-            "id": 6,
-            "name": "now_icon",
-            "supercategory": ""
-        }
-    ]
+  "images": [
+    {
+      "id": 1,
+      "file_name": "images/1.png",
+      "width": 2560,
+      "height": 1440
+    },
+    {
+      "id": 2,
+      "file_name": "images/2.png",
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "annotations": [
+    {
+      "id": 1,
+      "image_id": 1,
+      "category_id": 1,
+      "bbox": [
+        348,
+        560,
+        60,
+        67
+      ],
+      "area": 4020,
+      "iscrowd": 0
+    },
+    {
+      "id": 2,
+      "image_id": 1,
+      "category_id": 2,
+      "bbox": [
+        450,
+        668,
+        44,
+        44
+      ],
+      "area": 1936,
+      "iscrowd": 0
+    },
+    {
+      "id": 3,
+      "image_id": 2,
+      "category_id": 3,
+      "bbox": [
+        92,
+        833,
+        40,
+        37
+      ],
+      "area": 1480,
+      "iscrowd": 0
+    },
+    {
+      "id": 4,
+      "image_id": 2,
+      "category_id": 4,
+      "bbox": [
+        294,
+        955,
+        33,
+        24
+      ],
+      "area": 792,
+      "iscrowd": 0
+    },
+    {
+      "id": 5,
+      "image_id": 2,
+      "category_id": 5,
+      "bbox": [
+        553,
+        515,
+        24,
+        26
+      ],
+      "area": 624,
+      "iscrowd": 0
+    },
+    {
+      "id": 6,
+      "image_id": 2,
+      "category_id": 6,
+      "bbox": [
+        659,
+        401,
+        25,
+        13
+      ],
+      "area": 325,
+      "iscrowd": 0
+    },
+    {
+      "id": 7,
+      "image_id": 2,
+      "category_id": 8,
+      "bbox": [
+        496,
+        573,
+        110,
+        130
+      ],
+      "area": 14300,
+      "iscrowd": 0
+    },
+    {
+      "id": 8,
+      "image_id": 2,
+      "category_id": 9,
+      "bbox": [
+        1305,
+        409,
+        69,
+        64
+      ],
+      "area": 4416,
+      "iscrowd": 0
+    },
+    {
+      "id": 9,
+      "image_id": 2,
+      "category_id": 7,
+      "bbox": [
+        1030,
+        988,
+        45,
+        67
+      ],
+      "area": 3015,
+      "iscrowd": 0
+    },
+    {
+      "id": 10,
+      "image_id": 2,
+      "category_id": 10,
+      "bbox": [
+        1006,
+        734,
+        46,
+        49
+      ],
+      "area": 2254,
+      "iscrowd": 0
+    },
+    {
+      "id": 11,
+      "image_id": 2,
+      "category_id": 11,
+      "bbox": [
+        54,
+        285,
+        32,
+        36
+      ],
+      "area": 1152,
+      "iscrowd": 0
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "free_eat_entry",
+      "supercategory": ""
+    },
+    {
+      "id": 2,
+      "name": "ggq_can_button",
+      "supercategory": ""
+    },
+    {
+      "id": 3,
+      "name": "dog_icon",
+      "supercategory": ""
+    },
+    {
+      "id": 4,
+      "name": "message_icon",
+      "supercategory": ""
+    },
+    {
+      "id": 5,
+      "name": "not_clear_one",
+      "supercategory": ""
+    },
+    {
+      "id": 6,
+      "name": "now_icon",
+      "supercategory": ""
+    },
+    {
+      "id": 7,
+      "name": "login_out",
+      "supercategory": ""
+    },
+    {
+      "id": 8,
+      "name": "login_in",
+      "supercategory": ""
+    },
+    {
+      "id": 9,
+      "name": "login_down",
+      "supercategory": ""
+    },
+    {
+      "id": 10,
+      "name": "confirm",
+      "supercategory": ""
+    },
+    {
+      "id": 11,
+      "name": "login_switch",
+      "supercategory": ""
+    }
+  ]
 }

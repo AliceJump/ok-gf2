@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from src.data.FeatureList import FeatureList as fL
+
 
 class AccountMixin:
     """为任务提供多账户轮次执行能力。
@@ -31,19 +33,16 @@ class AccountMixin:
         self.default_config.update(
             {
                 "多账户模式": False,
-                "账号列表": "",
+                "账号列表": "\n",
             }
         )
         self.config_description.update(
             {
                 "多账户模式": (
-                    "开启后按账号列表逐个切换账号执行\n"
-                    "需要先实现 login_flow() 的游戏内切号逻辑\n"
-                    "可能不支持全屏游戏"
+                    "开启后按账号列表逐个切换账号执行"
                 ),
                 "账号列表": (
-                    "每行一个账号，切换顺序即执行顺序\n"
-                    "兼容旧格式：每行可写成 `账号, 密码`，密码会被忽略且不存储"
+                    "每行一个账号，切换顺序即执行顺序"
                 ),
             }
         )
@@ -92,23 +91,6 @@ class AccountMixin:
 
     def login_flow(self, username: str, password: str | None = None):
         """切换到指定账号。**必须由 ok-gf2 自行实现。**
-
-        需要完成的事：
-
-        1. 若当前已登录，先登出回到登录界面；
-        2. 在账号列表/最近登录里选中 ``username`` 对应的账号（界面通常只显示后四位，
-           注意后四位唯一性）；
-        3. 点击登录并等待进入主界面；
-        4. 成功时把 ``self._logged_in`` 置为 True，失败抛异常。
-
-        用 ``BaseGfTask`` 上现成的能力即可，不需要额外的前台截图/OCR：
-
-        - ``wait_click_ocr(match=..., box=..., alt=True)``：等文本出现并按住 alt 点击
-        - ``wait_click_feature(feature=..., alt=True)``：等特征出现并按住 alt 点击
-        - ``wait_ocr`` / ``find_one`` / ``ensure_main`` / ``send_key``
-
-        若某个界面必须前台输入才生效，再考虑激活窗口或模拟按键，不要默认走前台截图。
-
         Args:
             username: 要切换到的账号标识。
             password: 兼容参数，ok-gf2 不存储也不使用密码。
@@ -116,11 +98,16 @@ class AccountMixin:
         Raises:
             NotImplementedError: 始终抛出，直到本项目实现该方法。
         """
-        raise NotImplementedError(
-            "login_flow() 未实现：ok-gf2 需要自己写游戏内切换账号的逻辑"
-            "（登出 → 选中账号 → 登录 → 确认进入主界面）。"
-            "实现后本方法应把 self._logged_in 置为 True，失败时抛异常。"
-        )
+        self.ensure_main()
+        self.back()
+        self.wait_click_ocr(match="设置", box=self.box.top_right)
+        self.wait_click_feature(fL.login_out, settle_time=0.5, raise_if_not_found=False) 
+        self.wait_click_feature(fL.confirm, settle_time=0.5, raise_if_not_found=False)
+        self.wait_click_feature(fL.login_switch, settle_time=0.5, raise_if_not_found=False)
+        self.wait_click_feature(fL.login_down, settle_time=0.5, raise_if_not_found=False)
+        self.wait_click_ocr(username, box=self.box_of_screen(0.272, 0.474, 0.414, 0.991), raise_if_not_found=False)
+        self.wait_click_feature(fL.login_in, settle_time=0.5, raise_if_not_found=False)
+
 
     def iter_multi_account_context(
         self,
