@@ -112,8 +112,8 @@ jobs:
         run: |
           set -euo pipefail
           next="${{ steps.version.outputs.next }}"
-          gh workflow run build.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --event auto-release \
-            -f tag="$next"
-          echo "Dispatched build for $next"
+          gh api repos/"$GITHUB_REPOSITORY"/dispatches \
+            -X POST \
+            -f event_type="auto-release" \
+            -f client_payload.tag="$next"
+          echo "Dispatched repository_dispatch for $next"

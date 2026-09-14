@@ -361,7 +361,7 @@ jobs:
         shell: bash
         run: |
           gh workflow run --repo "$GITHUB_REPOSITORY" mirrorchyan_uploading.yml -f tag="$RELEASE_TAG"
-          gh workflow run --repo "$GITHUB_REPOSITORY" mirrorchyan_release_note.yml -f tag="$RELEASE_TAG"
+          gh workflow run --repo "$GITHUB_REPOSITORY" mirrorchyan_release_note.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
