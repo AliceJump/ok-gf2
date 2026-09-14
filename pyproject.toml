@@ -1,0 +1,66 @@
+[project]
+name = "ok-gf2"
+version = "0.1.0"
+description = "Girls' Frontline 2 game automation built on ok-script"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "ok-script==2.0.5",
+    "PySide6-Essentials==6.9.1",
+    "PySide6-Fluent-Widgets==1.8.3",
+    "PySideSix-Frameless-Window==0.7.3",
+    "onnxocr-ppocrv5==0.0.11",
+    "openvino==2026.0.0",
+    "opencv-python==4.12.0.88",
+    "numpy>=2.0.0",
+    "Pillow>=10.0.0",
+    "pycaw==20240210",
+    "psutil>=6.0.0",
+    "typing-extensions>=4.11.0",
+    "msgpack==1.1.0",
+    "cryptography>=43.0.0",
+    "requests>=2.31.0",
+    "pydirectinput==1.0.4",
+    "mouse==0.7.1",
+    "websockets>=13.0",
+    "json5>=0.9.0",
+    "pynput>=1.7.0",
+    "pyautogui>=0.9.54",
+]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.55,<2",
+    "polib>=1.2,<2",
+    "ruff>=0.16,<1",
+]
+
+[tool.uv]
+package = false
+override-dependencies = [
+    "pywin32==311; sys_platform == 'win32'",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["ok_templates"]
+
+[tool.ruff.lint]
+allowed-confusables = ["，", "。", "；", "：", "（", "）", "、"]
+select = ["E", "W", "F", "I", "C4", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",
+    "D",
+    "S101",
+    "BLE001",
+    "N",
+    "C901",
+    "RUF001",
+    "RUF002",
+    "PT",
+    "PLR2004",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+exclude = ["ok_templates"]
