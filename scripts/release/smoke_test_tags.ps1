@@ -84,15 +84,21 @@ foreach ($tag in $tagList) {
 
         $installSw = [System.Diagnostics.Stopwatch]::StartNew()
         if (-not $SkipInstall) {
-            Write-Output "  -- 正在安装 $tag 依赖（首次约1-2分钟，之后走 pip 缓存/已装依赖秒级完成）..."
-            & $Python -m pip install --disable-pip-version-check -q -r requirements.txt *> "$tmpDir\pip_$safeTag.log"
+            $tagVenv = Join-Path $tmpDir "venv_$safeTag"
+            Write-Output "  -- 正在为 $tag 创建隔离 venv 并安装依赖..."
+            & $Python -m venv $tagVenv
+            if ($LASTEXITCODE -ne 0) { throw "venv 创建失败(exit=$LASTEXITCODE)" }
+            $tagPython = Join-Path $tagVenv "Scripts\python.exe"
+            & $tagPython -m pip install --disable-pip-version-check -q -r requirements.txt *> "$tmpDir\pip_$safeTag.log"
             if ($LASTEXITCODE -ne 0) { throw "pip install 失败(exit=$LASTEXITCODE), 详见 tmp/pip_$safeTag.log" }
+        } else {
+            $tagPython = $Python
         }
         $installSw.Stop()
 
         $outLog = Join-Path $tmpDir "run_$safeTag.log"
         $errLog = Join-Path $tmpDir "err_$safeTag.log"
-        $p = Start-Process -FilePath $Python -ArgumentList "main.py" -WorkingDirectory $repo `
+        $p = Start-Process -FilePath $tagPython -ArgumentList "main.py" -WorkingDirectory $repo `
             -PassThru -WindowStyle Hidden `
             -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 

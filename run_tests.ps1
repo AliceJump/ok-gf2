@@ -1,7 +1,4 @@
-# 仓库根 = 本脚本向上两级
 $ErrorActionPreference = "Stop"
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-Push-Location $RepoRoot
 
 try {
     uv run --locked python -u -m unittest discover -s tests -p "Test*.py" -v
@@ -12,7 +9,4 @@ try {
 catch {
     Write-Error $_
     exit 1
-}
-finally {
-    Pop-Location
 }
