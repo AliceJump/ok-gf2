@@ -86,7 +86,7 @@ jobs:
         run: |
           pip install uv==0.12.5
           uv venv .venv
-          uv pip install --python .venv --no-deps ok-script==2.0.5
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
 
       - name: inline_ok_requirements
         env:
@@ -169,7 +169,7 @@ jobs:
         run: |
           pip install uv==0.12.5
           uv venv .venv
-          uv pip install --python .venv --no-deps ok-script==2.0.5
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
 
       - name: inline_ok_requirements
         env:
@@ -249,7 +249,7 @@ jobs:
         run: |
           pip install uv==0.12.5
           uv venv .venv
-          uv pip install --python .venv --no-deps ok-script==2.0.5
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
 
       - name: inline_ok_requirements
         env:
