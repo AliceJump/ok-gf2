@@ -63,3 +63,8 @@ pip-log.txt
 pip-delete-this-directory.txt
 autohelper
 working_images/
+
+# WorkBuddy AI 本地数据（记忆、技能缓存等），不进版本库
+.workbuddy-ai/
+.vscode/*
+!.vscode/extensions.json
