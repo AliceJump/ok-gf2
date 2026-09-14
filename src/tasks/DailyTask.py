@@ -377,14 +377,27 @@ class DailyTask(CommunityMixin, BaseGfTask):
 
     def xunlu(self):
         self.info_set('current_task', 'xunlu')
-        box = self.wait_ocr(match=['巡录'], box=self.box._xunlun, time_out=2, raise_if_not_found=False)
-        if box:
-            self.click_box_by_match_position(box, '巡录', after_sleep=2)
-            self.wait_click_ocr(match=['沿途行动'], box=self.box.top_right, time_out=4,
-                                raise_if_not_found=True, after_sleep=1)
-            self.wait_click_ocr(match=[re.compile('领取')], box=self.box_of_screen(1423/1920,939/1080,1,1), time_out=4,
-                                raise_if_not_found=False, after_sleep=1)
+        box = self.wait_ocr(match=[re.compile(r'^巡录$')], box=self.box._xunlun, time_out=3, raise_if_not_found=False)
+        if not box:
+            self.log_info('未找到「巡录」入口，跳过')
             self.ensure_main()
+            return
+        self.click_box_by_match_position(box, '巡录', after_sleep=2)
+        # 「巡录」入口会随版本/活动状态呈现两种形态，依次兼容：
+        #   A) 直接进入「远航巡录」主页：底部有「沿途行动」标签与「一键领取」按钮
+        #   B) 先弹出奖励预览页，需点左下「开启远航巡录」再进入主页
+        if self.wait_click_ocr(match=['开启远航巡录', '远航巡录'], box=self.box.bottom_left,
+                               time_out=3, raise_if_not_found=False, after_sleep=2):
+            self.log_info('已通过「开启远航巡录」进入大月卡主页')
+        # 兼容 A：主页可见「一键领取」时直接领取「沿途行动」免费档奖励
+        self.wait_click_ocr(match=[re.compile('一键领取')], box=self.box.bottom,
+                            time_out=3, raise_if_not_found=False, after_sleep=1.5)
+        # 兼容两种形态的奖品格「领取」按钮
+        self.wait_click_ocr(match=[re.compile('领取')], box=self.box.bottom_right, time_out=3,
+                            raise_if_not_found=False, after_sleep=1)
+        self.back()
+        self.sleep(1)
+        self.ensure_main()
 
     def _box_center_ratio(self, box):
         return (
