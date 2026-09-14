@@ -20,6 +20,16 @@ from src.tasks.daily.daily_battle_mixin import DailyBattleMixin
 
 
 class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityMixin, DailyPublicMixin, DailyBattleMixin, CommunityMixin, BaseGfTask):
+    # 允许「多账户独立配置」按账号覆盖本任务的参数
+    support_multi_account = True
+    # 这些是全账号共用的开关，按账号覆盖没有意义
+    account_config_blacklist = {
+        "已确认启用游戏内全局自动功能",
+        "生成汇总文件",
+        "自动打开汇总文件",
+        "Exit After Task",
+    }
+
     def __init__(self, *args, **kwargs):
         """
             该模块总启动配置
@@ -29,7 +39,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
         self.description = "收菜"
         self.support_schedule_task = True
         self.daily_runner = None  # DailyTaskRunner 实例，见 run()
-        self._init_account_config()  # 多账户：多账户模式 / 账号列表
+        self._init_account_config()  # 多账户：多账户模式 / 多账户独立配置 / 账号列表
         self._init_default_config()
         self._init_stamina_options()
         self._init_default_config_group()
