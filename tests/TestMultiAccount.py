@@ -11,8 +11,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src.tasks import account_scope_store  # noqa: E402
 from src.tasks.AccountMixin import AccountMixin  # noqa: E402
 from src.tasks.DailyTaskRunner import DailyTaskRunner  # noqa: E402
+
+
+class StoreSnapshotMixin:
+    """账号 ID 会写进真实的 configs/account_scoped_overrides.json，测试前后要还原。"""
+
+    def setUp(self):
+        self._store_backup = account_scope_store.load_overrides(force=True)
+
+    def tearDown(self):
+        account_scope_store.save_overrides(self._store_backup)
 
 
 class StubTask(AccountMixin):
@@ -78,7 +89,7 @@ def build_plan(stub, results):
 BASE_CONFIG = {"多账户模式": True, "邮件": True, "自动刷体力": True}
 
 
-class TestAccountList(unittest.TestCase):
+class TestAccountList(StoreSnapshotMixin, unittest.TestCase):
     def test_parse_one_account_per_line(self):
         task = StubTask({"账号列表": "13800001111\n13800002222"})
         accounts = task.get_account_list()
@@ -93,12 +104,18 @@ class TestAccountList(unittest.TestCase):
         task = StubTask({"账号列表": ""})
         self.assertEqual(task.get_account_list(), [])
 
-    def test_account_id_defaults_to_username(self):
+    def test_account_id_comes_from_store_registry(self):
+        """账号 ID 由 account_scope_store 的注册表生成，形如 acc_<12位>，且同一账号稳定不变。"""
         task = StubTask({"账号列表": "abc"})
-        self.assertEqual(task.get_account_list()[0]["account_id"], "abc")
+        account_id = task.get_account_list()[0]["account_id"]
+        self.assertTrue(account_id.startswith("acc_"), account_id)
+
+        # 再解析一次应拿到同一个 ID（跨会话稳定）
+        again = StubTask({"账号列表": "abc"}).get_account_list()[0]["account_id"]
+        self.assertEqual(account_id, again)
 
 
-class TestMultiAccountRunner(unittest.TestCase):
+class TestMultiAccountRunner(StoreSnapshotMixin, unittest.TestCase):
     def test_each_account_runs_all_tasks(self):
         stub = StubTask({**BASE_CONFIG, "账号列表": "acc001\nacc002"})
         runner = DailyTaskRunner(stub, build_plan(stub, {}))
@@ -134,11 +151,14 @@ class TestMultiAccountRunner(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner.run()
 
-        self.assertEqual(sorted(runner.failure_details.keys()), ["acc001"])
-        self.assertEqual(runner.failure_details["acc001"].get("邮件"), "任务返回 False")
+        # 失败明细按 account_id 分组（不是用户名）
+        first_id = account_scope_store.resolve_account_id("acc001", create_if_missing=True)
+        self.assertEqual(sorted(runner.failure_details.keys()), [first_id])
+        self.assertEqual(runner.failure_details[first_id].get("邮件"), "任务返回 False")
         # acc001 这轮已归档，acc002 因登录失败没进入任务
         self.assertEqual(len(runner.final_summary["per_round"]), 1)
         self.assertEqual(runner.final_summary["per_round"][0]["account_user"], "acc001")
+        self.assertEqual(runner.final_summary["per_round"][0]["account_id"], first_id)
 
     def test_failure_recorded_under_current_account(self):
         """邮件任务返回 False，失败应记在 acc002 名下而不是 acc001。"""
@@ -154,9 +174,11 @@ class TestMultiAccountRunner(unittest.TestCase):
         runner = DailyTaskRunner(stub, plan)
         runner.run()
 
-        self.assertIn("acc002", runner.failure_details)
-        self.assertEqual(runner.failure_details["acc002"].get("邮件"), "任务返回 False")
-        self.assertNotIn("acc001", runner.failure_details)
+        second_id = account_scope_store.resolve_account_id("acc002", create_if_missing=True)
+        first_id = account_scope_store.resolve_account_id("acc001", create_if_missing=True)
+        self.assertIn(second_id, runner.failure_details)
+        self.assertEqual(runner.failure_details[second_id].get("邮件"), "任务返回 False")
+        self.assertNotIn(first_id, runner.failure_details)
         self.assertEqual(runner.final_summary["status"], "部分失败")
 
     def test_empty_account_list_ends_without_running(self):
@@ -193,27 +215,17 @@ class TestMultiAccountRunner(unittest.TestCase):
         self.assertEqual(rounds[1]["account_user"], "acc002")
 
 
-class TestLoginFlowHook(unittest.TestCase):
-    def test_default_login_flow_raises_not_implemented(self):
-        """未实现切号逻辑时必须显式失败，而不是默默用同一个账号跑完所有轮次。"""
+class TestLoginFlow(unittest.TestCase):
+    def test_login_flow_is_implemented(self):
+        """ok-gf2 已实现游戏内切号：login_flow 不应再抛 NotImplementedError。
 
-        class Bare(AccountMixin):
-            def __init__(self):
-                self.config = {"多账户模式": True, "账号列表": "acc001"}
-                self.default_config = {}
-                self.config_type = {}
-                self.config_description = {}
-                self._init_account_config()
+        真机上它依赖界面元素，这里只验证「不再被占位实现拦住」。
+        """
+        import inspect
 
-            def tr(self, message):
-                return message
-
-            def log_info(self, message, notify=False, **kwargs):
-                pass
-
-        task = Bare()
-        with self.assertRaises(NotImplementedError):
-            task.login_flow("acc001")
+        source = inspect.getsource(AccountMixin.login_flow)
+        self.assertNotIn("NotImplementedError", source)
+        self.assertIn("wait_click_feature", source)
 
 
 if __name__ == '__main__':
