@@ -90,29 +90,16 @@ ok-gf2 的 `DailyTaskRunner` 从 ok-end-field 的 `src/tasks/daily/daily_task_ru
 
 ## 多账户
 
-配置项：`多账户模式`（默认 False）、`账号列表`（每行一个账号，兼容 `账号, 密码` 旧格式，密码忽略）。
+多账户轮次、账号级配置覆盖、账号配置页的完整说明见 **`ok-script-multi-account` 技能**。
+这里只记与编排器相关的部分：
 
 - 编排器通过 `AccountMixin.iter_multi_account_context()` 拿轮次；任务类没接该 mixin 时退化为单轮。
 - 每一轮：`set_current_account` → 记日志 → `login_flow(username)` → yield 给编排器跑任务。
 - 切号失败（`login_flow` 抛异常）时**该轮不会归档**到 `per_round`——因为此时 `task_status` 还是上一轮的
   残留，补记会产生假数据。编排器用 `_round_entered` 标记区分「任务执行中异常」和「切号阶段异常」。
 - 账号列表为空：一轮都不跑，最终状态置为「未开始」而不是留在「运行中」。
-
-### login_flow 必须自己实现
-
-`AccountMixin.login_flow()` 目前直接 `raise NotImplementedError`——**这是刻意的**：
-ok-end-field 的切号流程（登出 → 最近账号列表 → 按后四位选中 → 登录 → 确认）是终末地的界面，
-ok-gf2 无法复用。未实现时会显式失败，而不是默默用同一个账号把所有轮次跑完。
-
-直接用 `BaseGfTask` 上现成的能力即可，**不需要前台截图/OCR 那一套**：
-
-| 方法 | 作用 |
-|---|---|
-| `wait_click_ocr(match=..., box=..., alt=True)` | 等文本出现并按住 alt 点击 |
-| `wait_click_feature(feature=..., alt=True)` | 等特征出现并按住 alt 点击 |
-| `wait_ocr` / `find_one` / `ensure_main` / `send_key` | 常规等待、特征查找、回主界面、按键 |
-
-若确实遇到某个界面后台输入无效，再单独考虑激活窗口或模拟按键，不要默认上前台截图。
+- `failure_details` 与 `per_round` 按 **`account_id`（`acc_xxxxxxxxxxxx`）** 分组，不是用户名；
+  用户名在 `account_user` 字段里。
 
 ## alt 点击
 

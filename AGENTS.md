@@ -9,6 +9,7 @@
 | `ok-script-tasks` | 创建、修改、注册或审阅 ok-script 任务类（继承 `BaseGfTask`、配置 UI、注册到 `src/config.py`） | `.agents/skills/ok-script-tasks/SKILL.md` |
 | `daily-task-orchestration` | 日常任务的编排：增删改 `build_task_plan()` 的任务项、顺序与开关、失败判定与汇总 | `.agents/skills/daily-task-orchestration/SKILL.md` |
 | `ok-script-i18n` | gettext UI 文案、`i18n/*/LC_MESSAGES/` 的 ok.po / ocr.po 同步与编译、收集池防污染 | `.agents/skills/ok-script-i18n/SKILL.md` |
+| `ok-script-multi-account` | 多账户轮次、账号级配置覆盖、账号配置页：接入新任务、排查覆盖不生效、改账号列表格式 | `.agents/skills/ok-script-multi-account/SKILL.md` |
 | `ok-config-migration` | 修改持久化配置键名并安全迁移用户数据（ok-script 2.0.5 无内建迁移机制） | `.agents/skills/ok-config-migration/SKILL.md` |
 | `deploy` | 提交完成改动、计算并创建 stable/beta/alpha tag、推送发布远端 | `.agents/skills/deploy/SKILL.md` |
 | `github-workflows` | 编辑或排查 GitHub Actions YAML、权限、actionlint 与解析期失败 | `.agents/skills/github-workflows/SKILL.md` |
@@ -20,9 +21,11 @@
 - 任务注册：`src/config.py` 的 `onetime_tasks`。
 - 日常任务编排：`src/tasks/DailyTaskRunner.py`（编排器）+ `src/tasks/DailyTask.py` 的 `build_task_plan()`（清单）。
 - 日常任务执行逻辑：按领域拆在 `src/tasks/daily/` 下的 5 个 mixin。
-- 多账户：`src/tasks/AccountMixin.py`（轮次与账号列表；`login_flow()` 待实现）。
+- 多账户：`src/tasks/AccountMixin.py`（轮次与账号列表）、`src/tasks/account_scope_store.py`（账号 ID 与覆盖存储）、
+  `src/core/account_override_mixin.py`（运行时覆盖）、`src/gui/AccountConfigTab.py`（账号配置页）。
 - 执行汇总：`src/tasks/daily_summary.py`。
 - alt 点击：`BaseGfTask` 上覆写的 `click` / `click_with_alt` / `wait_click_ocr` / `wait_click_feature`。
+- 自定义界面页注册：`src/config.py` 的 `custom_tabs`（现注册 `src.gui.AccountConfigTab`）。
 - 译文：`i18n/en_US`、`i18n/zh_CN` 两个 locale。
 - 发布：推送 `v*` tag 触发 `.github/workflows/build.yml`。
 
