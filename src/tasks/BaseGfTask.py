@@ -265,12 +265,47 @@ class BaseGfTask(BaseTask):
 
     def click(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False, name=None,
               interval=-1, move=True,
-              down_time=0.01, after_sleep=0, key="left"):
+              down_time=0.01, after_sleep=0, key="left", alt=False):
+        """
+        点击。
+
+        ``alt=True`` 时按住 alt 再点击（等价于 ``click_with_alt``），用于只有 alt 组合键才能命中的界面。
+        x 支持 Box、Box 列表、屏幕比例（0~1）与绝对坐标，分派逻辑沿用父类。
+        """
+        if alt:
+            return self.click_with_alt(x, y, move_back=move_back, name=name, interval=interval, move=move,
+                                       down_time=down_time, after_sleep=after_sleep, key=key)
         frame = self.frame
         super().click(x, y, move_back=move_back, name=name, move=move, down_time=0.04, after_sleep=after_sleep,
                       interval=interval, key=key)
         if self.debug:
             self.screenshot('click', frame=frame)
+
+    def click_with_alt(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False,
+                       name=None, interval=-1, move=True, down_time=0.01, after_sleep=0, key="left",
+                       alt_hold_delay=0.5, debug_name="click_with_alt"):
+        """
+        按住 alt 键点击。
+
+        用于只有 alt 组合键才能生效的目标（例如自由层内的点击）。
+        先 ``send_key_down('alt')``，等待 ``alt_hold_delay`` 让游戏识别到修饰键，再点击，最后 ``send_key_up('alt')``。
+
+        Args:
+            alt_hold_delay: 按下 alt 后到点击之间的等待秒数；传 0 可保持不加额外等待的时序。
+            debug_name: debug 模式下的截图名。
+        """
+        frame = self.frame
+        self.send_key_down('alt')
+        try:
+            if alt_hold_delay > 0:
+                self.sleep(alt_hold_delay)
+            self.click(x, y, move_back=move_back, name=name, interval=interval, move=move,
+                       down_time=down_time, after_sleep=after_sleep, key=key)
+        finally:
+            # 必须保证松开 alt：点击抛异常时若卡住 alt，后续所有按键都会被污染
+            self.send_key_up('alt')
+        if self.debug:
+            self.screenshot(debug_name, frame=frame)
 
     def back(self, after_sleep=0):
         frame = self.frame
@@ -280,13 +315,10 @@ class BaseGfTask(BaseTask):
 
     def free_layer_click(self, x=0, y=0, move_back=False, name=None, interval=-1, move=True,
                          down_time=0.01, after_sleep=0, key="left"):
-        frame = self.frame
-        self.send_key_down('alt')
-        self.click(x, y, move_back=move_back, name=name, move=move, down_time=down_time, after_sleep=after_sleep,
-                   interval=interval, key=key)
-        self.send_key_up('alt')
-        if self.debug:
-            self.screenshot('free_layer_click', frame=frame)
+        # alt_hold_delay=0：保持改造前的时序（按下 alt 后立即点击，不加额外等待）
+        self.click_with_alt(x, y, move_back=move_back, name=name, interval=interval, move=move,
+                            down_time=down_time, after_sleep=after_sleep, key=key,
+                            alt_hold_delay=0, debug_name='free_layer_click')
 
     def click_with_key(self, hold_key, result, delay1=1, delay2=0.5, after_sleep=0):
         def start_task1():
@@ -303,6 +335,73 @@ class BaseGfTask(BaseTask):
         t1.join()
         t2.join()
         self.sleep(after_sleep)
+
+    def wait_click_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, box=None, name=None, match=None,
+                       threshold=0, frame=None, target_height=0, time_out=0, raise_if_not_found=False,
+                       recheck_time=0, after_sleep=0, post_action=None, log=False, screenshot=False,
+                       settle_time=-1, lib="default", alt=False):
+        """
+        等待 OCR 命中并点击，``alt=True`` 时改用 alt 组合键点击。
+
+        参数与父类一致；``alt=False`` 直接走父类实现，不做任何改动。
+        """
+        if not alt:
+            return super().wait_click_ocr(x=x, y=y, to_x=to_x, to_y=to_y, width=width, height=height, box=box,
+                                          name=name, match=match, threshold=threshold, frame=frame,
+                                          target_height=target_height, time_out=time_out,
+                                          raise_if_not_found=raise_if_not_found, recheck_time=recheck_time,
+                                          after_sleep=after_sleep, post_action=post_action, log=log,
+                                          screenshot=screenshot, settle_time=settle_time, lib=lib)
+
+        result = self.wait_ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name,
+                               match=match, threshold=threshold, frame=frame, target_height=target_height,
+                               time_out=time_out, raise_if_not_found=raise_if_not_found,
+                               post_action=post_action, log=log, screenshot=screenshot,
+                               settle_time=settle_time, lib=lib)
+        if recheck_time > 0:
+            self.sleep(1)
+            result = self.ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name,
+                              match=match, threshold=threshold, frame=frame, target_height=target_height,
+                              log=log, screenshot=screenshot, lib=lib)
+        if result is not None:
+            self.click_with_alt(result, after_sleep=after_sleep)
+            return result
+        logger.warning(f'wait ocr no box {x} {y} {width} {height} {to_x} {to_y} {match}')
+
+    def wait_click_feature(self, feature, horizontal_variance=0, vertical_variance=0, threshold=0, relative_x=0.5,
+                           relative_y=0.5, time_out=0, pre_action=None, post_action=None, box=None,
+                           raise_if_not_found=True, use_gray_scale=False, canny_lower=0, canny_higher=0,
+                           click_after_delay=0, settle_time=-1, after_sleep=0, target_height=0, alt=False):
+        """
+        等待特征命中并点击，``alt=True`` 时改用 alt 组合键点击。
+
+        参数与父类一致；``alt=False`` 直接走父类实现，不做任何改动。
+        """
+        if not alt:
+            return super().wait_click_feature(feature, horizontal_variance, vertical_variance, threshold,
+                                              relative_x=relative_x, relative_y=relative_y, time_out=time_out,
+                                              pre_action=pre_action, post_action=post_action, box=box,
+                                              raise_if_not_found=raise_if_not_found, use_gray_scale=use_gray_scale,
+                                              canny_lower=canny_lower, canny_higher=canny_higher,
+                                              click_after_delay=click_after_delay, settle_time=settle_time,
+                                              after_sleep=after_sleep, target_height=target_height)
+
+        found = self.wait_until(
+            lambda: self.find_one(feature, horizontal_variance, vertical_variance, threshold, box=box,
+                                  use_gray_scale=use_gray_scale, canny_lower=canny_lower,
+                                  canny_higher=canny_higher, target_height=target_height),
+            time_out=time_out,
+            pre_action=pre_action,
+            post_action=post_action,
+            raise_if_not_found=raise_if_not_found,
+            settle_time=settle_time)
+        if found is not None:
+            if click_after_delay > 0:
+                self.sleep(click_after_delay)
+            x, y = found.relative_with_variance(relative_x, relative_y)
+            self.click_with_alt(x, y, name=found.name, after_sleep=after_sleep)
+            return True
+        return False
 
     def find_top_right_count(self):
         result = self.ocr(0.89, 0.01, 0.99, 0.1, match=re.compile(r"^\d+/\d+$"), box='top_right')
