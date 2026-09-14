@@ -17,9 +17,13 @@
 
 from __future__ import annotations
 
+import re
+
 from src.core.account_override_mixin import AccountOverrideMixin
 from src.data.FeatureList import FeatureList as fL
-from src.tasks.account_scope_store import resolve_account_id as _store_resolve_account_id
+from src.tasks.account_scope_store import (
+    resolve_account_id as _store_resolve_account_id,
+)
 
 
 class AccountMixin(AccountOverrideMixin):
@@ -121,7 +125,7 @@ class AccountMixin(AccountOverrideMixin):
         self.wait_click_feature(fL.confirm, settle_time=0.5, raise_if_not_found=False)
         self.wait_click_feature(fL.login_switch, settle_time=0.5, raise_if_not_found=False)
         self.wait_click_feature(fL.login_down, settle_time=0.5, raise_if_not_found=False)
-        self.wait_click_ocr(username, box=self.box_of_screen(0.272, 0.474, 0.414, 0.991), raise_if_not_found=False)
+        self.wait_click_ocr(match=re.compile(username[-4:]), box=self.box_of_screen(0.272, 0.474, 0.414, 0.991), raise_if_not_found=False)
         self.wait_click_feature(fL.login_in, settle_time=0.5, raise_if_not_found=False)
 
 
