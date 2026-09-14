@@ -41,6 +41,13 @@ class BaseGfTask(BaseTask):
         self.box = ScreenPosition(self)
         self.default_config_group = {}
 
+        # 多账户：是否允许按账号覆盖本任务的配置（「账号配置」页据此列出任务）。
+        # 用 getattr 读类属性，这样子类可以直接在类体里声明而不会被 __init__ 覆盖掉。
+        self.support_multi_account = bool(getattr(self, "support_multi_account", False))
+        self.account_config_blacklist = set(getattr(self, "account_config_blacklist", ()))
+        self.account_config_whitelist = set(getattr(self, "account_config_whitelist", ()))
+        self.account_config_defaults = dict(getattr(self, "account_config_defaults", {}))
+
     def isolate_by_hsv_ranges(self, frame, ranges, invert=True, kernel_size=2):
         """
         :param frame: 输入图像（BGR）

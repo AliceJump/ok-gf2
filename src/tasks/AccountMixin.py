@@ -1,24 +1,29 @@
-"""多账户执行上下文。
+"""多账户执行上下文与账号级配置覆盖。
 
 移植自 ok-end-field 的 ``src/core/BaseEfTask.iter_multi_account_context`` 与
-``src/tasks/account/account_mixin.py``，但**登录逻辑留空**——ok-gf2 没有游戏内切号能力，
-``login_flow()`` 必须由本项目自行实现（ok-end-field 那套是终末地的登出/最近账号列表/登录流程，
-界面完全不同，无法复用）。
+``src/tasks/account/account_mixin.py``。
 
-相对 ok-end-field 未移植的部分：
+- ``login_flow()`` 是 ok-gf2 自己的实现（ok-end-field 那套是终末地的登出/最近账号列表流程）。
+- ``多账户独立配置`` 打开后，同一任务可以为不同账号使用不同参数，覆盖值存在
+  ``configs/account_scoped_overrides.json``（见 ``src/tasks/account_scope_store.py``），
+  运行时由 ``AccountOverrideMixin`` 在 ``config.get`` 层生效。
 
-- ``多账户独立配置`` 与 ``AccountOverrideMixin``：依赖 ``account_scope_store``（账号 ID 持久化）
-  与 ok-end-field 的 ``AccountConfigTab`` 配置页，ok-gf2 无对应设施。
-- ``resolve_account_id`` 账号 ID 持久化：退化为「账号名即 ID」，需要稳定 ID 时重写该方法。
+**与 ok-end-field 的一处刻意差异**：那边「账号页的账号列表」和「任务配置里的账号列表」是两套
+互相独立的数据，容易混淆。ok-gf2 只保留**任务配置里的 ``账号列表`` 作为唯一真源**，
+``account_scope_store`` 只负责维护「账号名 → 稳定 ID」的注册表和每账号覆盖值。
+因此 ``get_account_list()`` 用 ``create_if_missing=True`` 按需创建 ID，
+即使用户从没打开过账号配置页，ID 也是稳定的。
 """
 
 from __future__ import annotations
 
+from src.core.account_override_mixin import AccountOverrideMixin
 from src.data.FeatureList import FeatureList as fL
+from src.tasks.account_scope_store import resolve_account_id as _store_resolve_account_id
 
 
-class AccountMixin:
-    """为任务提供多账户轮次执行能力。
+class AccountMixin(AccountOverrideMixin):
+    """为任务提供多账户轮次执行能力与账号级配置覆盖。
 
     使用方式：任务类继承本 mixin 并在 ``__init__`` 中调用 ``_init_account_config()``，
     然后实现 ``login_flow()``。
@@ -33,6 +38,7 @@ class AccountMixin:
         self.default_config.update(
             {
                 "多账户模式": False,
+                "多账户独立配置": False,
                 "账号列表": "\n",
             }
         )
@@ -40,6 +46,10 @@ class AccountMixin:
             {
                 "多账户模式": (
                     "开启后按账号列表逐个切换账号执行"
+                ),
+                "多账户独立配置": (
+                    "开启后同一任务可为不同账号使用不同参数\n"
+                    "在「账号配置」页为每个账号设置要覆盖的项"
                 ),
                 "账号列表": (
                     "每行一个账号，切换顺序即执行顺序"
@@ -49,16 +59,16 @@ class AccountMixin:
         if not hasattr(self, "config_type") or self.config_type is None:
             self.config_type = {}
         self.config_type["多账户模式"] = {
-            "sub_configs": {True: ["账号列表"]},
+            "sub_configs": {True: ["多账户独立配置", "账号列表"]},
         }
 
     def resolve_account_id(self, username: str) -> str:
-        """返回账号的稳定唯一标识。
+        """返回账号的稳定唯一标识（``acc_xxxxxxxxxxxx``）。
 
-        默认以账号名本身作为 ID。若账号名会变化（例如昵称可改），或需要跨账号保存数据，
-        应重写本方法返回稳定 ID。
+        走 ``account_scope_store`` 的注册表，账号名不变则 ID 跨会话不变；
+        需要自定义 ID 规则时可重写本方法。
         """
-        return username
+        return _store_resolve_account_id(username, create_if_missing=True) or username
 
     def get_account_list(self):
         """解析配置里的账号列表，返回 ``[{"account_id": ..., "username": ...}, ...]``。"""
@@ -85,18 +95,24 @@ class AccountMixin:
         return account_list
 
     def set_current_account(self, username: str, account_id: str):
-        """设置当前账号上下文。编排器据此把失败记录与轮次日志按账号分组。"""
+        """设置当前账号上下文。编排器据此把失败记录与轮次日志按账号分组。
+
+        同时把 ``config.get`` 接到账号覆盖层上，使「多账户独立配置」生效。
+        """
         self.current_user = username
         self.current_account_id = account_id
+        self._bind_account_aware_config_get()
 
     def login_flow(self, username: str, password: str | None = None):
-        """切换到指定账号。**必须由 ok-gf2 自行实现。**
-        Args:
-            username: 要切换到的账号标识。
-            password: 兼容参数，ok-gf2 不存储也不使用密码。
+        """切换到指定账号：回主界面 → 设置 → 登出 → 确认 → 切号 → 选账号 → 登录。
 
-        Raises:
-            NotImplementedError: 始终抛出，直到本项目实现该方法。
+        全程用 ``wait_click_feature`` / ``wait_click_ocr``，元素缺失时只记日志不中断
+        （``raise_if_not_found=False``），因此调用后**务必用 ``_logged_in`` 或主界面检测确认结果**，
+        否则可能在没切成的情况下继续跑下一轮。
+
+        Args:
+            username: 要切换到的账号标识（手机号）；界面按后四位匹配。
+            password: 兼容参数，ok-gf2 不存储也不使用密码。
         """
         self.ensure_main()
         self.back()
