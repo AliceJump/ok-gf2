@@ -75,8 +75,8 @@ foreach ($tag in $tagList) {
     try {
         $rc = Invoke-Git "reset --hard"
         if ($rc -ne 0) { throw "git reset --hard 失败(exit=$rc)" }
-        $rc = Invoke-Git "clean -fdx"
-        if ($rc -ne 0) { throw "git clean -fdx 失败(exit=$rc)" }
+        $rc = Invoke-Git "clean -fdx -e .venv"
+        if ($rc -ne 0) { throw "git clean -fdx -e .venv 失败(exit=$rc)" }
         Ensure-TmpDir
         $rc = Invoke-Git "checkout --force $tag"
         if ($rc -ne 0) { throw "git checkout $tag 失败(exit=$rc)" }
