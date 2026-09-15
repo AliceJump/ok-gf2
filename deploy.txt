@@ -1,14 +1,10 @@
 src
-ok
-config.py
 main.py
-ok-gf2.exe
-main.py
-icon.png
+main_debug.py
+main_direct_ml.py
+icons
 requirements.txt
 README.md
 i18n
 assets
 pyappify.yml
-main_direct_ml.py
-requirements-dml.txt
