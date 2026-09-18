@@ -27,6 +27,9 @@
 - alt 点击：`BaseGfTask` 上覆写的 `click` / `click_with_alt` / `wait_click_ocr` / `wait_click_feature`。
 - 自定义界面页注册：`src/config.py` 的 `custom_tabs`（现注册 `src.gui.AccountConfigTab`）。
 - 译文：`i18n/en_US`、`i18n/zh_CN` 两个 locale。
+- OCR 错字兼容：`assets/ocr_fix/ocr_text_fix.json`（`{错字: 正确字}`，长度必须相同）+
+  `src/patches/ocr_text_fix_patch.py`（patch `OCR.fix_match_regex`），在 `src/config.py` 末尾安装。
+  详见 `assets/ocr_fix/README.md`。
 - 发布：推送 `v*` tag 触发 `.github/workflows/build.yml`。
 
 ## 刻意未迁移的 ok-end-field 技能

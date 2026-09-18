@@ -77,3 +77,8 @@ config = {
         ["src.gui.AccountConfigTab", "AccountConfigTab"],
     ],
 }
+
+# OCR 错字兼容：读取 assets/ocr_fix/ocr_text_fix.json，让 match 文本容忍形近/繁简错字
+from src.patches.ocr_text_fix_patch import install_ocr_text_fix_patch  # noqa: E402
+
+install_ocr_text_fix_patch()
