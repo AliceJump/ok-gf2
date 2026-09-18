@@ -46,23 +46,66 @@ class DailyRewardMixin:
         if not box:
             self.log_info('未找到「巡录」入口，跳过')
             self.ensure_main()
-            return
+            return False
         self.click_box_by_match_position(box, '巡录', after_sleep=2)
-        # 「巡录」入口会随版本/活动状态呈现两种形态，依次兼容：
-        #   A) 直接进入「远航巡录」主页：底部有「沿途行动」标签与「一键领取」按钮
-        #   B) 先弹出奖励预览页，需点左下「开启远航巡录」再进入主页
-        if self.wait_click_ocr(match=['开启远航巡录', '远航巡录'], box=self.box.bottom_left,
+        # 预览页入口是可选的；通行证奖励页并不是每日行动页。
+        if self.wait_click_ocr(match=[re.compile(r'^开启远航巡录$')], box=self.box.bottom_left,
                                time_out=3, raise_if_not_found=False, after_sleep=2):
             self.log_info('已通过「开启远航巡录」进入大月卡主页')
-        # 兼容 A：主页可见「一键领取」时直接领取「沿途行动」免费档奖励
-        self.wait_click_ocr(match=[re.compile('一键领取')], box=self.box.bottom,
-                            time_out=3, raise_if_not_found=False, after_sleep=1.5)
-        # 兼容两种形态的奖品格「领取」按钮
-        self.wait_click_ocr(match=[re.compile('领取')], box=self.box.bottom_right, time_out=3,
-                            raise_if_not_found=False, after_sleep=1)
-        self.back()
+        # 必须切换到沿途行动；两个页面都有“一键领取”，不能仅凭按钮判断。
+        if not self.wait_click_ocr(match=[re.compile(r'^沿途行动$')], box=self.box.top,
+                                   time_out=4, raise_if_not_found=False, after_sleep=1):
+            self.log_info('未找到「沿途行动」页签，巡录每日奖励未完成')
+            self.ensure_main()
+            return False
+        if not self.wait_ocr(match=[re.compile(r'^每日行动$')], box=self.box.left,
+                             time_out=4, raise_if_not_found=False):
+            self.log_info('未确认进入每日行动页面，跳过领取')
+            self.ensure_main()
+            return False
+        claimed = self.wait_click_ocr(match=[re.compile(r'^(一键领取|领取)$')],
+                                      box=self.box.bottom_right, time_out=4,
+                                      raise_if_not_found=False, after_sleep=1)
+        if not claimed:
+            self.log_info('每日行动页面未找到领取按钮，可能已领取或尚未完成，需核查')
+        # 先收集行动里程，再回到顶部的远航巡录页领取等级/盈余奖励。
+        if not self.wait_click_ocr(match=[re.compile(r'^远航巡录$')],
+                                   box=self.box_of_screen(0.25, 0, 0.65, 0.12),
+                                   time_out=4, raise_if_not_found=False, after_sleep=1):
+            self.log_info('未能切换到远航巡录，奖励领取未完成')
+            self.ensure_main()
+            return False
+        if not self.wait_click_ocr(match=[re.compile(r'^一键领取$')],
+                                   box=self.box.bottom_right, time_out=4,
+                                   raise_if_not_found=False, after_sleep=1):
+            self.log_info('远航巡录未找到一键领取，可能无可领取奖励，需核查')
+            self.ensure_main()
+            return False
+        # 弹窗截图可能经过裁剪，不能据此推断标题在游戏全屏中的位置。
+        # 实机全屏 OCR 能稳定识别标题，右下区域精确匹配确认可避开取消/解锁。
+        reward_title = self.box_of_screen(0, 0, 1, 1)
+        if not self.wait_ocr(match=[re.compile(r'^领取奖励$')], box=reward_title,
+                             time_out=4, raise_if_not_found=False, log=True):
+            self.log_info('未识别到领取奖励弹窗，未确认巡录奖励领取')
+            self.ensure_main()
+            return False
+        # 弹窗还包含“前往解锁”，只点击下方右侧的“确认”。
+        if not self.wait_click_ocr(match=[re.compile(r'^确认$')],
+                                   box=self.box.bottom_right,
+                                   time_out=4, raise_if_not_found=False, after_sleep=1, log=True):
+            self.log_info('未找到领取奖励确认按钮，巡录奖励未完成')
+            self.ensure_main()
+            return False
+        if self.wait_ocr(match=[re.compile(r'^领取奖励$')], box=reward_title,
+                         time_out=2, raise_if_not_found=False, log=True):
+            self.log_info('确认后领取奖励弹窗仍未关闭，巡录奖励未完成')
+            self.ensure_main()
+            return False
+        # 确认后还有奖励展示页，点击底部中央空白处关闭，再退出巡录。
         self.sleep(1)
+        self.click(0.5, 0.95, after_sleep=1)
         self.ensure_main()
+        return bool(claimed)
 
     def explore_claim(self):
         self.info_set('current_task', 'explore_claim')
