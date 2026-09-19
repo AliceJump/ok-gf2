@@ -259,16 +259,20 @@ class BaseGfTask(BaseTask):
         if total >= 2:
             return True
         # if not self.do_handle_alert()[0]:
-        if self.ocr(match=re.compile('^是否离开活动层'), log=True):
-            self.wait_click_ocr(match='确认', after_sleep=2)
+        if self.ocr(match=re.compile('^是否离开活动层'), box=self.box.center, log=True):
+            self.wait_click_ocr(match='确认', after_sleep=2, box=self.box.bottom_right)
+            return False
         if box := self.ocr(box=self.box.bottom, match=["点击开始", "点击空白处关闭", "取消"],
                            log=True):
             self.click(box, after_sleep=2)
             return False
         if esc:
+            if result:= self.find_feature(fL.back_home):
+                self.click(result, after_sleep=2)
+                return False
             self.back(after_sleep=2)
         self.next_frame()
-        return None
+        return False
 
     def click(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False, name=None,
               interval=-1, move=True,
