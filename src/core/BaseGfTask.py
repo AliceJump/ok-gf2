@@ -271,7 +271,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             self.click(box, after_sleep=2)
             return False
         if esc:
-            if result:= self.find_feature(feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.002, vertical_variance=0.002):
+            if result:= self.find_feature(feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.02, vertical_variance=0.002):
                 self.click(result, after_sleep=2)
                 return False
             self.back(after_sleep=2)
