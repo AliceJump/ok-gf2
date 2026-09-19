@@ -1,0 +1,119 @@
+name: Auto Release
+
+on:
+  schedule:
+    # 每日北京时间 0:00（= UTC 16:00，GitHub Actions 的 cron 使用 UTC）
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    if: ${{ github.repository_owner == 'AliceJump' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check changes in deploy.txt paths since last tag
+        id: check
+        run: |
+          set -euo pipefail
+
+          mapfile -t paths < deploy.txt
+          watched=()
+          for line in "${paths[@]}"; do
+            line=${line%$'\r'}
+            [ -z "$line" ] && continue
+            watched+=("$line")
+          done
+          echo "watched paths: ${watched[*]}"
+
+          last_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 || true)
+          echo "last_tag=${last_tag:-<none>}"
+          echo "last_tag=$last_tag" >> "$GITHUB_OUTPUT"
+
+          if [ "${#watched[@]}" -eq 0 ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "latest_commit=" >> "$GITHUB_OUTPUT"
+            echo "no watched paths in deploy.txt; skip release"
+            exit 0
+          fi
+
+          if [ -z "$last_tag" ]; then
+            latest_commit=$(git log --topo-order --format=%H -- "${watched[@]}" | head -n 1 || true)
+          else
+            latest_commit=$(git log --topo-order --format=%H "$last_tag"..HEAD -- "${watched[@]}" | head -n 1 || true)
+          fi
+
+          if [ -z "$latest_commit" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "latest_commit=" >> "$GITHUB_OUTPUT"
+            echo "no changes in watched paths; skip release"
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "latest_commit=$latest_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Compute next version
+        id: version
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          last_tag="${{ steps.check.outputs.last_tag }}"
+          if [ -z "$last_tag" ]; then
+            next="v0.0.1"
+          else
+            version="${last_tag#v}"
+            if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              major="${BASH_REMATCH[1]}"
+              minor="${BASH_REMATCH[2]}"
+              patch="${BASH_REMATCH[3]}"
+            else
+              echo "invalid last_tag format: $last_tag" >&2
+              exit 1
+            fi
+            if [ "$patch" -ge 99 ]; then
+              patch=0
+              minor=$((minor + 1))
+            else
+              patch=$((patch + 1))
+            fi
+            next="v${major}.${minor}.${patch}"
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push version tag
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          next="${{ steps.version.outputs.next }}"
+          target="${{ steps.check.outputs.latest_commit }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" "$target" -m "$next"
+          git push origin "$next"
+          echo "Released $next -> $target"
+
+      - name: Trigger build via repository_dispatch
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          next="${{ steps.version.outputs.next }}"
+          gh api repos/"$GITHUB_REPOSITORY"/dispatches \
+            -X POST \
+            -f event_type="auto-release" \
+            -f client_payload.tag="$next"
+          echo "Dispatched repository_dispatch for $next"
