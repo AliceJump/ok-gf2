@@ -73,6 +73,9 @@ config = {
         ["src.tasks.TestTask", "TestTask"],
         ["ok", "DiagnosisTask"],
     ],
+    "trigger_tasks": [  # 循环触发的任务
+        ["src.tasks.TemplateMonitorTask", "TemplateMonitorTask"],
+    ],
     "custom_tabs": [  # 自定义界面页
         ["src.gui.AccountConfigTab", "AccountConfigTab"],
     ],

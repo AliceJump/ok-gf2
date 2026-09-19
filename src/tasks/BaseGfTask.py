@@ -59,13 +59,14 @@ class BaseGfTask(BaseTask):
         """
         return isolate_by_hsv_ranges(frame, ranges, invert, kernel_size)
 
-    def make_hsv_isolator(self, ranges):
-        """
-        :param ranges: HSV 区间列表
-
-        作用：生成固定 HSV 范围的图像处理函数。
-        """
-        return partial(self.isolate_by_hsv_ranges, ranges=ranges)
+    def make_hsv_isolator(self, ranges, invert=True, kernel_size=2):
+        """返回一个可直接调用的 HSV 过滤函数"""
+        return lambda frame: isolate_by_hsv_ranges(
+            frame,
+            ranges,
+            invert=invert,
+            kernel_size=kernel_size,
+        )
 
     def get_role_by_name(self, name):
         return next((k for k, v in self.roles_dict.items() if name in v), None)
@@ -267,7 +268,7 @@ class BaseGfTask(BaseTask):
             self.click(box, after_sleep=2)
             return False
         if esc:
-            if result:= self.find_feature(fL.back_home):
+            if result:= self.find_feature(feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.002, vertical_variance=0.002):
                 self.click(result, after_sleep=2)
                 return False
             self.back(after_sleep=2)

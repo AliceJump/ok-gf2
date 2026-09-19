@@ -3,6 +3,7 @@ from enum import Enum
 
 class FeatureList(str, Enum):
     back_home = 'back_home'
+    back_home_light = 'back_home_light'
     confirm = 'confirm'
     dog_icon = 'dog_icon'
     free_eat_entry = 'free_eat_entry'

@@ -11,6 +11,12 @@
       "file_name": "images/2.png",
       "width": 1920,
       "height": 1080
+    },
+    {
+      "id": 3,
+      "file_name": "images/3.png",
+      "width": 1920,
+      "height": 1080
     }
   ],
   "annotations": [
@@ -95,6 +101,19 @@
     {
       "id": 7,
       "image_id": 2,
+      "category_id": 13,
+      "bbox": [
+        135,
+        33,
+        20,
+        38
+      ],
+      "area": 760,
+      "iscrowd": 0
+    },
+    {
+      "id": 8,
+      "image_id": 2,
       "category_id": 8,
       "bbox": [
         496,
@@ -106,7 +125,7 @@
       "iscrowd": 0
     },
     {
-      "id": 8,
+      "id": 9,
       "image_id": 2,
       "category_id": 9,
       "bbox": [
@@ -119,33 +138,7 @@
       "iscrowd": 0
     },
     {
-      "id": 9,
-      "image_id": 2,
-      "category_id": 7,
-      "bbox": [
-        1030,
-        988,
-        45,
-        67
-      ],
-      "area": 3015,
-      "iscrowd": 0
-    },
-    {
       "id": 10,
-      "image_id": 2,
-      "category_id": 12,
-      "bbox": [
-        135,
-        34,
-        24,
-        37
-      ],
-      "area": 888,
-      "iscrowd": 0
-    },
-    {
-      "id": 11,
       "image_id": 2,
       "category_id": 10,
       "bbox": [
@@ -158,7 +151,7 @@
       "iscrowd": 0
     },
     {
-      "id": 12,
+      "id": 11,
       "image_id": 2,
       "category_id": 11,
       "bbox": [
@@ -168,6 +161,32 @@
         36
       ],
       "area": 1152,
+      "iscrowd": 0
+    },
+    {
+      "id": 12,
+      "image_id": 3,
+      "category_id": 7,
+      "bbox": [
+        1030,
+        988,
+        45,
+        67
+      ],
+      "area": 3015,
+      "iscrowd": 0
+    },
+    {
+      "id": 13,
+      "image_id": 3,
+      "category_id": 12,
+      "bbox": [
+        135,
+        34,
+        24,
+        37
+      ],
+      "area": 888,
       "iscrowd": 0
     }
   ],
@@ -230,6 +249,11 @@
     {
       "id": 12,
       "name": "back_home",
+      "supercategory": ""
+    },
+    {
+      "id": 13,
+      "name": "back_home_light",
       "supercategory": ""
     }
   ]
