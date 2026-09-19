@@ -14,8 +14,8 @@ Use this skill for repository-wide rules that do not belong to a narrower domain
 - App: ok-gf2（少女前线 2 追放自动化），基于 PyPI `ok-script==2.0.5`。
 - 任务注册入口：`src/config.py` 的 `onetime_tasks` 列表，形如 `["src.tasks.DailyTask", "DailyTask"]`。
   新增/重命名任务类必须同步改这里，否则 GUI 里不会出现。
-- 任务源码扁平放在 `src/tasks/`（`BaseGfTask.py` / `DailyTask.py` / `WeeklyTask.py` / `ClearMapTask.py` ...），
-  通用能力集中在 `src/tasks/BaseGfTask.py`。
+- 任务源码扁平放在 `src/tasks/`（`DailyTask.py` / `WeeklyTask.py` / `ClearMapTask.py` ...），
+  通用基类与通用能力集中在 `src/core/BaseGfTask.py`，基类 mixin 在 `src/core/base_mixin/`。
 - 运行时配置：仓库根 `configs/*.json`（用户数据，勿手改），`src/configs/*.json`（随包默认配置）。
 - 运行时日志：`logs/ok-script.log`；另有 `src/logs/ok-script.log`（包内路径，排查时注意区分）。
 - Python 环境与测试入口归 `use-local-venv` 技能管辖。

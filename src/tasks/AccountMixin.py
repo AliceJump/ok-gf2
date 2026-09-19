@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from src.core.account_override_mixin import AccountOverrideMixin
+from src.core.base_mixin.account_override_mixin import AccountOverrideMixin
 from src.data.FeatureList import FeatureList as fL
 from src.tasks.account_scope_store import (
     resolve_account_id as _store_resolve_account_id,

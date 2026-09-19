@@ -4,6 +4,7 @@ import time
 from typing import Union, List
 
 from ok import BaseTask, find_boxes_by_name, Box, Logger
+from src.core.base_mixin.runtime_mixin import RuntimeMixin
 from src.image.frame_processs import isolate_by_hsv_ranges
 from functools import partial
 from src.image.hsv_config import HSVRange as hR
@@ -25,7 +26,9 @@ def parse_time_option(option: str) -> list[float]:
     return [float(x) for x in option.split('-')]
 
 
-class BaseGfTask(BaseTask):
+class BaseGfTask(RuntimeMixin, BaseTask):
+    """任务基类：RuntimeMixin 提供模板匹配入口重写，BaseTask 提供框架能力。"""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.roles_dict = {

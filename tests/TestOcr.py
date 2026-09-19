@@ -4,7 +4,7 @@ import unittest
 
 from src.config import config
 from ok.test.TaskTestCase import TaskTestCase
-from src.tasks.BaseGfTask import BaseGfTask
+from src.core.BaseGfTask import BaseGfTask
 
 
 class TestBattleBaseSerialization(TaskTestCase):

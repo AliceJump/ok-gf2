@@ -1,4 +1,4 @@
-from src.tasks.BaseGfTask import BaseGfTask
+from src.core.BaseGfTask import BaseGfTask
 from ok import TaskDisabledException
 import time
 class TestStartGame(BaseGfTask):

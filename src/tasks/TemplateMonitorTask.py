@@ -1,6 +1,6 @@
 from ok import Logger, TriggerTask
 
-from src.tasks.BaseGfTask import BaseGfTask
+from src.core.BaseGfTask import BaseGfTask
 from src.data.FeatureList import FeatureList as fL
 from src.image.hsv_config import HSVRange as hR
 

@@ -1,6 +1,6 @@
 import re
 from ok import Logger
-from src.tasks.BaseGfTask import BaseGfTask, map_re
+from src.core.BaseGfTask import BaseGfTask, map_re
 from src.image.hsv_config import HSVRange as hR
 from src.data.FeatureList import FeatureList as fL
 logger = Logger.get_logger(__name__)

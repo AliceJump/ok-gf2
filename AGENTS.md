@@ -17,12 +17,18 @@
 ## 项目速览
 
 - ok-gf2：少女前线 2 追放自动化，基于 PyPI `ok-script==2.0.5`，依赖在 `requirements.txt`。
-- 任务源码：`src/tasks/`，通用基类 `src/tasks/BaseGfTask.py`。
+- 任务源码：`src/tasks/`，通用基类 `src/core/BaseGfTask.py`。
 - 任务注册：`src/config.py` 的 `onetime_tasks`。
 - 日常任务编排：`src/tasks/DailyTaskRunner.py`（编排器）+ `src/tasks/DailyTask.py` 的 `build_task_plan()`（清单）。
 - 日常任务执行逻辑：按领域拆在 `src/tasks/daily/` 下的 5 个 mixin。
 - 多账户：`src/tasks/AccountMixin.py`（轮次与账号列表）、`src/tasks/account_scope_store.py`（账号 ID 与覆盖存储）、
-  `src/core/account_override_mixin.py`（运行时覆盖）、`src/gui/AccountConfigTab.py`（账号配置页）。
+  `src/core/base_mixin/account_override_mixin.py`（运行时覆盖）、`src/gui/AccountConfigTab.py`（账号配置页）。
+- 基类 mixin：`src/core/base_mixin/`（与 ok-end-field 同构）。
+  `runtime_mixin.py` 的 `RuntimeMixin` 覆写了 `find_feature` / `find_one`：支持 `feature=` 别名、
+  先按分辨率适配特征名（`get_feature_by_resolution`，资源无 `_2k`/`_4k` 变体时回落原名），
+  并在 `FeatureList` 存在 `esc` 时对其加白色掩码。`BaseGfTask`（`src/core/BaseGfTask.py`）
+  以 `(RuntimeMixin, BaseTask)` 组合。
+  **不要**再写无参的 `find_feature()` 或 `find_one('')`，两者都会抛 `ValueError`。
 - 执行汇总：`src/tasks/daily_summary.py`。
 - alt 点击：`BaseGfTask` 上覆写的 `click` / `click_with_alt` / `wait_click_ocr` / `wait_click_feature`。
 - 自定义界面页注册：`src/config.py` 的 `custom_tabs`（现注册 `src.gui.AccountConfigTab`）。

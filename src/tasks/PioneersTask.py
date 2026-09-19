@@ -1,5 +1,5 @@
 from ok import Logger
-from src.tasks.BaseGfTask import BaseGfTask, map_re
+from src.core.BaseGfTask import BaseGfTask, map_re
 import re
 
 logger = Logger.get_logger(__name__)

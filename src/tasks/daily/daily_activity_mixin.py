@@ -1,7 +1,7 @@
 """限时活动相关：活动自律（物资关卡）、活动层（喝水/吃饭/领奖）、活动列表识别。"""
 
 import re
-from src.tasks.BaseGfTask import map_re, parse_time_option
+from src.core.BaseGfTask import map_re, parse_time_option
 
 
 activity_time_re = re.compile(r'^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)', re.I)

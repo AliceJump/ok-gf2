@@ -59,7 +59,8 @@ main.py / main_debug.py / main_direct_ml.py
 ```
 DailyTask
  └── CommunityMixin (社区每日)
- └── BaseGfTask
+ └── BaseGfTask (src/core/BaseGfTask.py)
+      └── RuntimeMixin (src/core/base_mixin/runtime_mixin.py)
       └── BaseTask (ok-script 框架基类)
 ```
 
@@ -85,6 +86,12 @@ ok-gf2/
 │   ├── config.py              # 配置字典（传给 ok.OK），定义所有任务列表、窗口参数、OCR 参数等
 │   ├── globals.py             # 全局单例（Globals），存放跨任务共享状态
 │   │
+│   ├── core/                  # 通用基类与基类 mixin
+│   │   ├── BaseGfTask.py      # 所有任务的公共基类（RuntimeMixin + BaseTask）
+│   │   └── base_mixin/        # 基类 mixin（与同源的 ok-end-field 同构）
+│   │       ├── account_override_mixin.py  # 账号级配置覆盖
+│   │       └── runtime_mixin.py           # find_feature / find_one / get_feature_by_resolution
+│   │
 │   ├── data/
 │   │   ├── FeatureList.py     # 枚举：所有模板匹配特征名
 │   │   └── features.py        # 特征数据
@@ -107,7 +114,6 @@ ok-gf2/
 │   ├── js/                    # JavaScript 脚本
 │   │
 │   └── tasks/                 # 任务层（业务逻辑核心）
-│       ├── BaseGfTask.py      # 所有任务的公共基类（继承自 BaseTask）
 │       ├── DailyTask.py       # 日常任务
 │       ├── WeeklyTask.py      # 周常任务
 │       ├── ClearMapTask.py    # 清图/推图任务
@@ -187,7 +193,7 @@ python main_debug.py
 1. 在 `src/tasks/` 下新建 `MyTask.py`，继承 `BaseGfTask`：
 
    ```python
-   from src.tasks.BaseGfTask import BaseGfTask
+   from src.core.BaseGfTask import BaseGfTask
 
    class MyTask(BaseGfTask):
        def __init__(self, *args, **kwargs):

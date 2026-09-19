@@ -1,7 +1,7 @@
 """战斗与班组：体力本、竞技场、兵棋推演、班组尘烟。"""
 
 import re
-from src.tasks.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
+from src.core.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
 
 
 def sort_characters_by_priority(chars, priority):

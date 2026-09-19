@@ -18,7 +18,7 @@ description: Create and modify automation task classes for the ok-script Python 
 
 ## ok-gf2 的本地约定
 
-- **项目基类**：`src/tasks/BaseGfTask.py` 的 `BaseGfTask`。新任务优先继承它，不要直接继承 `BaseTask`。
+- **项目基类**：`src/core/BaseGfTask.py` 的 `BaseGfTask`。新任务优先继承它，不要直接继承 `BaseTask`。
   它提供 `ensure_main`、`skip_dialogs`、`auto_battle`、`wait_pop_up`、`fast_combat`、`loop_click_ocr` 等本游戏专用能力。
 - **目录**：任务类扁平放在 `src/tasks/`，不分子目录。
 - **注册**：`src/config.py` 的 `onetime_tasks` 列表，形如 `["src.tasks.DailyTask", "DailyTask"]`。

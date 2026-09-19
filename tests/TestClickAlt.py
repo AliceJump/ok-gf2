@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ok import Box  # noqa: E402
-from src.tasks.BaseGfTask import BaseGfTask  # noqa: E402
+from src.core.BaseGfTask import BaseGfTask  # noqa: E402
 
 
 class BaseStub(BaseGfTask):

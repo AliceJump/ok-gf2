@@ -25,47 +25,86 @@
 所有任务的公共基类，封装了截图、识别、交互等核心能力。
 
 ```python
-from src.tasks.BaseGfTask import BaseGfTask
+from src.core.BaseGfTask import BaseGfTask
 ```
 
 ### 1.1 截图与特征匹配
+
+> 覆写定义于 `src/core/base_mixin/runtime_mixin.py`（`RuntimeMixin`），`BaseGfTask` 继承它。
+> 逻辑移植自同源的 ok-end-field。
 
 #### `find_feature`
 
 ```python
 def find_feature(
     self,
-    feature_name,
-    *,
-    box=None,
-    threshold=0,
-    use_gray_scale=False,
+    feature_name=None,
     horizontal_variance=0,
     vertical_variance=0,
-    ...
-)
+    threshold=0,
+    use_gray_scale=False,
+    x=-1, y=-1, to_x=-1, to_y=-1,
+    width=-1, height=-1,
+    box=None,
+    canny_lower=0, canny_higher=0,
+    frame_processor=None, template=None,
+    match_method=cv2.TM_CCOEFF_NORMED,
+    screenshot=False,
+    mask_function=None, frame=None,
+    limit=0, target_height=0,
+    feature=None,
+) -> list[Box]
 ```
 
 在当前帧中进行模板匹配，返回匹配到的 `Box` 列表（未匹配时返回空列表）。
-`feature_name` 可传入 `FeatureList` 枚举成员或字符串（图片文件名，不含 `.png`）。
+参数与 ok-script 的 `BaseTask.find_feature` 一致，另有两处项目自己的行为：
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `feature_name` | `FeatureList` \| `str` | 特征名 |
-| `box` | `Box \| None` | 限制搜索区域 |
-| `threshold` | `float` | 匹配阈值，默认 `0`（使用框架默认值） |
+- **`feature=` 是 `feature_name=` 的别名。** ok-script 2.0.5 原生不认这个参数，传了会 `TypeError`；
+  本项目的覆写把它转成 `feature_name` 后再交给框架。
+- **特征名先做分辨率适配。** `feature_name` 传单个名称或 `list` / `tuple`，
+  每一项都会先过 [`get_feature_by_resolution`](#get_feature_by_resolution)，再交给框架。
+- 未提供任何特征名（`None` 或空串）时抛 `ValueError`。
+- 若 `FeatureList` 中存在 `esc`，且特征名命中它，会自动套上「只保留白色」的 HSV 掩码
+  （覆盖调用方传入的 `mask_function`）。ok-gf2 当前没有 `esc`，该分支自动跳过。
 
 ```python
-boxes = self.find_feature(fL.not_clear_one, box=map_ocr_box)
+boxes = self.find_feature(feature_name=fL.not_clear_one, box=map_ocr_box)
+boxes = self.find_feature(feature=[fL.back_home, fL.back_home_light])
 ```
 
 #### `find_one`
 
 ```python
-def find_one(self, feature_name, **kwargs) -> Box | None
+def find_one(self, feature_name=None, ..., feature=None) -> Box | None
 ```
 
-`find_feature` 的简化版：返回第一个匹配的 `Box`，未匹配时返回 `None`。
+`find_feature` 的简化版：返回置信度最高的匹配 `Box`，未匹配时返回 `None`。
+
+- `feature=` 同样是别名，但**两者互斥**：同时传入，或两者都不传，都会抛 `ValueError`。
+- 分辨率适配由框架内部的 `self.find_feature` 回调完成，`find_one` 自身不重复映射。
+
+```python
+result = self.find_one(feature=fL.dog_icon, vertical_variance=0.002)
+result = self.find_one('dog_icon', 0.002, 0.002, 0.5)   # 位置参数同样可用
+```
+
+#### `get_feature_by_resolution`
+
+```python
+def get_feature_by_resolution(self, base_name: str) -> str
+```
+
+根据 `self.width` 和 `FeatureList` 中实际存在的枚举值选择名称：
+
+| 窗口宽度 | 尝试顺序 |
+|----------|----------|
+| `>= 3800` | `_4k`、`_2k`、无后缀 |
+| `>= 2500` | `_2k`、`_4k`、无后缀 |
+| 其它 | 无后缀、`_2k`、`_4k` |
+
+结果按 `(base_name, width)` 缓存在实例的 `_feature_cache` 上。
+ok-gf2 的特征资源目前只有无后缀一种，因此实际会回落到 `base_name` 本身；
+全部不存在时抛 `AttributeError`。补齐 `_2k` / `_4k` 资源后即可自动生效。
 
 ### 1.2 OCR 识别
 

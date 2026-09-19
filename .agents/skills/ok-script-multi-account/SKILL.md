@@ -11,7 +11,7 @@ description: Multi-account execution and per-account configuration overrides in 
 |---|---|
 | `src/tasks/AccountMixin.py` | 多账户轮次（`iter_multi_account_context`）、账号列表解析、`login_flow` 切号 |
 | `src/tasks/account_scope_store.py` | 持久化：账号注册表（账号名 → 稳定 ID）、每账号任务覆盖、map 内容 |
-| `src/core/account_override_mixin.py` | 运行时把 `config.get` 接到账号覆盖层 |
+| `src/core/base_mixin/account_override_mixin.py` | 运行时把 `config.get` 接到账号覆盖层 |
 | `src/gui/AccountConfigTab.py` | 「账号配置」页：账号列表、按账号覆盖任务配置 |
 | `src/config.py` | `custom_tabs` 注册配置页 |
 

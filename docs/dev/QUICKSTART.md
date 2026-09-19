@@ -59,7 +59,7 @@ python main_debug.py
 在 `src/tasks/` 下新建文件，例如 `MyTask.py`：
 
 ```python
-from src.tasks.BaseGfTask import BaseGfTask
+from src.core.BaseGfTask import BaseGfTask
 
 class MyTask(BaseGfTask):
     def __init__(self, *args, **kwargs):

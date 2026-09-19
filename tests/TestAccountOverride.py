@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.core.account_override_mixin import AccountOverrideMixin  # noqa: E402
+from src.core.base_mixin.account_override_mixin import AccountOverrideMixin  # noqa: E402
 from src.tasks import account_scope_store  # noqa: E402
 
 

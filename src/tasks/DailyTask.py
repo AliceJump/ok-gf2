@@ -7,7 +7,7 @@
 import tempfile
 from pathlib import Path
 from src.tasks.AccountMixin import AccountMixin
-from src.tasks.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
+from src.core.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
 from src.tasks.CommunityClient import CommunityMixin
 from src.tasks.DailyTaskRunner import DailyTaskRunner
 from src.tasks.daily_summary import create_task_summary_report, open_local_path_with_default_app

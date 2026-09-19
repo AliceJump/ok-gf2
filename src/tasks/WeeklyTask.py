@@ -1,7 +1,7 @@
 import re
 
 from ok import Logger
-from src.tasks.BaseGfTask import BaseGfTask, stamina_re
+from src.core.BaseGfTask import BaseGfTask, stamina_re
 from src.image.hsv_config import HSVRange as hR
 logger = Logger.get_logger(__name__)
 pattern_kt = re.compile(r'^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$')

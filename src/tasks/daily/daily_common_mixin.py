@@ -3,7 +3,7 @@
 import re
 import time
 from ok import Logger, find_boxes_by_name, Box
-from src.tasks.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
+from src.core.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
 
 
 def find_boxes_within_boundary(
