@@ -63,8 +63,9 @@ class DailyRewardMixin:
             self.log_info('未确认进入每日行动页面，跳过领取')
             self.ensure_main()
             return False
-        claimed = self.wait_click_ocr(match=[re.compile(r'^(一键领取|领取)$')],
-                                      box=self.box.bottom_right, time_out=4,
+        # 仅点底部一键领取，避免误点任务列表中的单项领取。
+        claimed = self.wait_click_ocr(match=[re.compile(r'^一键领取$')],
+                                      box=self.box_of_screen(0.70, 0.88, 1, 1), time_out=4,
                                       raise_if_not_found=False, after_sleep=1)
         if not claimed:
             self.log_info('每日行动页面未找到领取按钮，可能已领取或尚未完成，需核查')

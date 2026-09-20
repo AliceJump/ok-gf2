@@ -27,7 +27,8 @@ class XunluTest(unittest.TestCase):
                 calls = task.wait_click_ocr.call_args_list
                 self.assertEqual('^沿途行动$', calls[1].kwargs['match'][0].pattern)
                 self.assertEqual(task.box.top, calls[1].kwargs['box'])
-                self.assertEqual('^(一键领取|领取)$', calls[2].kwargs['match'][0].pattern)
+                self.assertEqual('^一键领取$', calls[2].kwargs['match'][0].pattern)
+                self.assertEqual((0.70, 0.88, 1, 1), calls[2].kwargs['box'])
                 self.assertEqual('^远航巡录$', calls[3].kwargs['match'][0].pattern)
                 self.assertEqual((0.25, 0, 0.65, 0.12), calls[3].kwargs['box'])
                 self.assertEqual('^一键领取$', calls[4].kwargs['match'][0].pattern)
@@ -79,3 +80,32 @@ class XunluTest(unittest.TestCase):
                 task.wait_pop_up.assert_not_called()
                 task.click.assert_not_called()
                 task.ensure_main.assert_called_once()
+
+    def test_xunlu_selects_bottom_bulk_claim_with_individual_claims_visible(self):
+        ns = {'xunlu': DailyRewardMixin.xunlu}
+        task = Mock()
+        task.box_of_screen.side_effect = lambda *coords: coords
+        task.wait_ocr.side_effect = [[Mock()], True, True, False]
+        selected = []
+        calls = 0
+
+        def click_ocr(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return False
+            if calls == 3:
+                # 2560x1600 日志中的单项领取 y=970，底部一键领取约 y=1515。
+                candidates = [('领取', 2274 / 2560, 970 / 1600),
+                              ('一键领取', 2225 / 2560, 1515 / 1600)]
+                x1, y1, x2, y2 = kwargs['box']
+                found = [name for name, x, y in candidates
+                         if x1 <= x <= x2 and y1 <= y <= y2
+                         and kwargs['match'][0].fullmatch(name)]
+                selected.extend(found[:1])
+                return bool(found)
+            return True
+
+        task.wait_click_ocr.side_effect = click_ocr
+        self.assertTrue(ns['xunlu'](task))
+        self.assertEqual(['一键领取'], selected)
