@@ -66,5 +66,6 @@ working_images/
 
 # WorkBuddy AI 本地数据（记忆、技能缓存等），不进版本库
 .workbuddy-ai/
+.workbuddy/
 .vscode/*
 !.vscode/extensions.json
