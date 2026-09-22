@@ -251,3 +251,26 @@ msgstr "删除任务"
 
 msgid "Are you sure you want to delete task"
 msgstr "确定要删除任务"
+msgid "拂晓之光补给包奖励"
+msgstr "拂晓之光补给包奖励"
+
+msgid "远航巡录领取时自动选择的补给包奖励，默认数据链路"
+msgstr "远航巡录领取时自动选择的补给包奖励，默认数据链路"
+
+msgid "数据链路"
+msgstr "数据链路"
+
+msgid "坍塌晶条"
+msgstr "坍塌晶条"
+
+msgid "增域存量条T2"
+msgstr "增域存量条T2"
+
+msgid "大容量内存条"
+msgstr "大容量内存条"
+
+msgid "转录导体·序三"
+msgstr "转录导体·序三"
+
+msgid "萨狄斯金"
+msgstr "萨狄斯金"

@@ -96,6 +96,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             "尘烟": '需开启班组项',
             '领任务': '自动领取委托中的每日任务奖励',
             '大月卡': '自动领取巡录（大月卡）的每日沿途行动奖励',
+            '拂晓之光补给包奖励': '远航巡录领取时自动选择的补给包奖励，默认数据链路',
             '探索领取': '自动领取边界推进探索区域的采集与派遣奖励',
             '生成汇总文件': (
                 '任务结束后把执行情况写成 txt 汇总\n'
@@ -128,6 +129,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             '尘烟': True,
             '领任务': True,
             '大月卡': True,
+            '拂晓之光补给包奖励': '数据链路',
             '探索领取': True,
             '生成汇总文件': True,
             '自动打开汇总文件': False
@@ -139,6 +141,8 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             下拉框配置
 
         """
+        self.config_type['拂晓之光补给包奖励'] = {'type': 'drop_down',
+            'options': ['数据链路', '坍塌晶条', '增域存量条T2', '大容量内存条', '转录导体·序三', '萨狄斯金']}
         self.stamina_options = ['军备解析', '深度搜索', '决策构象', '定向']
         self.config_type["体力本"] = {'type': "drop_down", 'options': self.stamina_options}
 
@@ -149,6 +153,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
         """
         self.default_config_group.update({
             "社区每日": ["用户名", "密码"],
+            "大月卡": ["拂晓之光补给包奖励"],
             "活动自律": ["当前物资关卡名称"],
             "活动层": ["喝水", "吃饭"],
             "公共区/调度室": ["自主循环"],

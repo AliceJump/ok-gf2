@@ -250,3 +250,28 @@ msgstr "Delete Task"
 
 msgid "Are you sure you want to delete task"
 msgstr "Are you sure you want to delete task"
+msgid "拂晓之光补给包奖励"
+msgstr "Daybreak Supply Pack reward"
+
+msgid "远航巡录领取时自动选择的补给包奖励，默认数据链路"
+msgstr ""
+"Reward selected automatically from the patrol supply pack; defaults to Data "
+"Link."
+
+msgid "数据链路"
+msgstr "Data Link"
+
+msgid "坍塌晶条"
+msgstr "Collapse Piece"
+
+msgid "增域存量条T2"
+msgstr "Stock Boost Bar T2"
+
+msgid "大容量内存条"
+msgstr "High-capacity Memory Stick"
+
+msgid "转录导体·序三"
+msgstr "Transcription Conductor III"
+
+msgid "萨狄斯金"
+msgstr "Sardis Gold"
