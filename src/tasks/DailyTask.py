@@ -60,7 +60,8 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             ),
             '当前物资关卡名称': (
                 '活动自律中当前大活动的名称\n'
-                '例：铸碑者的黎明'
+                '例：铸碑者的黎明\n'
+                '章节"上篇/下篇"与"初篇/转篇"等价，填活动名即可'
             ),
             '用户名': '使用账户密码方式登录网页社区时(不是直接的手机号或邮箱)\n account 请求负载中的 account_name 的值',
             '密码': '使用账户密码方式登录网页社区时(不是直接的密码)\n account 请求负载中的 passwd 的值',

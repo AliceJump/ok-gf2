@@ -2,6 +2,12 @@
 
 import re
 from src.core.BaseGfTask import map_re, parse_time_option
+from src.tasks.daily.daily_common_mixin import (
+    chapter_suffix_re,
+    up_chapter_re,
+    middle_chapter_re,
+    down_chapter_re,
+)
 
 
 activity_time_re = re.compile(r'^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)', re.I)
@@ -112,7 +118,7 @@ class DailyActivityMixin:
                     if activity_count >= len(activity_wuzi_names):
                         activity_count -= 1
                     name_re = activity_wuzi_names[activity_count]
-                    chapter_re = re.compile(rf"{re.escape(name_re)}[·・：][上下中][篇筒]")
+                    chapter_re = re.compile(rf"{re.escape(name_re)}[·・：]{chapter_suffix_re}")
                     to_clicks = self.wait_ocr_until_count(
                         match=[chapter_re],
                         box=None,
@@ -126,11 +132,11 @@ class DailyActivityMixin:
                         middle = None
                         down = None
                         for click in to_clicks:
-                            if re.search("上[篇筒]", click.name):
+                            if up_chapter_re.search(click.name):
                                 up = click
-                            elif re.search("中[篇筒]", click.name):
+                            elif middle_chapter_re.search(click.name):
                                 middle = click
-                            elif re.search("下[篇筒]", click.name):
+                            elif down_chapter_re.search(click.name):
                                 down = click
 
                         chapter_boxes = [box for box in (up, middle, down) if box]

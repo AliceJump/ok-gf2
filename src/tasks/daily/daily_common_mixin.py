@@ -6,6 +6,14 @@ from ok import Logger, find_boxes_by_name, Box
 from src.core.BaseGfTask import BaseGfTask, pop_ups, stamina_re, map_re, parse_time_option
 
 
+# 活动章节后缀："筒"是"篇"的 OCR 常见误读。
+# 部分活动用等价命名：初篇 = 上篇，转篇 = 下篇。
+chapter_suffix_re = r'[上下中初转][篇筒]'
+up_chapter_re = re.compile(r'(?:上|初)[篇筒]')
+middle_chapter_re = re.compile(r'中[篇筒]')
+down_chapter_re = re.compile(r'(?:下|转)[篇筒]')
+
+
 def find_boxes_within_boundary(
         boxes: list["Box"],
         boundary_box: "Box",
@@ -89,11 +97,11 @@ class DailyCommonMixin:
         return filtered
 
     def _chapter_click_order(self, box):
-        if re.search("下[篇筒]", box.name):
+        if down_chapter_re.search(box.name):
             return 0
-        if re.search("中[篇筒]", box.name):
+        if middle_chapter_re.search(box.name):
             return 1
-        if re.search("上[篇筒]", box.name):
+        if up_chapter_re.search(box.name):
             return 2
         return 3
 
