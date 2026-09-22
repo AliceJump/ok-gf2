@@ -42,6 +42,8 @@ class DailyRewardMixin:
 
     def xunlu(self):
         self.info_set('current_task', 'xunlu')
+        self.info_set('每日行动', '未检查')
+        self.info_set('巡录奖励', '未检查')
         box = self.wait_ocr(match=[re.compile(r'^巡录$')], box=self.box._xunlun, time_out=3, raise_if_not_found=False)
         if not box:
             self.log_info('未找到「巡录」入口，跳过')
@@ -64,46 +66,86 @@ class DailyRewardMixin:
             self.ensure_main()
             return False
         # 单项“领取”也在右下半屏，只匹配底部的一键领取，避免仅领取一项就离开。
-        claimed = self.wait_click_ocr(match=[re.compile(r'^一键领取$')],
-                                      box=self.box_of_screen(0.70, 0.88, 1, 1), time_out=4,
+        # 分别确认行动里程和巡录道具，不能用行动按钮是否存在决定整项成败。
+        action_box = self.box_of_screen(0.70, 0.88, 1, 1)
+        claim_match = re.compile(r'^一\s*键\s*领\s*取$')
+        clicked = self.wait_click_ocr(match=[claim_match], box=action_box, time_out=4,
                                       raise_if_not_found=False, after_sleep=1)
-        if not claimed:
-            self.log_info('每日行动页面未找到领取按钮，可能已领取或尚未完成，需核查')
-        # 先收集行动里程，再回到顶部的远航巡录页领取等级/盈余奖励。
+        if clicked:
+            # 行动里程直接入账：确认仍在行动页，且原先可见的领取按钮消失。
+            if not self.wait_ocr(match=[re.compile(r'^每日行动$')], box=self.box.left,
+                                 time_out=3, raise_if_not_found=False):
+                action_result = '待核查'
+            elif self.wait_ocr(match=[claim_match], box=action_box,
+                               time_out=2, raise_if_not_found=False):
+                self.log_error('每日行动点击领取后按钮仍在，未确认领取完成')
+                action_result = False
+            else:
+                action_result = True
+        else:
+            action_result = self._xunlu_no_reward_status()
+        self._record_xunlu_result('每日行动', action_result)
+        # 先收集行动里程，再回到远航巡录页领取等级/盈余奖励。
         if not self.wait_click_ocr(match=[re.compile(r'^远航巡录$')],
                                    box=self.box_of_screen(0.25, 0, 0.65, 0.12),
                                    time_out=4, raise_if_not_found=False, after_sleep=1):
-            self.log_info('未能切换到远航巡录，奖励领取未完成')
+            self.log_error('未能切换到远航巡录，奖励领取未完成')
             self.ensure_main()
             return False
-        if not self.wait_click_ocr(match=[re.compile(r'^一键领取$')],
-                                   box=self.box.bottom_right, time_out=4,
-                                   raise_if_not_found=False, after_sleep=1):
-            self.log_info('远航巡录未找到一键领取，可能无可领取奖励，需核查')
-            self.ensure_main()
-            return False
-        if not self._claim_xunlu_rewards():
-            self.ensure_main()
-            return False
+        if self.wait_click_ocr(match=[claim_match], box=self.box.bottom_right, time_out=4,
+                               raise_if_not_found=False, after_sleep=1):
+            reward_result = self._claim_xunlu_rewards()
+        else:
+            # 必须仍在巡录页；不能把错误页面上的按钮缺失当作已领取。
+            if not self.wait_ocr(match=[re.compile(r'^大奖预览$|^通行证$')],
+                                 box=self.box_of_screen(0, 0, 1, 1),
+                                 time_out=3, raise_if_not_found=False):
+                self.log_error('未确认巡录奖励页面，无法检查领取状态')
+                reward_result = False
+            else:
+                reward_result = self._xunlu_no_reward_status()
+        self._record_xunlu_result('巡录奖励', reward_result)
         self.ensure_main()
-        return bool(claimed)
+        if action_result is False or reward_result is False:
+            return False
+        if action_result == '待核查' or reward_result == '待核查':
+            return '待核查'
+        return True
+
+    def _xunlu_no_reward_status(self):
+        # 仅接受明确的整体状态；单条任务的“已领取”不能证明全部领完。
+        if self.wait_ocr(match=[re.compile(r'^\s*(?:已全部领取|全部已领取|暂无可领取奖励|无可领取奖励)\s*$')],
+                         box=self.box.bottom_right, time_out=2, raise_if_not_found=False, log=True):
+            return True
+        return '待核查'
+
+    def _record_xunlu_result(self, name, result):
+        status = ('领取已确认／已无可领取奖励' if result is True else
+                  '执行失败' if result is False else '待核查：缺少领取结果证据')
+        self.info_set(name, status)
+        self.log_info(f'{name}：{status}')
 
     def _claim_xunlu_rewards(self):
         # 自选补给包可能直接出现，也可能跟在普通奖励确认之后。
         pack_title = re.compile(r'^拂晓之光补给包$')
         reward_title = re.compile(r'^领取奖励$')
-        handled = False
+        # 「获得道具」是奖励到账的正面证据，缺少它不能判定领取成功。
+        obtained_title = re.compile(r'^获得道具$')
+        obtained = False
         for _ in range(8):
-            titles = self.wait_ocr(match=[pack_title, reward_title],
+            titles = self.wait_ocr(match=[pack_title, reward_title, obtained_title],
                                    box=self.box_of_screen(0, 0, 1, 1),
                                    time_out=4, raise_if_not_found=False, log=True)
             if not titles:
-                if not handled:
-                    self.log_info('未识别到领取奖励或补给包弹窗，巡录奖励未确认完成')
-                    return False
-                # 奖励展示页没有上述标题，点击底部空白处关闭。
+                if obtained:
+                    return True
+                self.log_info('未看到获得道具，巡录领取结果待核查')
+                return '待核查'
+            if any(obtained_title.search(title.name) for title in titles):
+                obtained = True
+                self.log_info('巡录已显示获得道具，确认奖励到账')
                 self.click(0.5, 0.95, after_sleep=1)
-                return True
+                continue
             if any(pack_title.search(title.name) for title in titles):
                 reward = self.config.get('拂晓之光补给包奖励', '数据链路')
                 if not reward:
@@ -125,7 +167,6 @@ class DailyRewardMixin:
                                        time_out=4, raise_if_not_found=False, after_sleep=1, log=True):
                 self.log_error('未找到巡录奖励弹窗操作按钮，领取未完成')
                 return False
-            handled = True
         self.log_error('巡录奖励弹窗连续出现或未关闭，请手动检查')
         return False
 

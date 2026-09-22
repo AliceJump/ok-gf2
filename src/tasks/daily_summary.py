@@ -130,9 +130,10 @@ def build_summary_lines(task, summary_info: dict) -> list[str]:
         success = round_item.get("success", [])
         failed = round_item.get("failed", [])
         skipped = round_item.get("skipped", [])
+        uncertain = round_item.get("uncertain", [])
         # 注意：per_round 里的 all 是「未处理」的剩余项，任务执行过程中会被逐个移除，
-        # 因此总数必须由三项统计相加，不能直接用 len(all)。
-        total = len(success) + len(failed) + len(skipped)
+        # 因此总数必须由成功、失败、跳过、待核查四项统计相加，不能直接用 len(all)。
+        total = len(success) + len(failed) + len(skipped) + len(uncertain)
 
         # 多轮或存在账号上下文时才打印轮次表头，单账户单轮保持简洁
         if len(per_round) > 1 or round_item.get("account_user") or round_item.get("account_id"):
@@ -151,6 +152,10 @@ def build_summary_lines(task, summary_info: dict) -> list[str]:
             )
         )
         lines.append("")
+        if uncertain:
+            lines.append(_tr("待核查任务:"))
+            lines.append("  " + ", ".join(_tr(t) for t in uncertain))
+            lines.append("")
         lines.append(_tr("成功任务:"))
         lines.append(f"  {', '.join(_tr(t) for t in success) if success else _tr('无')}")
         lines.append("")

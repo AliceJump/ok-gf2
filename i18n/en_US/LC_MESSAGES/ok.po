@@ -283,3 +283,33 @@ msgid "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥"
 msgstr ""
 "Water plants after drinks and meals; skip when already watered. Does not "
 "fertilize."
+
+msgid "待核查"
+msgstr "Needs verification"
+
+msgid "待核查任务:"
+msgstr "Tasks needing verification:"
+
+msgid "待核查的任务列表"
+msgstr "Tasks needing verification"
+
+msgid "任务 {key} 结果待核查"
+msgstr "Task {key} needs verification"
+
+msgid "每日行动"
+msgstr "Daily actions"
+
+msgid "巡录奖励"
+msgstr "Patrol rewards"
+
+msgid "未检查"
+msgstr "Not checked"
+
+msgid "领取已确认／已无可领取奖励"
+msgstr "Claim confirmed / no claimable rewards"
+
+msgid "执行失败"
+msgstr "Failed"
+
+msgid "待核查：缺少领取结果证据"
+msgstr "Needs verification: claim result not confirmed"
