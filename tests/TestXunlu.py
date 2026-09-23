@@ -18,22 +18,32 @@ class XunluTest(unittest.TestCase):
                 task = Mock()
                 task.box_of_screen.side_effect = lambda *coords: coords
                 task.wait_ocr.side_effect = [[Mock()], True, True, False]
-                task.wait_click_ocr.side_effect = [preview, True, True, True, True]
+                task.wait_click_ocr.side_effect = [preview, True, True, True]
+                task._switch_xunlu_rewards_page.return_value = True
                 task._claim_xunlu_rewards.return_value = True
                 self.assertTrue(ns['xunlu'](task))
                 task.ensure_main.assert_called_once()
-                self.assertEqual(5, task.wait_click_ocr.call_count)
+                self.assertEqual(4, task.wait_click_ocr.call_count)
                 calls = task.wait_click_ocr.call_args_list
                 self.assertEqual('^沿途行动$', calls[1].kwargs['match'][0].pattern)
                 self.assertEqual(task.box.top, calls[1].kwargs['box'])
                 self.assertTrue(calls[2].kwargs['match'][0].fullmatch('一键领取'))
                 self.assertFalse(calls[2].kwargs['match'][0].fullmatch('领取'))
                 self.assertEqual((0.70, 0.88, 1, 1), calls[2].kwargs['box'])
-                self.assertEqual('^远航巡录$', calls[3].kwargs['match'][0].pattern)
-                self.assertEqual((0.25, 0, 0.65, 0.12), calls[3].kwargs['box'])
+                task._switch_xunlu_rewards_page.assert_called_once()
                 task._claim_xunlu_rewards.assert_called_once()
                 for call in task.wait_click_ocr.call_args_list:
                     self.assertFalse(call.kwargs['raise_if_not_found'])
+
+    def test_failed_reward_page_switch_stops_before_claiming(self):
+        task = Mock()
+        task.wait_ocr.return_value = True
+        task.wait_click_ocr.side_effect = [False, True, True]
+        task._switch_xunlu_rewards_page.return_value = False
+        self.assertFalse(DailyRewardMixin.xunlu(task))
+        self.assertEqual(3, task.wait_click_ocr.call_count)
+        task._claim_xunlu_rewards.assert_not_called()
+        task.ensure_main.assert_called_once()
 
     def test_xunlu_does_not_claim_on_pass_page_when_actions_unavailable(self):
         ns = {'xunlu': DailyRewardMixin.xunlu}
