@@ -28,6 +28,7 @@ class DailyActivityMixin:
 
     def free_time_layer(self):
         self.info_set('current_task', 'free_time_layer')
+        completed = True
         for i in range(2):
             self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
@@ -53,7 +54,99 @@ class DailyActivityMixin:
                     )
             else:
                 self.log_error('没检测到活动层页面')
+                completed = False
             self.ensure_main(time_out=60)
+        if self.config.get('活动层浇花', True):
+            self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
+            if self.is_free_layer():
+                completed = self.water_flowers() and completed
+            else:
+                self.log_error('没检测到活动层页面，跳过浇花')
+                completed = False
+            self.ensure_main(time_out=60)
+        return completed
+
+    def _ensure_activity_panel(self):
+        panel_match = re.compile(
+            r'逸\s*趣\s*事\s*件|宜\s*居\s*值|栽\s*培|生\s*长\s*阶\s*段|浇\s*灌')
+        panel_box = self.box_of_screen(0.13, 0.16, 0.87, 0.82)
+
+        def is_open(timeout):
+            return bool(self.wait_ocr(match=panel_match, box=panel_box,
+                                      time_out=timeout, raise_if_not_found=False, log=True))
+
+        # 已打开时不要再次按 F2，以免把面板关闭。
+        if is_open(1):
+            self.log_info('活动层面板已打开')
+            return True
+        for attempt in range(2):
+            self.log_info(f'尝试打开活动层面板：发送 F2（第 {attempt + 1}/2 次）')
+            self.send_key('f2', down_time=0.15, after_sleep=1)
+            if is_open(4):
+                self.log_info('已确认 F2 面板打开')
+                return True
+        self.log_info('F2 后未检测到面板，尝试点击顶部 F2 入口')
+        if self.wait_click_ocr(match=re.compile(r'^F\s*2$'),
+                               box=self.box_of_screen(0.65, 0, 0.74, 0.12),
+                               time_out=2, raise_if_not_found=False, after_sleep=1, log=True):
+            if is_open(4):
+                self.log_info('点击入口后已确认活动层面板打开')
+                return True
+        self.log_error('活动层 F2 面板未打开：按键重试及入口点击未成功，跳过浇花')
+        return False
+
+    def water_flowers(self):
+        self.info_set('current_task', 'water_flowers')
+        if not self._ensure_activity_panel():
+            return False
+        watering_match = re.compile(r'浇\s*灌')
+        # F2 可能直接选中栽培页；优先识别内容，避免依赖选中页签的黑字。
+        on_watering_page = self.wait_ocr(match=watering_match, box=self.box.right,
+                                         time_out=2, raise_if_not_found=False)
+        on_overview = False
+        if not on_watering_page:
+            on_overview = self.wait_ocr(match=re.compile(r'栽\s*培\s*天\s*数|生\s*长\s*阶\s*段'),
+                                        box=self.box_of_screen(0.36, 0.43, 0.85, 0.59),
+                                        time_out=2, raise_if_not_found=False, log=True)
+        if on_overview:
+            self.log_info('F2 已打开栽培概览，直接前往浇灌')
+        if not on_watering_page and not on_overview:
+            # 未进入栽培页时才切换页签，允许文字前带图标。
+            if not self.wait_click_ocr(match=re.compile(r'栽\s*培'),
+                                       box=self.box_of_screen(0.30, 0.15, 0.42, 0.25),
+                                       time_out=10, raise_if_not_found=False, after_sleep=2, log=True):
+                self.log_error('未找到栽培入口，跳过浇花')
+                return False
+        if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3,
+                             raise_if_not_found=False):
+            # 部分界面先显示栽培概览，需点击“前往”才进入花盆页面。
+            if not self.wait_click_ocr(match=re.compile('前往'), box=self.box.bottom_right,
+                                       time_out=5, raise_if_not_found=False, after_sleep=3, log=True):
+                self.log_error('栽培页面未找到浇灌或前往入口')
+                return False
+        if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=10,
+                             raise_if_not_found=False):
+            self.log_error('未进入浇灌页面，跳过浇花')
+            return False
+        # 仅检查浇灌按钮下方次数，避免把施肥的 1/1 当成浇水完成。
+        count_box = self.box_of_screen(0.75, 0.51, 0.87, 0.59)
+        done_match = re.compile(r'^\s*1\s*[/／]\s*1\s*$')
+        if self.wait_ocr(match=done_match, box=count_box, time_out=1, raise_if_not_found=False):
+            self.log_info('今日已浇灌，跳过重复浇花')
+            self.back(after_sleep=2)
+            return True
+        if not self.wait_click_ocr(match=watering_match, box=self.box.right, time_out=5,
+                                   raise_if_not_found=False, after_sleep=2, log=True):
+            self.log_error('未找到浇灌按钮，跳过浇花')
+            return False
+        self.wait_pop_up(count=1, time_out=5)
+        completed = bool(self.wait_ocr(match=done_match, box=count_box, time_out=10,
+                                       raise_if_not_found=False, log=True))
+        if not completed:
+            self.log_error('点击浇灌后未检测到次数 1/1，浇花未确认完成')
+        # 关闭栽培页面后，由活动层共用的 ensure_main 处理退出确认。
+        self.back(after_sleep=2)
+        return completed
 
     def do_food_flow(
             self,

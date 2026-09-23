@@ -275,3 +275,11 @@ msgstr "Transcription Conductor III"
 
 msgid "萨狄斯金"
 msgstr "Sardis Gold"
+
+msgid "活动层浇花"
+msgstr "Water activity-floor plants"
+
+msgid "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥"
+msgstr ""
+"Water plants after drinks and meals; skip when already watered. Does not "
+"fertilize."
