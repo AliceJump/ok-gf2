@@ -32,6 +32,7 @@ ALWAYS_RUN_KEYS = ("ensure_main",)
 
 # 四态到 UI info 键的映射，仅在 publish_info=True 时写入。
 _STATUS_INFO_MAP = (
+    ("uncertain", "待核查的任务列表"),
     ("failed", "已失败的任务列表"),
     ("success", "已完成的任务列表"),
     ("skipped", "已跳过的任务列表"),
@@ -40,7 +41,7 @@ _STATUS_INFO_MAP = (
 
 
 def _new_task_status(task_items: Iterable[TaskItem | TaskItemWithSwitch]) -> dict[str, list[str]]:
-    return {"success": [], "failed": [], "skipped": [], "all": [item[0] for item in task_items]}
+    return {"success": [], "failed": [], "uncertain": [], "skipped": [], "all": [item[0] for item in task_items]}
 
 
 class DailyTaskRunner:
@@ -75,6 +76,7 @@ class DailyTaskRunner:
             "status": "未开始",
             "actual_repeat_total": 0,
             "all_fail_tasks": [],
+            "all_uncertain_tasks": [],
             "per_round": [],
             "exception": "",
             "current_task": "",
@@ -162,10 +164,13 @@ class DailyTaskRunner:
             **self._current_account_info(),
             "success": list(self.task_status.get("success", [])),
             "failed": list(self.task_status.get("failed", [])),
+            "uncertain": list(self.task_status.get("uncertain", [])),
             "skipped": list(self.task_status.get("skipped", [])),
             "all": list(self.task_status.get("all", [])),
         }
         self.final_summary.setdefault("per_round", []).append(round_summary)
+        if round_summary["uncertain"]:
+            self.final_summary.setdefault("all_uncertain_tasks", []).append((round_index, round_summary["uncertain"]))
         if round_summary["failed"]:
             self.final_summary.setdefault("all_fail_tasks", []).append(
                 (round_index, list(round_summary["failed"]))
@@ -236,6 +241,15 @@ class DailyTaskRunner:
             self.final_summary["current_task"] = ""
             return False
 
+        if result == '待核查':
+            self.task_status['uncertain'].append(key)
+            self.clear_task_failure(key)
+            self.task.screenshot(f'DailyTask_Uncertain_{key}')
+            self.task.log_info(self._tr('任务 {key} 结果待核查').format(key=self._tr(key)), notify=True)
+            self.current_task_key = None
+            self.final_summary['current_task'] = ''
+            return True
+
         self.task_status["success"].append(key)
         self.clear_task_failure(key)
         self.current_task_key = None
@@ -280,7 +294,7 @@ class DailyTaskRunner:
                             failed=self.task_status["failed"]
                         )
                     self.task.log_info(message, notify=True)
-                else:
+                elif not self.task_status["uncertain"]:
                     if repeat_total > 1:
                         message = self._tr("第 {idx} 轮 | 日常完成!").format(idx=round_index)
                     else:
@@ -296,6 +310,8 @@ class DailyTaskRunner:
                 self.final_summary["status"] = "未开始"
             elif self.final_summary.get("all_fail_tasks"):
                 self.final_summary["status"] = "部分失败"
+            elif self.final_summary.get("all_uncertain_tasks"):
+                self.final_summary["status"] = "待核查"
             else:
                 self.final_summary["status"] = "完成"
             if self.final_summary["actual_repeat_total"] > 1:
@@ -309,7 +325,7 @@ class DailyTaskRunner:
                         ),
                         notify=True,
                     )
-                else:
+                elif not self.final_summary.get("all_uncertain_tasks"):
                     self.task.log_info(self._tr("所有任务均成功完成!"), notify=True)
         except Exception as e:
             self.handle_exception(e)

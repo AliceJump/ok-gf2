@@ -280,3 +280,33 @@ msgstr "活动层浇花"
 
 msgid "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥"
 msgstr "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥"
+
+msgid "待核查"
+msgstr "待核查"
+
+msgid "待核查任务:"
+msgstr "待核查任务:"
+
+msgid "待核查的任务列表"
+msgstr "待核查的任务列表"
+
+msgid "任务 {key} 结果待核查"
+msgstr "任务 {key} 结果待核查"
+
+msgid "每日行动"
+msgstr "每日行动"
+
+msgid "巡录奖励"
+msgstr "巡录奖励"
+
+msgid "未检查"
+msgstr "未检查"
+
+msgid "领取已确认／已无可领取奖励"
+msgstr "领取已确认／已无可领取奖励"
+
+msgid "执行失败"
+msgstr "执行失败"
+
+msgid "待核查：缺少领取结果证据"
+msgstr "待核查：缺少领取结果证据"

@@ -27,20 +27,28 @@ class XunluRewardsTest(unittest.TestCase):
             if not stuck:
                 pages.pop(0)
             return True
+        def click_blank(*args, **kwargs):
+            # 「获得道具」展示页没有操作按钮，点击底部空白处关闭后继续。
+            if pages and pages[0] == '获得道具':
+                pages.pop(0)
         task.wait_ocr.side_effect = ocr
         task.wait_click_ocr.side_effect = click
+        task.click.side_effect = click_blank
         return task, clicks
 
     def test_popup_orders_and_repeated_packs(self):
-        for pages in (['领取奖励'], ['拂晓之光补给包'],
-                      ['领取奖励', '拂晓之光补给包'],
-                      ['拂晓之光补给包', '领取奖励'],
-                      ['拂晓之光补给包', '拂晓之光补给包']):
+        # 末尾的「获得道具」是奖励到账证据，缺少它只能判为待核查。
+        for pages in (['领取奖励', '获得道具'], ['拂晓之光补给包', '获得道具'],
+                      ['领取奖励', '拂晓之光补给包', '获得道具'],
+                      ['拂晓之光补给包', '领取奖励', '获得道具'],
+                      ['拂晓之光补给包', '拂晓之光补给包', '获得道具']):
             with self.subTest(pages=pages):
                 task, clicks = self.task(pages)
                 self.assertIs(True, claim(task))
                 expected = []
                 for page in pages:
+                    if page == '获得道具':
+                        continue
                     expected.extend(['数据链路', '开启'] if page == '拂晓之光补给包' else ['确认'])
                 self.assertEqual(expected, clicks)
 
@@ -50,15 +58,20 @@ class XunluRewardsTest(unittest.TestCase):
         self.assertEqual([], clicks)
 
     def test_custom_reward(self):
-        task, clicks = self.task(['拂晓之光补给包'], reward='大容量内存条')
+        task, clicks = self.task(['拂晓之光补给包', '获得道具'], reward='大容量内存条')
         task.config = {'拂晓之光补给包奖励': '大容量内存条'}
         self.assertIs(True, claim(task))
         self.assertEqual(['大容量内存条', '开启'], clicks)
 
     def test_no_popup_is_not_success(self):
         task, clicks = self.task([])
-        self.assertIs(False, claim(task))
+        self.assertEqual('待核查', claim(task))
         self.assertEqual([], clicks)
+
+    def test_popup_without_obtained_evidence_is_uncertain(self):
+        task, clicks = self.task(['领取奖励'])
+        self.assertEqual('待核查', claim(task))
+        self.assertEqual(['确认'], clicks)
 
     def test_missing_confirmation_is_failure(self):
         task, _ = self.task(['领取奖励'])
