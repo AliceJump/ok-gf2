@@ -63,7 +63,7 @@ class DailyRewardMixin:
             self.log_info('未确认进入每日行动页面，跳过领取')
             self.ensure_main()
             return False
-        # 仅点底部一键领取，避免误点任务列表中的单项领取。
+        # 单项“领取”也在右下半屏，只匹配底部的一键领取，避免仅领取一项就离开。
         claimed = self.wait_click_ocr(match=[re.compile(r'^一键领取$')],
                                       box=self.box_of_screen(0.70, 0.88, 1, 1), time_out=4,
                                       raise_if_not_found=False, after_sleep=1)
@@ -82,31 +82,52 @@ class DailyRewardMixin:
             self.log_info('远航巡录未找到一键领取，可能无可领取奖励，需核查')
             self.ensure_main()
             return False
-        # 弹窗截图可能经过裁剪，不能据此推断标题在游戏全屏中的位置。
-        # 实机全屏 OCR 能稳定识别标题，右下区域精确匹配确认可避开取消/解锁。
-        reward_title = self.box_of_screen(0, 0, 1, 1)
-        if not self.wait_ocr(match=[re.compile(r'^领取奖励$')], box=reward_title,
-                             time_out=4, raise_if_not_found=False, log=True):
-            self.log_info('未识别到领取奖励弹窗，未确认巡录奖励领取')
+        if not self._claim_xunlu_rewards():
             self.ensure_main()
             return False
-        # 弹窗还包含“前往解锁”，只点击下方右侧的“确认”。
-        if not self.wait_click_ocr(match=[re.compile(r'^确认$')],
-                                   box=self.box.bottom_right,
-                                   time_out=4, raise_if_not_found=False, after_sleep=1, log=True):
-            self.log_info('未找到领取奖励确认按钮，巡录奖励未完成')
-            self.ensure_main()
-            return False
-        if self.wait_ocr(match=[re.compile(r'^领取奖励$')], box=reward_title,
-                         time_out=2, raise_if_not_found=False, log=True):
-            self.log_info('确认后领取奖励弹窗仍未关闭，巡录奖励未完成')
-            self.ensure_main()
-            return False
-        # 确认后还有奖励展示页，点击底部中央空白处关闭，再退出巡录。
-        self.sleep(1)
-        self.click(0.5, 0.95, after_sleep=1)
         self.ensure_main()
         return bool(claimed)
+
+    def _claim_xunlu_rewards(self):
+        # 自选补给包可能直接出现，也可能跟在普通奖励确认之后。
+        pack_title = re.compile(r'^拂晓之光补给包$')
+        reward_title = re.compile(r'^领取奖励$')
+        handled = False
+        for _ in range(8):
+            titles = self.wait_ocr(match=[pack_title, reward_title],
+                                   box=self.box_of_screen(0, 0, 1, 1),
+                                   time_out=4, raise_if_not_found=False, log=True)
+            if not titles:
+                if not handled:
+                    self.log_info('未识别到领取奖励或补给包弹窗，巡录奖励未确认完成')
+                    return False
+                # 奖励展示页没有上述标题，点击底部空白处关闭。
+                self.click(0.5, 0.95, after_sleep=1)
+                return True
+            if any(pack_title.search(title.name) for title in titles):
+                reward = self.config.get('拂晓之光补给包奖励', '数据链路')
+                if not reward:
+                    self.log_error('未配置拂晓之光补给包奖励，请手动选择')
+                    return False
+                reward_match = re.compile(r'^\s*' + r'\s*'.join(re.escape(c) for c in reward) + r'\s*$')
+                if not self.wait_click_ocr(match=[reward_match],
+                                           box=self.box_of_screen(0.20, 0.34, 0.80, 0.53),
+                                           time_out=4, raise_if_not_found=False, after_sleep=0.5):
+                    self.log_error(f'补给包未找到配置奖励「{reward}」，请手动选择')
+                    return False
+                button = re.compile(r'^开启$')
+                # 仅匹配选择弹窗底部右侧的“开启”。
+                button_box = self.box_of_screen(0.51, 0.67, 0.71, 0.76)
+            else:
+                button = re.compile(r'^确认$')
+                button_box = self.box.bottom_right
+            if not self.wait_click_ocr(match=[button], box=button_box,
+                                       time_out=4, raise_if_not_found=False, after_sleep=1, log=True):
+                self.log_error('未找到巡录奖励弹窗操作按钮，领取未完成')
+                return False
+            handled = True
+        self.log_error('巡录奖励弹窗连续出现或未关闭，请手动检查')
+        return False
 
     def explore_claim(self):
         self.info_set('current_task', 'explore_claim')
