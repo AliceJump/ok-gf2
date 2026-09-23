@@ -86,10 +86,9 @@ class DailyRewardMixin:
             action_result = self._xunlu_no_reward_status()
         self._record_xunlu_result('每日行动', action_result)
         # 先收集行动里程，再回到远航巡录页领取等级/盈余奖励。
-        if not self.wait_click_ocr(match=[re.compile(r'^远航巡录$')],
-                                   box=self.box_of_screen(0.25, 0, 0.65, 0.12),
-                                   time_out=4, raise_if_not_found=False, after_sleep=1):
+        if not self._switch_xunlu_rewards_page():
             self.log_error('未能切换到远航巡录，奖励领取未完成')
+            self._record_xunlu_result('巡录奖励', False)
             self.ensure_main()
             return False
         if self.wait_click_ocr(match=[claim_match], box=self.box.bottom_right, time_out=4,
@@ -125,6 +124,24 @@ class DailyRewardMixin:
         self.info_set(name, status)
         self.log_info(f'{name}：{status}')
 
+    def _switch_xunlu_rewards_page(self):
+        for attempt in range(3):
+            self.log_info(f'切换远航巡录奖励页（第 {attempt + 1}/3 次）')
+            self.wait_click_ocr(match=[re.compile(r'^远\s*航\s*巡\s*录$')],
+                                box=self.box_of_screen(0.25, 0, 0.65, 0.12),
+                                time_out=4, raise_if_not_found=False, after_sleep=1)
+            # 页签和一键领取在两个页面都存在，必须检查奖励页独有内容。
+            if self.wait_ocr(match=[re.compile(r'^大\s*奖\s*预\s*览$|^通\s*行\s*证$')],
+                             box=self.box_of_screen(0, 0, 1, 1), time_out=4,
+                             raise_if_not_found=False):
+                if not self.wait_ocr(match=[re.compile(r'^每\s*日\s*行\s*动$')],
+                                     box=self.box.left, time_out=1,
+                                     raise_if_not_found=False):
+                    self.log_info('已确认进入远航巡录奖励页')
+                    return True
+            self.log_info('尚未确认进入巡录奖励页' + ('，重新点击页签' if attempt < 2 else '，停止重试'))
+        return False
+
     def _claim_xunlu_rewards(self):
         # 自选补给包可能直接出现，也可能跟在普通奖励确认之后。
         pack_title = re.compile(r'^拂晓之光补给包$')
@@ -152,14 +169,15 @@ class DailyRewardMixin:
                     self.log_error('未配置拂晓之光补给包奖励，请手动选择')
                     return False
                 reward_match = re.compile(r'^\s*' + r'\s*'.join(re.escape(c) for c in reward) + r'\s*$')
+                self.log_info(f'补给包本页选择奖励：{reward}')
                 if not self.wait_click_ocr(match=[reward_match],
-                                           box=self.box_of_screen(0.20, 0.34, 0.80, 0.53),
+                                           box=self.box_of_screen(0.20, 0.32, 0.85, 0.56),
                                            time_out=4, raise_if_not_found=False, after_sleep=0.5):
                     self.log_error(f'补给包未找到配置奖励「{reward}」，请手动选择')
                     return False
-                button = re.compile(r'^开启$')
-                # 仅匹配选择弹窗底部右侧的“开启”。
-                button_box = self.box_of_screen(0.51, 0.67, 0.71, 0.76)
+                # 点击“下一个”后重新识别弹窗并选择配置奖励，最后一页才开启。
+                button = re.compile(r'^\s*(?:下\s*一\s*个|开\s*启)\s*$')
+                button_box = self.box_of_screen(0.50, 0.67, 0.75, 0.86)
             else:
                 button = re.compile(r'^确认$')
                 button_box = self.box.bottom_right
