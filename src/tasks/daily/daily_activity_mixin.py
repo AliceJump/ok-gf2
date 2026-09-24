@@ -33,7 +33,7 @@ class DailyActivityMixin:
             self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
                 if i == 0:
-                    self.do_food_flow(
+                    drink_entered = self.do_food_flow(
                         enter_func=self.go_drink,
                         entry_match=re.compile('茶歇一刻'),
                         main_btn='制作',
@@ -41,6 +41,8 @@ class DailyActivityMixin:
                         skip_end_match=['饮品加成'],
                         need_extra_confirm=False
                     )
+                    if drink_entered is False:
+                        self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
 
                 else:
                     self.do_food_flow(
