@@ -43,6 +43,7 @@ class DailyActivityMixin:
                     )
                     if drink_entered is False:
                         self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
+                        completed = False
 
                 else:
                     self.do_food_flow(

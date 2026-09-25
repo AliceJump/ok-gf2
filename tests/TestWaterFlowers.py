@@ -188,7 +188,7 @@ class WaterIntegrationTest(unittest.TestCase):
         task.do_food_flow.side_effect = [False, True]
         task.water_flowers.return_value = True
 
-        self.assertIs(True, ns['free_time_layer'](task))
+        self.assertIs(False, ns['free_time_layer'](task))
         task.log_warning.assert_called_once()
         self.assertIn('喝水', task.log_warning.call_args.args[0])
         self.assertEqual(2, task.do_food_flow.call_count)
