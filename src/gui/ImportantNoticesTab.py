@@ -40,7 +40,10 @@ class ImportantNoticesTab(CustomTab):
 
     @property
     def name(self):
-        return og.app.tr("重要提醒")
+        # MainWindow 会对 tab 的 name 统一调用 self.app.tr(name)（ok-script 2.0.5
+        # ok/ui/qt/MainWindow.py L136/L179），这里必须返回源 key（"重要提醒"）而非已翻译文本，
+        # 否则会对翻译结果二次 tr()，把翻译值当作待翻译字符串收集进 ok.po。
+        return "重要提醒"
 
     @property
     def position(self):
