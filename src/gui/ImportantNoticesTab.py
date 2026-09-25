@@ -40,7 +40,7 @@ class ImportantNoticesTab(CustomTab):
 
     @property
     def name(self):
-        return "重要提醒"
+        return og.app.tr("重要提醒")
 
     @property
     def position(self):
