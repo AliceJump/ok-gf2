@@ -180,3 +180,16 @@ class WaterIntegrationTest(unittest.TestCase):
         self.assertIs(True, ns['free_time_layer'](task))
         task.water_flowers.assert_not_called()
         self.assertEqual(2, task.do_food_flow.call_count)
+
+    def test_drink_entry_failure_warns_and_continues(self):
+        task = Mock()
+        task.config = {'活动层浇花': True}
+        task.is_free_layer.return_value = True
+        task.do_food_flow.side_effect = [False, True]
+        task.water_flowers.return_value = True
+
+        self.assertIs(False, ns['free_time_layer'](task))
+        task.log_warning.assert_called_once()
+        self.assertIn('喝水', task.log_warning.call_args.args[0])
+        self.assertEqual(2, task.do_food_flow.call_count)
+        task.water_flowers.assert_called_once()
