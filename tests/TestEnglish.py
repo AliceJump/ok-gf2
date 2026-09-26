@@ -3,11 +3,11 @@ import unittest
 
 from src.config import config
 from ok.gui.common.config import Language
-from ok.test.TaskTestCase import TaskTestCase
+from tests.OkTestCase import OkTestCase
 from src.tasks.DailyTask import DailyTask
 
 
-class TestBattleBaseSerialization(TaskTestCase):
+class TestBattleBaseSerialization(OkTestCase):
     task_class = DailyTask
     lang = Language.ENGLISH
     config = config

@@ -2,18 +2,24 @@ name: Build
 
 on:
   push:
-    # Sequence of patterns matched against refs/tags
     tags:
       - 'v*'
+  repository_dispatch:
+    types:
+      - auto-release
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: windows-latest
     permissions:
       contents: read
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
 
     env:
       PYTHONIOENCODING: 'UTF-8'
+      PYTHONLEGACYWINDOWSSTDIO: 'UTF-8'
 
     strategy:
       matrix:
@@ -30,43 +36,81 @@ jobs:
           echo "action_state=yellow" >> $env:GITHUB_ENV
           echo "${{ env.action_state }}"
 
-      - uses: actions/checkout@v4
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "repository_dispatch") {
+            $raw = $env:CLIENT_PAYLOAD_TAG
+          } else {
+            $raw = $env:REF_NAME
+          }
+          $raw = $raw -replace "[\r\n]", ""
+          "tag=$raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $safe = $raw -replace '[/\\:<>*?"|]', '-'
+          "safe_tag=$safe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@v6
         with:
+          ref: ${{ steps.tag.outputs.tag }}
           lfs: true
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Output immutable commit SHA
+        id: sha
+        shell: pwsh
+        run: |
+          "sha=$(git rev-parse HEAD)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Set UTF-8 encoding
+
+      - name: Install uv
         run: |
-          set PYTHONIOENCODING=utf-8
-          set PYTHONLEGACYWINDOWSSTDIO=utf-8
-          echo PYTHONIOENCODING=utf-8 >> $GITHUB_ENV
+          pip install uv==0.12.5
+          uv venv .venv
+          uv pip install --python .venv packaging==26.3
+
+      - name: Verify requirements.txt reproducible
+        run: |
+          uv run --locked --no-sync python scripts/release/gen_release_requirements.py --check
+
+      - name: Install uv
+        run: |
+          pip install uv==0.12.5
+          uv venv .venv
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
+
+      - name: inline_ok_requirements
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          uv run --locked --no-sync python -m ok.update.inline_ok_requirements --tag "$env:RELEASE_TAG"
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install cython setuptools polib
-
-      - name: inline_ok_requirements #把ok-script加入源码, 从requirements.txt中删除以提高升级更新速度
-        run: |
-          python -m ok.update.inline_ok_requirements --tag ${{ github.ref_name }}
+          pip install polib
 
       - name: Run tests
         timeout-minutes: 5
         run: |
-          Get-ChildItem -LiteralPath tests -Filter "Test*.py" | Sort-Object Name | ForEach-Object {
-            $module = "tests.$([System.IO.Path]::GetFileNameWithoutExtension($_.Name))"
-            python -u -m unittest $module -v
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+          python -u -m unittest discover -s tests -p "Test*.py" -v
 
   sync:
     needs: test
+    if: github.event_name != 'workflow_dispatch'
     runs-on: windows-latest
     permissions:
       contents: read
+
     outputs:
       start_tag: ${{ steps.sync.outputs.start_tag }}
       end_tag: ${{ steps.sync.outputs.end_tag }}
@@ -74,6 +118,7 @@ jobs:
 
     env:
       PYTHONIOENCODING: 'UTF-8'
+      PYTHONLEGACYWINDOWSSTDIO: 'UTF-8'
 
     strategy:
       matrix:
@@ -90,49 +135,70 @@ jobs:
           echo "action_state=yellow" >> $env:GITHUB_ENV
           echo "${{ env.action_state }}"
 
-      - uses: actions/checkout@v4
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "repository_dispatch") {
+            $raw = $env:CLIENT_PAYLOAD_TAG
+          } else {
+            $raw = $env:REF_NAME
+          }
+          $raw = $raw -replace "[\r\n]", ""
+          "tag=$raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $safe = $raw -replace '[/\\:<>*?"|]', '-'
+          "safe_tag=$safe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.test.outputs.sha }}
           lfs: true
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Set UTF-8 encoding
-        run: |
-          set PYTHONIOENCODING=utf-8
-          set PYTHONLEGACYWINDOWSSTDIO=utf-8
-          echo PYTHONIOENCODING=utf-8 >> $GITHUB_ENV
 
-      - name: Install dependencies
+      - name: Install uv
         run: |
-          pip install -r requirements.txt
-          pip install cython setuptools polib
+          pip install uv==0.12.5
+          uv venv .venv
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
 
-      - name: inline_ok_requirements #把ok-script加入源码, 从requirements.txt中删除以提高升级更新速度
+      - name: inline_ok_requirements
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          python -m ok.update.inline_ok_requirements --tag ${{ github.ref_name }}
+          uv run --locked --no-sync python -m ok.update.inline_ok_requirements --tag "$env:RELEASE_TAG"
 
-      - name: Sync Repositories # 同步部分代码(deploy.txt中), 合并tag中间更新日志, 到更新库, 以减少用户更新使用的git库大小
-        id: sync   # Give the step an ID to access its outputs
+      - name: Sync Repositories
+        id: sync
         uses: ok-oldking/partial-sync-repo@master
         with:
           repos: |
             https://cnb:${{ secrets.CNB_TOKEN }}@cnb.cool/ok-oldking/ok-gf2.git
             https://alicejump:${{ secrets.GH_TOKEN }}@github.com/alicejump/ok-gf2-update.git
           sync_list: 'deploy.txt'
-          tag: ${{ github.ref_name }}
+          tag: ${{ steps.tag.outputs.tag }}
           gitignore_file: '.update_repo_gitignore'
-          show_author: true #在更新日志中加入作者
+          show_author: true
 
   build:
     needs: [test, sync]
+    if: always() && needs.sync.result == 'success'
     runs-on: windows-latest
     permissions:
       contents: read
 
     env:
       PYTHONIOENCODING: 'UTF-8'
+      PYTHONLEGACYWINDOWSSTDIO: 'UTF-8'
 
     strategy:
       matrix:
@@ -149,71 +215,116 @@ jobs:
           echo "action_state=yellow" >> $env:GITHUB_ENV
           echo "${{ env.action_state }}"
 
-      - uses: actions/checkout@v4
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "repository_dispatch") {
+            $raw = $env:CLIENT_PAYLOAD_TAG
+          } else {
+            $raw = $env:REF_NAME
+          }
+          $raw = $raw -replace "[\r\n]", ""
+          "tag=$raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $safe = $raw -replace '[/\\:<>*?"|]', '-'
+          "safe_tag=$safe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.test.outputs.sha }}
           lfs: true
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Set UTF-8 encoding
+
+      - name: Install uv
         run: |
-          set PYTHONIOENCODING=utf-8
-          set PYTHONLEGACYWINDOWSSTDIO=utf-8
-          echo PYTHONIOENCODING=utf-8 >> $GITHUB_ENV
+          pip install uv==0.12.5
+          uv venv .venv
+          uv pip install --python .venv --no-deps ok-script==2.0.5 pyappify==1.0.13
+
+      - name: inline_ok_requirements
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          uv run --locked --no-sync python -m ok.update.inline_ok_requirements --tag "$env:RELEASE_TAG"
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install cython setuptools polib
-
-      - name: inline_ok_requirements #把ok-script加入源码, 从requirements.txt中删除以提高升级更新速度
-        run: |
-          python -m ok.update.inline_ok_requirements --tag ${{ github.ref_name }}
+          pip install polib
 
       - name: Build with PyAppify Action
         id: build-app
-        uses: ok-oldking/pyappify-action@master #使用pyappify打包exe
+        uses: ok-oldking/pyappify-action@master
 
       - name: Add version to build filenames
         shell: pwsh
+        env:
+          VERSION: ${{ steps.tag.outputs.safe_tag }}
         run: |
-          $version = "${{ github.ref_name }}"
+          $version = "$env:VERSION"
           Get-ChildItem -Path pyappify_dist -File | ForEach-Object {
             Rename-Item -LiteralPath $_.FullName -NewName "$($_.BaseName)-$version$($_.Extension)"
           }
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: pyappify_dist-${{ github.ref_name }}
+          name: pyappify_dist-${{ steps.tag.outputs.safe_tag }}
           path: pyappify_dist/*
 
   release:
     needs: [build, sync]
     runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'repository_dispatch'
     permissions:
       contents: write
     steps:
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "repository_dispatch") {
+            $raw = $env:CLIENT_PAYLOAD_TAG
+          } else {
+            $raw = $env:REF_NAME
+          }
+          $raw = $raw -replace "[\r\n]", ""
+          "tag=$raw" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $safe = $raw -replace '[/\\:<>*?"|]', '-'
+          "safe_tag=$safe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
-          name: pyappify_dist-${{ github.ref_name }}
+          name: pyappify_dist-${{ steps.tag.outputs.safe_tag }}
           path: pyappify_dist
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
           draft: false
           body: |
             ###  更新日志 ${{ needs.sync.outputs.start_tag }} -> ${{ needs.sync.outputs.end_tag }}:
               ${{ needs.sync.outputs.changes_with_asterisk }}
             ### 下载包说明 / Download Packages
-              * [ok-gf2-win32-china-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-china-setup-${{ github.ref_name }}.exe) 完整安装包（内含全部依赖，推荐国内用户或网络受限环境）/ Full installer (all dependencies included, recommended for users in China or with limited internet)
-              * [ok-gf2-win32-global-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-global-setup-${{ github.ref_name }}.exe) Github 源完整安装包（适合全球用户，依赖从GitHub下载）/ Github source whole setup (for global users, dependencies from GitHub)
-              * [ok-gf2-win32-online-setup-${{ github.ref_name }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ github.ref_name }}/ok-gf2-win32-online-setup-${{ github.ref_name }}.exe) 在线安装包（体积小，需联网下载依赖，建议先使用完整安装包）/ Online installer (small size, downloads dependencies online, recommended to use the full installer first)
+              * [ok-gf2-win32-china-setup-${{ steps.tag.outputs.safe_tag }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ steps.tag.outputs.tag }}/ok-gf2-win32-china-setup-${{ steps.tag.outputs.safe_tag }}.exe) 完整安装包（内含全部依赖，推荐国内用户或网络受限环境）/ Full installer (all dependencies included, recommended for users in China or with limited internet)
+              * [ok-gf2-win32-global-setup-${{ steps.tag.outputs.safe_tag }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ steps.tag.outputs.tag }}/ok-gf2-win32-global-setup-${{ steps.tag.outputs.safe_tag }}.exe) Github 源完整安装包（适合全球用户，依赖从GitHub下载）/ Github source whole setup (for global users, dependencies from GitHub)
+              * [ok-gf2-win32-online-setup-${{ steps.tag.outputs.safe_tag }}.exe](https://github.com/AliceJump/ok-gf2/releases/download/${{ steps.tag.outputs.tag }}/ok-gf2-win32-online-setup-${{ steps.tag.outputs.safe_tag }}.exe) 在线安装包（体积小，需联网下载依赖，建议先使用完整安装包）/ Online installer (small size, downloads dependencies online, recommended to use the full installer first)
               * 不要下载SourceCode, Do Not Download the SourceCode
             ### 如果无法下载可以使用, 其他下载源 / Alternative download sources
               * [Mirror酱下载渠道](https://mirrorchyan.com/zh/projects?rid=okgf&source=ok-gf-release), 国内网页直链, 下载需要购买CD-KEY, 已有Mirror酱CD-KEY可免费下载 / Mainland China direct link, requires CD-KEY (free for existing Mirror users)
@@ -223,15 +334,34 @@ jobs:
   trigger_mirrorchyan:
     needs: release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'repository_dispatch'
     permissions:
       actions: write
       contents: read
+
     steps:
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            raw="$CLIENT_PAYLOAD_TAG"
+          else
+            raw="$REF_NAME"
+          fi
+          raw="${raw//$'\r'/}"
+          raw="${raw//$'\n'/}"
+          echo "tag=$raw" >> "$GITHUB_OUTPUT"
+
       - name: Trigger MirrorChyanUploading
         shell: bash
         run: |
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_uploading.yml -f tag=${{ github.ref_name }}
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note.yml
+          gh workflow run --repo "$GITHUB_REPOSITORY" mirrorchyan_uploading.yml -f tag="$RELEASE_TAG"
+          gh workflow run --repo "$GITHUB_REPOSITORY" mirrorchyan_release_note.yml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}

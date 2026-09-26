@@ -3,11 +3,11 @@ import time
 import unittest
 
 from src.config import config
-from ok.test.TaskTestCase import TaskTestCase
+from tests.OkTestCase import OkTestCase
 from src.core.BaseGfTask import BaseGfTask
 
 
-class TestBattleBaseSerialization(TaskTestCase):
+class TestBattleBaseSerialization(OkTestCase):
     task_class = BaseGfTask
 
     config = config
