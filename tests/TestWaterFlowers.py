@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import Mock
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 source = Path(__file__).resolve().parents[1] / 'src/tasks/daily/daily_activity_mixin.py'
 node = next(n for n in ast.parse(source.read_text(encoding='utf-8')).body if isinstance(n, ast.ClassDef))
 methods = [n for n in node.body if isinstance(n, ast.FunctionDef) and n.name in ('water_flowers', '_ensure_activity_panel', 'free_time_layer')]
@@ -77,6 +78,8 @@ class WaterFlowersTest(unittest.TestCase):
         task = Mock()
         task.box.right = 'right'
         task.box.bottom_right = 'bottom_right'
+        task.width = 1920
+        task.height = 1080
         task.box_of_screen.side_effect = lambda *bounds: bounds
         state = {'page': initial_page, 'done': already_done}
         clicks = []
@@ -107,8 +110,15 @@ class WaterFlowersTest(unittest.TestCase):
                 return matches(match, overview_text)
             if state['page'] != 'plant':
                 return False
-            text = '浇灌' if box == 'right' else ('1/1' if state['done'] else '0/1')
-            return matches(match, text)
+            # 按钮中心取自 issue #80 日志；次数坐标为旧框下方的模拟样本。
+            if box == 'right':
+                return [SimpleNamespace(x=1520, y=568, width=60, height=30)] if matches(match, '浇灌') else []
+            left, top, right, bottom = box
+            labels = [(1550, 660, '1/1' if state['done'] else '0/1'),
+                      (1760, 660, '1/1')]  # 施肥始终已完成
+            return [SimpleNamespace(name=text) for x, y, text in labels
+                    if left <= x / task.width <= right and top <= y / task.height <= bottom
+                    and matches(match, text)]
 
         task._ensure_activity_panel.side_effect = lambda: ensure_panel(task)
         task.wait_click_ocr.side_effect = click_ocr
@@ -155,6 +165,27 @@ class WaterFlowersTest(unittest.TestCase):
         task, _ = self.make_task(succeeds=False)
         self.assertFalse(water_flowers(task))
         task.back.assert_called_once()
+
+    def test_count_region_tracks_button_at_other_resolutions(self):
+        task, clicks = self.make_task(initial_page='plant')
+        original_ocr = task.wait_ocr.side_effect
+        task.width = 2560
+        task.height = 1440
+        def moved_ocr(*, match, box, **kwargs):
+            if box == 'right':
+                return [SimpleNamespace(x=2100, y=780, width=80, height=40)]
+            if kwargs.get('time_out') in (1, 10):
+                left, top, right, bottom = box
+                self.assertTrue(left <= 2140 / 2560 <= right)
+                self.assertTrue(top <= 900 / 1440 <= bottom)
+                self.assertLess(right, 2400 / 2560)  # 不包含施肥列
+                return kwargs['time_out'] == 10
+            return original_ocr(match=match, box=box, **kwargs)
+        task._ensure_activity_panel.side_effect = None
+        task._ensure_activity_panel.return_value = True
+        task.wait_ocr.side_effect = moved_ocr
+        self.assertTrue(water_flowers(task))
+        self.assertEqual(['浇灌'], clicks)
 
     def test_missing_tab_does_not_water(self):
         task, clicks = self.make_task(missing_tab=True)
