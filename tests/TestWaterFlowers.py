@@ -249,6 +249,19 @@ class WaterIntegrationTest(unittest.TestCase):
         self.assertEqual(2, task.do_food_flow.call_count)
         task.water_flowers.assert_called_once()
 
+    def test_eat_confirm_failure_marks_incomplete_and_continues(self):
+        task = Mock()
+        task.config = {'活动层浇花': True}
+        task.is_free_layer.return_value = True
+        task.do_food_flow.side_effect = [True, 'confirm']
+        task.water_flowers.return_value = True
+
+        self.assertIs(False, ns['free_time_layer'](task))
+        task.log_warning.assert_called_once()
+        self.assertIn('吃饭', task.log_warning.call_args.args[0])
+        self.assertEqual(2, task.do_food_flow.call_count)
+        task.water_flowers.assert_called_once()
+
     def test_missing_drink_entry_keeps_key_duration_hint(self):
         task = Mock()
         task.config = {'活动层浇花': False}

@@ -51,7 +51,7 @@ class DailyActivityMixin:
                         completed = False
 
                 else:
-                    self.do_food_flow(
+                    eat_result = self.do_food_flow(
                         enter_func=self.go_eat,
                         entry_match=re.compile('美味烹调'),
                         main_btn='下一步',
@@ -60,6 +60,9 @@ class DailyActivityMixin:
                         need_extra_confirm=True,
                         need_again_test=True
                     )
+                    if eat_result is not True:
+                        self.log_warning('吃饭流程未完成，请检查移动是否到位或界面是否已加载完成')
+                        completed = False
             else:
                 self.log_error('没检测到活动层页面')
                 completed = False
