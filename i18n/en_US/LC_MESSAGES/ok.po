@@ -313,3 +313,40 @@ msgstr "Failed"
 
 msgid "待核查：缺少领取结果证据"
 msgstr "Needs verification: claim result not confirmed"
+
+msgid ""
+"活动层喝水动作的按键时长，格式：a键时长-w键时长-d键时长\n"
+"例：1.087-1.0-0.8；如果角色移动时被挡住，请微调各键时长"
+msgstr ""
+"Drink movement key durations: a duration-w duration-d duration\n"
+"Example: 1.087-1.0-0.8; adjust each duration if the character gets stuck"
+
+msgid "重要提醒"
+msgstr "Important Notices"
+
+msgid "喝水任务可能因移动受阻而失败"
+msgstr "The drink task may fail if movement is blocked"
+
+msgid "喝水"
+msgstr "Drink"
+
+msgid "请检查并调整「喝水」移动时长，参考 1.087-1.0-0.8"
+msgstr "Check and adjust the Drink movement durations; try 1.087-1.0-0.8"
+
+msgid "受影响任务：{task}"
+msgstr "Affected task: {task}"
+
+msgid "解决方法：{solution}"
+msgstr "Workaround: {solution}"
+
+msgid "打开链接"
+msgstr "Open link"
+
+msgid "查看详情"
+msgstr "View details"
+
+msgid "不再提示"
+msgstr "Don't show again"
+
+msgid "关闭"
+msgstr "Close"

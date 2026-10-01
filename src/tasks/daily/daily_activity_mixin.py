@@ -33,7 +33,7 @@ class DailyActivityMixin:
             self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
                 if i == 0:
-                    self.do_food_flow(
+                    drink_result = self.do_food_flow(
                         enter_func=self.go_drink,
                         entry_match=re.compile('茶歇一刻'),
                         main_btn='制作',
@@ -41,9 +41,17 @@ class DailyActivityMixin:
                         skip_end_match=['饮品加成'],
                         need_extra_confirm=False
                     )
+                    if drink_result is not True:
+                        if drink_result == 'entry':
+                            self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
+                        elif drink_result == 'button':
+                            self.log_warning('喝水流程未完成：未找到制作按钮，请检查移动是否到位或界面是否已加载完成')
+                        else:
+                            self.log_warning('喝水流程未完成：未找到确认按钮，请检查界面是否已加载完成')
+                        completed = False
 
                 else:
-                    self.do_food_flow(
+                    eat_result = self.do_food_flow(
                         enter_func=self.go_eat,
                         entry_match=re.compile('美味烹调'),
                         main_btn='下一步',
@@ -52,6 +60,9 @@ class DailyActivityMixin:
                         need_extra_confirm=True,
                         need_again_test=True
                     )
+                    if eat_result is not True:
+                        self.log_warning('吃饭流程未完成，请检查移动是否到位或界面是否已加载完成')
+                        completed = False
             else:
                 self.log_error('没检测到活动层页面')
                 completed = False
@@ -165,6 +176,7 @@ class DailyActivityMixin:
             need_extra_confirm=False,
             need_again_test=False
     ):
+        """返回 True 表示流程完成；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。"""
         enter_func(after_sleep=1)
         times = 1
         if need_again_test:
@@ -173,22 +185,23 @@ class DailyActivityMixin:
             if result := self.wait_ocr(match=entry_match, time_out=3):
                 self.click_with_key('alt', result)
             else:
-                return False
+                return 'entry'
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                if self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
-                    if need_extra_confirm:
-                        self.wait_click_ocr(match='确认', time_out=3, after_sleep=1)
-                    self.skip_dialogs(end_match=skip_end_match, time_out=60)
-                    self.wait_click_ocr(match="确认", time_out=3, box = self.box.bottom, after_sleep=1)
-                    self.wait_pop_up(count=1)
+                if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
+                    return 'confirm'
+                if need_extra_confirm:
+                    self.wait_click_ocr(match='确认', time_out=3, after_sleep=1)
+                self.skip_dialogs(end_match=skip_end_match, time_out=60)
+                self.wait_click_ocr(match="确认", time_out=3, box = self.box.bottom, after_sleep=1)
+                self.wait_pop_up(count=1)
                 return True
             else:
                 if need_again_test and attempt == 0:
                     continue
                 else:
                     self.back(after_sleep=2)
-                    return False
-        return False
+                    return 'button'
+        return 'button'
 
     def go_drink(self, after_sleep=None):
         down_times = parse_time_option((self.config.get('喝水')))

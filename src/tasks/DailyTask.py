@@ -67,7 +67,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             '密码': '使用账户密码方式登录网页社区时(不是直接的密码)\n account 请求负载中的 passwd 的值',
             '喝水': (
                 '活动层喝水动作的按键时长，格式：a键时长-w键时长-d键时长\n'
-                '例：1.087-1.4-0.5'
+                '例：1.087-1.0-0.8；如果角色移动时被挡住，请微调各键时长'
             ),
             '吃饭': (
                 '活动层吃饭动作的按键时长，格式：时长（秒）\n'
@@ -111,7 +111,7 @@ class DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityM
             '体力本': "军备解析",
             '用户名': "",
             '密码': "",
-            '喝水': '1.087-1.4-0.5',
+            '喝水': '1.087-1.0-0.8',
             '吃饭': '1.0',
             "社区每日": False,
             '邮件': True,

@@ -78,6 +78,7 @@ config = {
     ],
     "custom_tabs": [  # 自定义界面页
         ["src.gui.AccountConfigTab", "AccountConfigTab"],
+        ["src.gui.ImportantNoticesTab", "ImportantNoticesTab"],
     ],
 }
 
