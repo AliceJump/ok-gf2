@@ -6,11 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 source = Path(__file__).resolve().parents[1] / 'src/tasks/daily/daily_activity_mixin.py'
 node = next(n for n in ast.parse(source.read_text(encoding='utf-8')).body if isinstance(n, ast.ClassDef))
-methods = [n for n in node.body if isinstance(n, ast.FunctionDef) and n.name in ('water_flowers', '_ensure_activity_panel', 'free_time_layer')]
+methods = [n for n in node.body if isinstance(n, ast.FunctionDef) and n.name in ('water_flowers', '_ensure_activity_panel', 'free_time_layer', 'do_food_flow')]
 ns = {'re': re}
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), 'exec'), ns)
 water_flowers = ns['water_flowers']
 ensure_panel = ns['_ensure_activity_panel']
+do_food_flow = ns['do_food_flow']
 class ActivityPanelTest(unittest.TestCase):
     def make_task(self, open_after=None, initially_open=False, click_opens=False):
         task = Mock()
@@ -193,6 +194,28 @@ class WaterFlowersTest(unittest.TestCase):
         self.assertEqual([], clicks)
 
 
+class FoodFlowResultTest(unittest.TestCase):
+    def test_missing_second_button_reports_confirm_failure(self):
+        task = Mock()
+        task.box.bottom_right = 'bottom_right'
+        task.wait_ocr.return_value = object()
+        task.wait_click_ocr.side_effect = [True, False]
+        enter_func = Mock()
+
+        result = do_food_flow(
+            task,
+            enter_func=enter_func,
+            entry_match='entry',
+            main_btn='制作',
+            second_btn='确认',
+            skip_end_match=['饮品加成'],
+        )
+
+        self.assertEqual('confirm', result)
+        enter_func.assert_called_once_with(after_sleep=1)
+        task.skip_dialogs.assert_not_called()
+
+
 class WaterIntegrationTest(unittest.TestCase):
     def test_water_runs_after_food_and_propagates_failure(self):
         task = Mock()
@@ -213,16 +236,16 @@ class WaterIntegrationTest(unittest.TestCase):
         task.water_flowers.assert_not_called()
         self.assertEqual(2, task.do_food_flow.call_count)
 
-    def test_drink_entry_failure_warns_and_continues(self):
+    def test_drink_confirm_failure_warns_and_continues(self):
         task = Mock()
         task.config = {'活动层浇花': True}
         task.is_free_layer.return_value = True
-        task.do_food_flow.side_effect = [False, True]
+        task.do_food_flow.side_effect = ['confirm', True]
         task.water_flowers.return_value = True
 
         self.assertIs(False, ns['free_time_layer'](task))
         task.log_warning.assert_called_once()
-        self.assertIn('喝水', task.log_warning.call_args.args[0])
+        self.assertIn('确认', task.log_warning.call_args.args[0])
         self.assertEqual(2, task.do_food_flow.call_count)
         task.water_flowers.assert_called_once()
 

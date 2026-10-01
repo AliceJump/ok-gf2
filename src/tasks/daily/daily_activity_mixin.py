@@ -44,8 +44,10 @@ class DailyActivityMixin:
                     if drink_result is not True:
                         if drink_result == 'entry':
                             self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
-                        else:
+                        elif drink_result == 'button':
                             self.log_warning('喝水流程未完成：未找到制作按钮，请检查移动是否到位或界面是否已加载完成')
+                        else:
+                            self.log_warning('喝水流程未完成：未找到确认按钮，请检查界面是否已加载完成')
                         completed = False
 
                 else:
@@ -171,7 +173,7 @@ class DailyActivityMixin:
             need_extra_confirm=False,
             need_again_test=False
     ):
-        """返回 True 表示流程完成；失败时返回 'entry'（未找到入口）或 'button'（未找到主按钮）。"""
+        """返回 True 表示流程完成；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。"""
         enter_func(after_sleep=1)
         times = 1
         if need_again_test:
@@ -182,12 +184,13 @@ class DailyActivityMixin:
             else:
                 return 'entry'
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                if self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
-                    if need_extra_confirm:
-                        self.wait_click_ocr(match='确认', time_out=3, after_sleep=1)
-                    self.skip_dialogs(end_match=skip_end_match, time_out=60)
-                    self.wait_click_ocr(match="确认", time_out=3, box = self.box.bottom, after_sleep=1)
-                    self.wait_pop_up(count=1)
+                if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
+                    return 'confirm'
+                if need_extra_confirm:
+                    self.wait_click_ocr(match='确认', time_out=3, after_sleep=1)
+                self.skip_dialogs(end_match=skip_end_match, time_out=60)
+                self.wait_click_ocr(match="确认", time_out=3, box = self.box.bottom, after_sleep=1)
+                self.wait_pop_up(count=1)
                 return True
             else:
                 if need_again_test and attempt == 0:
