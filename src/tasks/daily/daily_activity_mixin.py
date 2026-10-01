@@ -33,7 +33,7 @@ class DailyActivityMixin:
             self.wait_click_ocr(match='活动层', box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
                 if i == 0:
-                    drink_entered = self.do_food_flow(
+                    drink_result = self.do_food_flow(
                         enter_func=self.go_drink,
                         entry_match=re.compile('茶歇一刻'),
                         main_btn='制作',
@@ -41,8 +41,11 @@ class DailyActivityMixin:
                         skip_end_match=['饮品加成'],
                         need_extra_confirm=False
                     )
-                    if drink_entered is False:
-                        self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
+                    if drink_result is not True:
+                        if drink_result == 'entry':
+                            self.log_warning('未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8')
+                        else:
+                            self.log_warning('喝水流程未完成：未找到制作按钮，请检查移动是否到位或界面是否已加载完成')
                         completed = False
 
                 else:
@@ -162,6 +165,7 @@ class DailyActivityMixin:
             need_extra_confirm=False,
             need_again_test=False
     ):
+        """返回 True 表示流程完成；失败时返回 'entry'（未找到入口）或 'button'（未找到主按钮）。"""
         enter_func(after_sleep=1)
         times = 1
         if need_again_test:
@@ -170,7 +174,7 @@ class DailyActivityMixin:
             if result := self.wait_ocr(match=entry_match, time_out=3):
                 self.click_with_key('alt', result)
             else:
-                return False
+                return 'entry'
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
                 if self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
                     if need_extra_confirm:
@@ -184,8 +188,8 @@ class DailyActivityMixin:
                     continue
                 else:
                     self.back(after_sleep=2)
-                    return False
-        return False
+                    return 'button'
+        return 'button'
 
     def go_drink(self, after_sleep=None):
         down_times = parse_time_option((self.config.get('喝水')))

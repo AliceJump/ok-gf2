@@ -177,6 +177,7 @@ class WaterIntegrationTest(unittest.TestCase):
         task = Mock()
         task.config = {'活动层浇花': False}
         task.is_free_layer.return_value = True
+        task.do_food_flow.return_value = True
         self.assertIs(True, ns['free_time_layer'](task))
         task.water_flowers.assert_not_called()
         self.assertEqual(2, task.do_food_flow.call_count)
@@ -193,3 +194,26 @@ class WaterIntegrationTest(unittest.TestCase):
         self.assertIn('喝水', task.log_warning.call_args.args[0])
         self.assertEqual(2, task.do_food_flow.call_count)
         task.water_flowers.assert_called_once()
+
+    def test_missing_drink_entry_keeps_key_duration_hint(self):
+        task = Mock()
+        task.config = {'活动层浇花': False}
+        task.is_free_layer.return_value = True
+        task.do_food_flow.side_effect = ['entry', True]
+
+        self.assertIs(False, ns['free_time_layer'](task))
+        message = task.log_warning.call_args.args[0]
+        self.assertIn('茶歇一刻', message)
+        self.assertIn('1.087-1.0-0.8', message)
+
+    def test_missing_drink_button_does_not_blame_entry_or_duration(self):
+        task = Mock()
+        task.config = {'活动层浇花': False}
+        task.is_free_layer.return_value = True
+        task.do_food_flow.side_effect = ['button', True]
+
+        self.assertIs(False, ns['free_time_layer'](task))
+        message = task.log_warning.call_args.args[0]
+        self.assertIn('喝水', message)
+        self.assertNotIn('茶歇一刻', message)
+        self.assertNotIn('1.087-1.0-0.8', message)
