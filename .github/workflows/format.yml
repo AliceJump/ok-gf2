@@ -1,0 +1,52 @@
+name: Format
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 23 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: ${{ github.repository_owner == 'AliceJump' }}
+    runs-on: windows-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: install uv
+        run: "pip install --only-binary :all: uv==0.12.5"
+
+      - name: install deps
+        run: uv sync --locked --only-group dev
+
+      - name: ruff check fix and format
+        run: |
+          uv run --locked ruff check --fix .
+          uv run --locked ruff format .
+
+      - name: commit and push
+        shell: pwsh
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+          git add -A
+
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "chore: ruff format"
+            git push
+            Write-Host "Pushed ruff format commit to master"
+          } else {
+            Write-Host "No changes to commit"
+          }
