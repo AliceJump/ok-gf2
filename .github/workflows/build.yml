@@ -191,7 +191,7 @@ jobs:
 
   build:
     needs: [test, sync]
-    if: always() && needs.sync.result == 'success'
+    if: always() && needs.test.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.sync.result == 'success')
     runs-on: windows-latest
     permissions:
       contents: read
@@ -264,7 +264,7 @@ jobs:
 
       - name: Build with PyAppify Action
         id: build-app
-        uses: ok-oldking/pyappify-action@master
+        uses: ok-oldking/pyappify-action@c5cc8fe5c9bd5c732969018694a2645474c48b7e
 
       - name: Add version to build filenames
         shell: pwsh
