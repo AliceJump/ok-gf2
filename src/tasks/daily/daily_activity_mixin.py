@@ -130,12 +130,18 @@ class DailyActivityMixin:
                                        time_out=5, raise_if_not_found=False, after_sleep=3, log=True):
                 self.log_error('栽培页面未找到浇灌或前往入口')
                 return False
-        if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=10,
-                             raise_if_not_found=False):
+        watering_buttons = self.wait_ocr(match=watering_match, box=self.box.right, time_out=10,
+                                         raise_if_not_found=False)
+        if not watering_buttons:
             self.log_error('未进入浇灌页面，跳过浇花')
             return False
-        # 仅检查浇灌按钮下方次数，避免把施肥的 1/1 当成浇水完成。
-        count_box = self.box_of_screen(0.75, 0.51, 0.87, 0.59)
+        # 用按钮文字定位下方次数。旧固定区域只框住“浇灌”，漏掉了次数。
+        # 限制在浇灌这一列，避免把右侧施肥的 1/1 当成浇水完成。
+        watering_button = watering_buttons[0]
+        center_x = (watering_button.x + watering_button.width / 2) / self.width
+        bottom_y = (watering_button.y + watering_button.height) / self.height
+        count_box = self.box_of_screen(max(0, center_x - 0.05), bottom_y,
+                                       min(1, center_x + 0.05), min(1, bottom_y + 0.12))
         done_match = re.compile(r'^\s*1\s*[/／]\s*1\s*$')
         if self.wait_ocr(match=done_match, box=count_box, time_out=1, raise_if_not_found=False):
             self.log_info('今日已浇灌，跳过重复浇花')
