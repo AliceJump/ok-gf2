@@ -32,11 +32,12 @@ def build_task_plan(self):
         ("社区每日", self.community_daily),
         ("ensure_main", lambda: self.ensure_main(recheck_time=2, time_out=90)),
         ("邮件", self.mail),
-        ...
+        ...,
     ]
 
+
 def run(self):
-    if not self.config.get('已确认启用游戏内全局自动功能'):
+    if not self.config.get("已确认启用游戏内全局自动功能"):
         self.confirm_auto_battle_up()
     self.daily_runner = DailyTaskRunner(self, self.build_task_plan())
     self.daily_runner.run()

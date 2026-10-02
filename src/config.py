@@ -1,8 +1,5 @@
 import os
 
-import numpy as np
-from ok import Config
-
 version = "dev"
 # 不需要修改version, Github Action打包会自动修改
 
@@ -18,7 +15,7 @@ config = {
     "ocr": {"lib": "onnxocr", "params": {"use_openvino": True}},  # 可选, 使用的OCR库
     "windows": {  # Windows游戏请填写此设置
         "exe": ["GF2_Exilium.exe"],  # 新版统一使用 list
-        'hwnd_class': 'UnityWndClass',
+        "hwnd_class": "UnityWndClass",
         "interaction": "Genshin",  # 或 EfInteraction，根据项目
         "capture_method": ["WGC", "BitBlt_RenderFull"],
         # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full. 支持的capture有 BitBlt, WGC, BitBlt_RenderFull, DXGI
@@ -27,11 +24,11 @@ config = {
         "require_bg": True,  # 要求使用后台截图
     },
     # 模板标签配置信息
-    'template_tab': {
-    # 是否生成标签枚举
-        'generate_label_enum': True,
-    # 标签枚举的相对路径
-        'label_enum_relative_path': 'src/data/FeatureList',
+    "template_tab": {
+        # 是否生成标签枚举
+        "generate_label_enum": True,
+        # 标签枚举的相对路径
+        "label_enum_relative_path": "src/data/FeatureList",
     },
     "start_timeout": 60,  # default 60
     "window_size": {"width": 1200, "height": 800, "min_width": 600, "min_height": 450},  # ok-script窗口大小

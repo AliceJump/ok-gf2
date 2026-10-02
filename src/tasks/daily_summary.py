@@ -225,7 +225,7 @@ def open_local_path_with_default_app(path: Path):
     normalized = Path(path).resolve()
     if os.name == "nt":
         try:
-            os.startfile(str(normalized))  # noqa: S606
+            os.startfile(str(normalized))
             return
         except OSError:
             pass

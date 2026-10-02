@@ -17,11 +17,12 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
-from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+
 from ok.util.config import Config
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ class WindowsScheduleCache:
         self.cache_file = self.cache_dir / "schedule_tasks_cache.json"
         self._migrate_legacy_cache_if_needed()
         self.lock = threading.RLock()
-        self.cache: Dict[str, ScheduleTaskInfo] = {}
+        self.cache: dict[str, ScheduleTaskInfo] = {}
         self.load_cache()
 
     def _migrate_legacy_cache_if_needed(self):
@@ -109,7 +110,7 @@ class WindowsScheduleCache:
         with self.lock:
             if self.cache_file.exists():
                 try:
-                    with open(self.cache_file, "r", encoding="utf-8") as f:
+                    with open(self.cache_file, encoding="utf-8") as f:
                         data = json.load(f)
                     self.cache = {name: ScheduleTaskInfo(**item) for name, item in data.items()}
                     logger.info(f"Loaded {len(self.cache)} tasks from cache")
@@ -130,12 +131,12 @@ class WindowsScheduleCache:
             except Exception as e:
                 logger.error(f"Failed to save cache: {e}")
 
-    def get(self, task_name: str) -> Optional[ScheduleTaskInfo]:
+    def get(self, task_name: str) -> ScheduleTaskInfo | None:
         """获取任务信息"""
         with self.lock:
             return self.cache.get(task_name)
 
-    def get_all(self) -> List[ScheduleTaskInfo]:
+    def get_all(self) -> list[ScheduleTaskInfo]:
         """获取所有任务"""
         with self.lock:
             return list(self.cache.values())
@@ -183,8 +184,8 @@ class WindowsScheduleManager:
         self.cache = WindowsScheduleCache(config=self.config)
         self.lock = threading.RLock()
         self.running = False
-        self.sync_thread: Optional[threading.Thread] = None
-        self.update_callbacks: List[Callable] = []
+        self.sync_thread: threading.Thread | None = None
+        self.update_callbacks: list[Callable] = []
 
         self._init_com_service()
 
@@ -233,7 +234,7 @@ class WindowsScheduleManager:
             except Exception as e:
                 logger.error(f"Error in update callback: {e}")
 
-    def query_all_tasks(self, force_sync: bool = False) -> List[ScheduleTaskInfo]:
+    def query_all_tasks(self, force_sync: bool = False) -> list[ScheduleTaskInfo]:
         """
         查询所有计划任务
 
@@ -264,12 +265,10 @@ class WindowsScheduleManager:
 
             return tasks
 
-    def _query_tasks_via_com(self) -> List[ScheduleTaskInfo]:
+    def _query_tasks_via_com(self) -> list[ScheduleTaskInfo]:
         """通过 COM API 查询任务"""
         tasks = []
         try:
-            import win32com.client
-
             if not self.SCHEDULE_FOLDER:
                 try:
                     self.SCHEDULE_FOLDER = self.SCHEDULE_SERVICE.GetFolder(self.SCHEDULE_ROOT_PATH)
@@ -392,7 +391,7 @@ class WindowsScheduleManager:
             logger.error(f"Failed to parse COM task: {e}")
             return ScheduleTaskInfo(name="", status="Unknown")
 
-    def _query_tasks_via_schtasks(self) -> List[ScheduleTaskInfo]:
+    def _query_tasks_via_schtasks(self) -> list[ScheduleTaskInfo]:
         """通过 schtasks 命令查询任务（降级方案）"""
         tasks = []
         try:
@@ -435,7 +434,7 @@ class WindowsScheduleManager:
 
         return tasks
 
-    def _parse_csv_line(self, line: str) -> List[str]:
+    def _parse_csv_line(self, line: str) -> list[str]:
         """解析 CSV 行（处理引号和逗号）"""
         result = []
         current = ""
@@ -471,7 +470,7 @@ class WindowsScheduleManager:
             return f"{desc}\n{meta}"
         return meta
 
-    def _extract_original_name_from_description(self, description: str) -> Optional[str]:
+    def _extract_original_name_from_description(self, description: str) -> str | None:
         """从描述中提取原始任务名元信息"""
         if not description:
             return None
@@ -480,7 +479,7 @@ class WindowsScheduleManager:
         if marker_pos < 0:
             return None
 
-        payload = description[marker_pos + len(self.ORIGINAL_NAME_TAG):].strip()
+        payload = description[marker_pos + len(self.ORIGINAL_NAME_TAG) :].strip()
         if not payload:
             return None
 
@@ -512,6 +511,7 @@ class WindowsScheduleManager:
 
         try:
             import getpass
+
             username = getpass.getuser()
             if username:
                 return username
@@ -520,7 +520,7 @@ class WindowsScheduleManager:
 
         return "SYSTEM"
 
-    def _parse_task_from_csv(self, task_dict: Dict[str, str]) -> ScheduleTaskInfo:
+    def _parse_task_from_csv(self, task_dict: dict[str, str]) -> ScheduleTaskInfo:
         """从 CSV 数据解析任务信息"""
         name = task_dict.get("TaskName", "").split("\\")[-1]
         description = task_dict.get("Description", "")
@@ -697,8 +697,6 @@ class WindowsScheduleManager:
     ) -> bool:
         """通过 COM API 创建任务"""
         try:
-            import win32com.client
-
             # 检查 COM 服务是否可用
             if not self.is_com_available():
                 logger.warning("COM service not available, falling back to schtasks")
@@ -926,7 +924,6 @@ class WindowsScheduleManager:
         UTF-16 编码（Windows 要求）
         最高权限运行（HighestAvailable）
         """
-        import sys
 
         python_exe = str(Path(sys.executable).resolve())
         working_directory = os.getcwd()

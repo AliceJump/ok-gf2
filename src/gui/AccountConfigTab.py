@@ -12,6 +12,7 @@
 与 ok-end-field 的差异：账号列表以**任务配置里的 ``账号列表``** 为准（那边账号页列表与任务列表是两套）。
 本页保存账号列表时会写入存储层的注册表以分配稳定 ID，任务侧 ``get_account_list()`` 也会按需创建 ID。
 """
+
 from __future__ import annotations
 
 import copy

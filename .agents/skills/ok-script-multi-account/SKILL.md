@@ -43,12 +43,12 @@ config.get(key) ──► 有该账号的覆盖值？→ 用覆盖值 : 用基�
 
 ```python
 class MyTask(BaseGfTask):
-    support_multi_account = True                     # ① 声明支持（配置页据此列出任务）
-    account_config_blacklist = {"某个全局开关"}        # ② 声明不可按账号覆盖的键
+    support_multi_account = True  # ① 声明支持（配置页据此列出任务）
+    account_config_blacklist = {"某个全局开关"}  # ② 声明不可按账号覆盖的键
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._init_account_config()                  # ③ 注册 多账户模式/多账户独立配置/账号列表
+        self._init_account_config()  # ③ 注册 多账户模式/多账户独立配置/账号列表
 ```
 
 `BaseGfTask.__init__` 用 `getattr` 读类属性，所以**类体里声明即可**，不必在 `__init__` 里赋值。

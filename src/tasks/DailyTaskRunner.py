@@ -172,9 +172,7 @@ class DailyTaskRunner:
         if round_summary["uncertain"]:
             self.final_summary.setdefault("all_uncertain_tasks", []).append((round_index, round_summary["uncertain"]))
         if round_summary["failed"]:
-            self.final_summary.setdefault("all_fail_tasks", []).append(
-                (round_index, list(round_summary["failed"]))
-            )
+            self.final_summary.setdefault("all_fail_tasks", []).append((round_index, list(round_summary["failed"])))
         return round_summary
 
     def _reset_task_status(self):
@@ -241,13 +239,13 @@ class DailyTaskRunner:
             self.final_summary["current_task"] = ""
             return False
 
-        if result == '待核查':
-            self.task_status['uncertain'].append(key)
+        if result == "待核查":
+            self.task_status["uncertain"].append(key)
             self.clear_task_failure(key)
-            self.task.screenshot(f'DailyTask_Uncertain_{key}')
-            self.task.log_info(self._tr('任务 {key} 结果待核查').format(key=self._tr(key)), notify=True)
+            self.task.screenshot(f"DailyTask_Uncertain_{key}")
+            self.task.log_info(self._tr("任务 {key} 结果待核查").format(key=self._tr(key)), notify=True)
             self.current_task_key = None
-            self.final_summary['current_task'] = ''
+            self.final_summary["current_task"] = ""
             return True
 
         self.task_status["success"].append(key)
@@ -290,9 +288,7 @@ class DailyTaskRunner:
                             idx=round_index, failed=self.task_status["failed"]
                         )
                     else:
-                        message = self._tr("以下任务未完成或失败: {failed}").format(
-                            failed=self.task_status["failed"]
-                        )
+                        message = self._tr("以下任务未完成或失败: {failed}").format(failed=self.task_status["failed"])
                     self.task.log_info(message, notify=True)
                 elif not self.task_status["uncertain"]:
                     if repeat_total > 1:
@@ -318,10 +314,7 @@ class DailyTaskRunner:
                 if self.final_summary["all_fail_tasks"]:
                     self.task.log_info(
                         self._tr("执行完成，失败统计: {failed}").format(
-                            failed=[
-                                (idx, list(keys))
-                                for idx, keys in self.final_summary["all_fail_tasks"]
-                            ]
+                            failed=[(idx, list(keys)) for idx, keys in self.final_summary["all_fail_tasks"]]
                         ),
                         notify=True,
                     )

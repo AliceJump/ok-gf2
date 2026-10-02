@@ -11,9 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.tasks import account_scope_store  # noqa: E402
-from src.tasks.AccountMixin import AccountMixin  # noqa: E402
-from src.tasks.DailyTaskRunner import DailyTaskRunner  # noqa: E402
+from src.tasks import account_scope_store
+from src.tasks.AccountMixin import AccountMixin
+from src.tasks.DailyTaskRunner import DailyTaskRunner
 
 
 class StoreSnapshotMixin:
@@ -228,5 +228,5 @@ class TestLoginFlow(unittest.TestCase):
         self.assertIn("wait_click_feature", source)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,14 @@
-from ok import Logger
-from src.core.BaseGfTask import BaseGfTask, map_re
 import re
 
+from ok import Logger
+
+from src.core.BaseGfTask import BaseGfTask
+
 logger = Logger.get_logger(__name__)
-pattern_kt = re.compile(r'^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$')
+pattern_kt = re.compile(r"^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$")
 
 
 class PioneersTask(BaseGfTask):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "开拓之王"
@@ -27,7 +28,7 @@ class PioneersTask(BaseGfTask):
         return rc_die
 
     def function_a(self):
-        result = self.wait_ocr(match=["^.{4}<UNK>(<UNK>|<UNK>)$"], box='right')
+        result = self.wait_ocr(match=["^.{4}<UNK>(<UNK>|<UNK>)$"], box="right")
         if result[0].name == "开拓结束":
             return True
         return False

@@ -2,6 +2,8 @@ from ok import Box
 
 default_y = 950
 default_to_y = 1050
+
+
 class ScreenPosition:
     """
     根据屏幕宽高生成各个位置的 Box。
@@ -50,25 +52,45 @@ class ScreenPosition:
 
     @property
     def center(self) -> Box:
-        return Box(x=self.parent.width // 4, y=self.parent.height // 4,
-                   to_x=self.parent.width * 3 // 4, to_y=self.parent.height * 3 // 4)
-    
+        return Box(
+            x=self.parent.width // 4,
+            y=self.parent.height // 4,
+            to_x=self.parent.width * 3 // 4,
+            to_y=self.parent.height * 3 // 4,
+        )
+
     @property
     def _xunlun(self) -> Box:
-        return Box(x=self.parent.width * 1020 //1920, y=self.parent.height * default_y // 1080,
-                   to_x=self.parent.width * 1120 // 1920, to_y=self.parent.height * default_to_y // 1080)
-    
+        return Box(
+            x=self.parent.width * 1020 // 1920,
+            y=self.parent.height * default_y // 1080,
+            to_x=self.parent.width * 1120 // 1920,
+            to_y=self.parent.height * default_to_y // 1080,
+        )
+
     @property
     def _activities(self) -> Box:
-        return Box(x=self.parent.width * 1220 // 1920, y=self.parent.height * default_y // 1080,
-                   to_x=self.parent.width * 1332 // 1920, to_y=self.parent.height * default_to_y // 1080)
-    
+        return Box(
+            x=self.parent.width * 1220 // 1920,
+            y=self.parent.height * default_y // 1080,
+            to_x=self.parent.width * 1332 // 1920,
+            to_y=self.parent.height * default_to_y // 1080,
+        )
+
     @property
     def _claim(self) -> Box:
-        return Box(x=self.parent.width * 1332 // 1920, y=self.parent.height * default_y // 1080,
-                   to_x=self.parent.width * 1440 // 1920, to_y=self.parent.height * default_to_y // 1080)
-    
+        return Box(
+            x=self.parent.width * 1332 // 1920,
+            y=self.parent.height * default_y // 1080,
+            to_x=self.parent.width * 1440 // 1920,
+            to_y=self.parent.height * default_to_y // 1080,
+        )
+
     @property
     def _group(self) -> Box:
-        return Box(x=self.parent.width * 1440 // 1920, y=self.parent.height * default_y // 1080,
-                   to_x=self.parent.width * 1548 // 1920, to_y=self.parent.height * default_to_y // 1080)
+        return Box(
+            x=self.parent.width * 1440 // 1920,
+            y=self.parent.height * default_y // 1080,
+            to_x=self.parent.width * 1548 // 1920,
+            to_y=self.parent.height * default_to_y // 1080,
+        )

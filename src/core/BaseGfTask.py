@@ -1,18 +1,17 @@
 import re
 import threading
 import time
-from typing import Union, List
 
-from ok import BaseTask, find_boxes_by_name, Box, Logger
+from ok import BaseTask, Box, Logger, find_boxes_by_name
+
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
-from src.image.frame_processs import isolate_by_hsv_ranges
-from functools import partial
-from src.image.hsv_config import HSVRange as hR
 from src.data.FeatureList import FeatureList as fL
+from src.image.frame_processs import isolate_by_hsv_ranges
+from src.image.hsv_config import HSVRange as hR
 from src.interaction.ScreenPosition import ScreenPosition
 
 logger = Logger.get_logger(__name__)
-pop_ups = ['点击空白处关闭', '点击屏幕任意位置继续', '点击任意位置继续', '新周期开启', '周期已重置']
+pop_ups = ["点击空白处关闭", "点击屏幕任意位置继续", "点击任意位置继续", "新周期开启", "周期已重置"]
 number_re = re.compile(r"^\d+$")
 stamina_re = re.compile(r"^\d+/\d+")
 map_re = re.compile(r"^.{0,2}\s*-?\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$")
@@ -23,7 +22,7 @@ def parse_time_option(option: str) -> list[float]:
     将配置中的时间字符串解析为浮点数列表
     例如 "1.087-1.4-0.5" -> [1.087, 1.4, 0.5]
     """
-    return [float(x) for x in option.split('-')]
+    return [float(x) for x in option.split("-")]
 
 
 class BaseGfTask(RuntimeMixin, BaseTask):
@@ -32,14 +31,38 @@ class BaseGfTask(RuntimeMixin, BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.roles_dict = {
-            "物理": ["夏安", "莱妮", "威玛西娜", "巴希达", "幼熙", "绯", "波波沙", "乌尔丽德", "莉塔拉", "黛烟",
-                     "维普蕾", "闪电"],
-            "燃烧": ["罗蕾莱", "樱花", "刘易斯", "秋桦", "佩莉", "维克托", "桑朵莱希", "科谢尼娅", "琼玖", "奇塔",
-                     "夏克里", "克罗丽科"],
+            "物理": [
+                "夏安",
+                "莱妮",
+                "威玛西娜",
+                "巴希达",
+                "幼熙",
+                "绯",
+                "波波沙",
+                "乌尔丽德",
+                "莉塔拉",
+                "黛烟",
+                "维普蕾",
+                "闪电",
+            ],
+            "燃烧": [
+                "罗蕾莱",
+                "樱花",
+                "刘易斯",
+                "秋桦",
+                "佩莉",
+                "维克托",
+                "桑朵莱希",
+                "科谢尼娅",
+                "琼玖",
+                "奇塔",
+                "夏克里",
+                "克罗丽科",
+            ],
             "电导": ["莱娅", "安朵丝", "比悠卡", "绛雨", "莱娜", "莫辛纳甘"],
             "冷凝": ["海伦", "埃芙", "洛贝拉", "杜莎妮", "索米", "洛塔", "玛绮朵"],
             "浊刻": ["芙洛伦", "妮基塔", "春田", "朝晖", "塞布丽娜", "托洛洛", "寇尔芙"],
-            "酸蚀": ["翡图萨", "哈卜茜", "琳德", "米什缇", "可露凯", "纳甘", "佩里缇亚", "纳美西丝"]
+            "酸蚀": ["翡图萨", "哈卜茜", "琳德", "米什缇", "可露凯", "纳甘", "佩里缇亚", "纳美西丝"],
         }
         self.box = ScreenPosition(self)
         self.default_config_group = {}
@@ -75,32 +98,31 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return next((k for k, v in self.roles_dict.items() if name in v), None)
 
     def ensure_main(self, recheck_time=1, time_out=30, esc=True):
-        self.info_set('current_task', 'go_to_main')
-        if not self.wait_until(lambda: self.is_main(recheck_time=recheck_time, esc=esc),
-                               time_out=time_out):
+        self.info_set("current_task", "go_to_main")
+        if not self.wait_until(lambda: self.is_main(recheck_time=recheck_time, esc=esc), time_out=time_out):
             raise Exception("请从游戏主页进入")
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
-        self.info_set('current_task', 'skip_dialogs')
+        self.info_set("current_task", "skip_dialogs")
         start = time.time()
         while time.time() - start < time_out:
             try:
                 boxes = self.ocr()
             except AttributeError:
-                self.log_info('WGC 抓帧返回空帧，等待 3s 后重试', notify=False)
+                self.log_info("WGC 抓帧返回空帧，等待 3s 后重试", notify=False)
                 self.sleep(3)
                 self.next_frame()
                 continue
-            if skip := self.find_boxes(boxes, match=['跳过']):
+            if skip := self.find_boxes(boxes, match=["跳过"]):
                 self.click(skip, after_sleep=2)
-            elif no_alert := self.find_boxes(boxes, match='今日不再提示'):
+            elif no_alert := self.find_boxes(boxes, match="今日不再提示"):
                 self.click(no_alert)
                 self.sleep(0.2)
-                self.click(self.find_boxes(boxes, match='确认'), after_sleep=2)
+                self.click(self.find_boxes(boxes, match="确认"), after_sleep=2)
             elif result := self.find_boxes(boxes, match=end_match, boundary=end_box):
                 # 优先返回"继续前进"
                 for r in result:
-                    if r.name == '继续前进':
+                    if r.name == "继续前进":
                         self.sleep(1)
                         return [r]
                 self.sleep(1)
@@ -114,8 +136,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 self.sleep(2)
             self.next_frame()
         if raise_if_not_found:
-            raise Exception('跳过剧情超时!')
-        
+            raise Exception("跳过剧情超时!")
+
     def _is_loading_frame(self, boxes):
         """
         判断当前帧是否为加载界面。
@@ -128,57 +150,92 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             name = box.name
             if not name:
                 continue
-            if '资源加载中' in name:
+            if "资源加载中" in name:
                 return True
-            if re.search(r'\d{1,3}%', name):
+            if re.search(r"\d{1,3}%", name):
                 return True
         return False
 
-    def auto_battle(self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False,
-                    has_dialog_behind_start=False):
-        self.info_set('current_task', 'auto battle')
-        result = self.skip_dialogs(end_match=['作战开始', '行动结束', '继续前进'], end_box=self.box.bottom, time_out=120,
-                                   has_dialog=has_dialog, raise_if_not_found=False)
-        if result and result[0].name == '继续前进':
-            self.log_info('开局检测到继续前进，点击后开启新一轮自动战斗', notify=True)
+    def auto_battle(
+        self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False, has_dialog_behind_start=False
+    ):
+        self.info_set("current_task", "auto battle")
+        result = self.skip_dialogs(
+            end_match=["作战开始", "行动结束", "继续前进"],
+            end_box=self.box.bottom,
+            time_out=120,
+            has_dialog=has_dialog,
+            raise_if_not_found=False,
+        )
+        if result and result[0].name == "继续前进":
+            self.log_info("开局检测到继续前进，点击后开启新一轮自动战斗", notify=True)
             self.click_box(result, after_sleep=2)
-            self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                             need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+            self.auto_battle(
+                end_match=end_match,
+                end_box=end_box,
+                has_dialog=has_dialog,
+                need_click_auto=need_click_auto,
+                has_dialog_behind_start=has_dialog_behind_start,
+            )
             return
-        if result[0].name == '作战开始':
+        if result[0].name == "作战开始":
             self.sleep(2)
             self.click_box(result, after_sleep=1)
-            start_result = self.skip_dialogs(end_match=[re.compile('行动完成'), re.compile('行动结束'), re.compile('还有可部署'), re.compile('任务完成'), re.compile('继续前进')],
-                                         has_dialog=True, time_out=45, raise_if_not_found=False)
-            if start_result and '继续前进' in start_result[0].name:
-                self.log_info('开局后检测到继续前进，点击后开启新一轮自动战斗', notify=True)
+            start_result = self.skip_dialogs(
+                end_match=[
+                    re.compile("行动完成"),
+                    re.compile("行动结束"),
+                    re.compile("还有可部署"),
+                    re.compile("任务完成"),
+                    re.compile("继续前进"),
+                ],
+                has_dialog=True,
+                time_out=45,
+                raise_if_not_found=False,
+            )
+            if start_result and "继续前进" in start_result[0].name:
+                self.log_info("开局后检测到继续前进，点击后开启新一轮自动战斗", notify=True)
                 self.click_box(start_result, after_sleep=2)
-                self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                                 need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+                self.auto_battle(
+                    end_match=end_match,
+                    end_box=end_box,
+                    has_dialog=has_dialog,
+                    need_click_auto=need_click_auto,
+                    has_dialog_behind_start=has_dialog_behind_start,
+                )
                 return
-            ok_bool = bool(start_result) and (not ("还有可部署" in start_result[0].name or "行动结束" in start_result[0].name))
+            ok_bool = bool(start_result) and (
+                not ("还有可部署" in start_result[0].name or "行动结束" in start_result[0].name)
+            )
             if not ok_bool:
-                if start_result and ('还有可部署' in start_result[0].name):
-                    self.log_info('阵容没上满!', notify=True)
+                if start_result and ("还有可部署" in start_result[0].name):
+                    self.log_info("阵容没上满!", notify=True)
 
-                    self.wait_click_ocr(match=['确认'], box=self.box.bottom, time_out=5,
-                                        raise_if_not_found=True)
-                    self.wait_ocr(match=['行动结束'], box=self.box.bottom_right,
-                                  raise_if_not_found=False, time_out=15)
+                    self.wait_click_ocr(match=["确认"], box=self.box.bottom, time_out=5, raise_if_not_found=True)
+                    self.wait_ocr(match=["行动结束"], box=self.box.bottom_right, raise_if_not_found=False, time_out=15)
                     # start_result = self.wait_ocr(match=['行动结束'], box=self.box.bottom_right,
                     #                              raise_if_not_found=False, time_out=15)
                 if not start_result and has_dialog_behind_start:
-                    start_result = self.skip_dialogs(end_match=['作战开始', '行动结束', '继续前进'], end_box=self.box.bottom,
-                                                     time_out=120,
-                                                     has_dialog=has_dialog, raise_if_not_found=False)
-                    if start_result and start_result[0].name == '继续前进':
-                        self.log_info('开局二次检测到继续前进，点击后开启新一轮自动战斗', notify=True)
+                    start_result = self.skip_dialogs(
+                        end_match=["作战开始", "行动结束", "继续前进"],
+                        end_box=self.box.bottom,
+                        time_out=120,
+                        has_dialog=has_dialog,
+                        raise_if_not_found=False,
+                    )
+                    if start_result and start_result[0].name == "继续前进":
+                        self.log_info("开局二次检测到继续前进，点击后开启新一轮自动战斗", notify=True)
                         self.click_box(start_result, after_sleep=2)
-                        self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                                         need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+                        self.auto_battle(
+                            end_match=end_match,
+                            end_box=end_box,
+                            has_dialog=has_dialog,
+                            need_click_auto=need_click_auto,
+                            has_dialog_behind_start=has_dialog_behind_start,
+                        )
                         return
-                    if self.wait_ocr(match='注意', box=self.box.top):
-                        self.wait_click_ocr(match='取消', after_sleep=2)
+                    if self.wait_ocr(match="注意", box=self.box.top):
+                        self.wait_click_ocr(match="取消", after_sleep=2)
                 if start_result and need_click_auto:
                     self.sleep(0.5)
                     while self.ocr(match="行动结束", box=self.box.bottom_right):
@@ -189,13 +246,14 @@ class BaseGfTask(RuntimeMixin, BaseTask):
 
         clicked_continue = False
         while results := self.skip_dialogs(
-                end_match=['任务完成', '任务失败', '战斗失败', '对战胜利', '对战失败', '确认', '确认结算', '继续前进'],
-                time_out=900,
-                has_dialog=has_dialog):
+            end_match=["任务完成", "任务失败", "战斗失败", "对战胜利", "对战失败", "确认", "确认结算", "继续前进"],
+            time_out=900,
+            has_dialog=has_dialog,
+        ):
             # 优先遍历所有结果找"继续前进"
             clicked = False
             for result in results:
-                if result.name == '继续前进':
+                if result.name == "继续前进":
                     self.click_box(result, after_sleep=2)
                     clicked = True
                     clicked_continue = True
@@ -211,41 +269,56 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             if results[0].name not in pop_ups:
                 break
         if not results:
-            raise Exception('自动战斗异常')
-        if results[0].name == '任务失败':
-            raise Exception('任务失败, 没打过!')
+            raise Exception("自动战斗异常")
+        if results[0].name == "任务失败":
+            raise Exception("任务失败, 没打过!")
         if clicked_continue:
-            self.log_info('检测到继续前进，点击后开启新一轮自动战斗', notify=True)
-            self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                             need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+            self.log_info("检测到继续前进，点击后开启新一轮自动战斗", notify=True)
+            self.auto_battle(
+                end_match=end_match,
+                end_box=end_box,
+                has_dialog=has_dialog,
+                need_click_auto=need_click_auto,
+                has_dialog_behind_start=has_dialog_behind_start,
+            )
             return
-        if self.wait_click_ocr(match='继续前进', box=self.box.bottom_right, raise_if_not_found=False, time_out=3):
-            self.log_info('结算后检测到继续前进，点击后开启新一轮自动战斗', notify=True)
-            self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                             need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+        if self.wait_click_ocr(match="继续前进", box=self.box.bottom_right, raise_if_not_found=False, time_out=3):
+            self.log_info("结算后检测到继续前进，点击后开启新一轮自动战斗", notify=True)
+            self.auto_battle(
+                end_match=end_match,
+                end_box=end_box,
+                has_dialog=has_dialog,
+                need_click_auto=need_click_auto,
+                has_dialog_behind_start=has_dialog_behind_start,
+            )
             return
-        while self.wait_click_ocr(match='确认', box=self.box.bottom_right, raise_if_not_found=False, time_out=3):
+        while self.wait_click_ocr(match="确认", box=self.box.bottom_right, raise_if_not_found=False, time_out=3):
             pass
         if end_match:
             if isinstance(end_match, list):
                 end_match = end_match + pop_ups
             else:
                 end_match = [end_match] + pop_ups
-            end_match.append('确认')
-            end_match.append('确认结算')
-            end_match.append('继续前进')
+            end_match.append("确认")
+            end_match.append("确认结算")
+            end_match.append("继续前进")
             while True:
-                match = self.skip_dialogs(end_match=end_match, end_box=end_box,
-                                          time_out=30, has_dialog=has_dialog,
-                                          raise_if_not_found=True)
+                match = self.skip_dialogs(
+                    end_match=end_match, end_box=end_box, time_out=30, has_dialog=has_dialog, raise_if_not_found=True
+                )
                 if match[0].name in pop_ups:
                     self.back(after_sleep=2)
                     continue
-                if match[0].name == '继续前进':
-                    self.log_info('最后阶段检测到继续前进，点击后开启新一轮自动战斗', notify=True)
+                if match[0].name == "继续前进":
+                    self.log_info("最后阶段检测到继续前进，点击后开启新一轮自动战斗", notify=True)
                     self.click_box(match, after_sleep=2)
-                    self.auto_battle(end_match=end_match, end_box=end_box, has_dialog=has_dialog,
-                                     need_click_auto=need_click_auto, has_dialog_behind_start=has_dialog_behind_start)
+                    self.auto_battle(
+                        end_match=end_match,
+                        end_box=end_box,
+                        has_dialog=has_dialog,
+                        need_click_auto=need_click_auto,
+                        has_dialog_behind_start=has_dialog_behind_start,
+                    )
                     return
                 if match[0].name in ("确认", "确认结算"):
                     self.click_box(match, after_sleep=8)
@@ -253,34 +326,45 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.sleep(2)
 
     def is_main(self, recheck_time=0.0, esc=True):
-        boxes = self.ocr(match=['整备室', '公共区', '活动层', re.compile('招募')], box='right', log=True)
+        boxes = self.ocr(match=["整备室", "公共区", "活动层", re.compile("招募")], box="right", log=True)
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
                 feature_boxes.append(result)
         total = len(boxes) + len(feature_boxes)
-        self.log_info(f'is main ocr={len(boxes)} features={len(feature_boxes)} total={total}')
+        self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
             return True
         # if not self.do_handle_alert()[0]:
-        if self.ocr(match=re.compile('^是否离开活动层'), box=self.box.center, log=True):
-            self.wait_click_ocr(match='确认', after_sleep=2, box=self.box.bottom_right)
+        if self.ocr(match=re.compile("^是否离开活动层"), box=self.box.center, log=True):
+            self.wait_click_ocr(match="确认", after_sleep=2, box=self.box.bottom_right)
             return False
-        if box := self.ocr(box=self.box.bottom, match=["点击开始", "点击空白处关闭", "取消"],
-                           log=True):
+        if box := self.ocr(box=self.box.bottom, match=["点击开始", "点击空白处关闭", "取消"], log=True):
             self.click(box, after_sleep=2)
             return False
         if esc:
-            if result:= self.find_feature(feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.02, vertical_variance=0.002):
+            if result := self.find_feature(
+                feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.02, vertical_variance=0.002
+            ):
                 self.click(result, after_sleep=2)
                 return False
             self.back(after_sleep=2)
         self.next_frame()
         return False
 
-    def click(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False, name=None,
-              interval=-1, move=True,
-              down_time=0.01, after_sleep=0, key="left", alt=False):
+    def click(
+        self,
+        x: float | Box | list[Box] = 0.0,
+        y: float | int = 0.0,
+        move_back=False,
+        name=None,
+        interval=-1,
+        move=True,
+        down_time=0.01,
+        after_sleep=0,
+        key="left",
+        alt=False,
+    ):
         """
         点击。
 
@@ -288,17 +372,46 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         x 支持 Box、Box 列表、屏幕比例（0~1）与绝对坐标，分派逻辑沿用父类。
         """
         if alt:
-            return self.click_with_alt(x, y, move_back=move_back, name=name, interval=interval, move=move,
-                                       down_time=down_time, after_sleep=after_sleep, key=key)
+            return self.click_with_alt(
+                x,
+                y,
+                move_back=move_back,
+                name=name,
+                interval=interval,
+                move=move,
+                down_time=down_time,
+                after_sleep=after_sleep,
+                key=key,
+            )
         frame = self.frame
-        super().click(x, y, move_back=move_back, name=name, move=move, down_time=0.04, after_sleep=after_sleep,
-                      interval=interval, key=key)
+        super().click(
+            x,
+            y,
+            move_back=move_back,
+            name=name,
+            move=move,
+            down_time=0.04,
+            after_sleep=after_sleep,
+            interval=interval,
+            key=key,
+        )
         if self.debug:
-            self.screenshot('click', frame=frame)
+            self.screenshot("click", frame=frame)
 
-    def click_with_alt(self, x: Union[float, Box, List[Box]] = 0.0, y: Union[float, int] = 0.0, move_back=False,
-                       name=None, interval=-1, move=True, down_time=0.01, after_sleep=0, key="left",
-                       alt_hold_delay=0.5, debug_name="click_with_alt"):
+    def click_with_alt(
+        self,
+        x: float | Box | list[Box] = 0.0,
+        y: float | int = 0.0,
+        move_back=False,
+        name=None,
+        interval=-1,
+        move=True,
+        down_time=0.01,
+        after_sleep=0,
+        key="left",
+        alt_hold_delay=0.5,
+        debug_name="click_with_alt",
+    ):
         """
         按住 alt 键点击。
 
@@ -310,30 +423,50 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             debug_name: debug 模式下的截图名。
         """
         frame = self.frame
-        self.send_key_down('alt')
+        self.send_key_down("alt")
         try:
             if alt_hold_delay > 0:
                 self.sleep(alt_hold_delay)
-            self.click(x, y, move_back=move_back, name=name, interval=interval, move=move,
-                       down_time=down_time, after_sleep=after_sleep, key=key)
+            self.click(
+                x,
+                y,
+                move_back=move_back,
+                name=name,
+                interval=interval,
+                move=move,
+                down_time=down_time,
+                after_sleep=after_sleep,
+                key=key,
+            )
         finally:
             # 必须保证松开 alt：点击抛异常时若卡住 alt，后续所有按键都会被污染
-            self.send_key_up('alt')
+            self.send_key_up("alt")
         if self.debug:
             self.screenshot(debug_name, frame=frame)
 
     def back(self, after_sleep=0):
         frame = self.frame
-        self.send_key('esc', down_time=0.04, after_sleep=after_sleep)
+        self.send_key("esc", down_time=0.04, after_sleep=after_sleep)
         if self.debug:
-            self.screenshot('back', frame=frame)
+            self.screenshot("back", frame=frame)
 
-    def free_layer_click(self, x=0, y=0, move_back=False, name=None, interval=-1, move=True,
-                         down_time=0.01, after_sleep=0, key="left"):
+    def free_layer_click(
+        self, x=0, y=0, move_back=False, name=None, interval=-1, move=True, down_time=0.01, after_sleep=0, key="left"
+    ):
         # alt_hold_delay=0：保持改造前的时序（按下 alt 后立即点击，不加额外等待）
-        self.click_with_alt(x, y, move_back=move_back, name=name, interval=interval, move=move,
-                            down_time=down_time, after_sleep=after_sleep, key=key,
-                            alt_hold_delay=0, debug_name='free_layer_click')
+        self.click_with_alt(
+            x,
+            y,
+            move_back=move_back,
+            name=name,
+            interval=interval,
+            move=move,
+            down_time=down_time,
+            after_sleep=after_sleep,
+            key=key,
+            alt_hold_delay=0,
+            debug_name="free_layer_click",
+        )
 
     def click_with_key(self, hold_key, result, delay1=1, delay2=0.5, after_sleep=0):
         def start_task1():
@@ -351,65 +484,173 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         t2.join()
         self.sleep(after_sleep)
 
-    def wait_click_ocr(self, x=0, y=0, to_x=1, to_y=1, width=0, height=0, box=None, name=None, match=None,
-                       threshold=0, frame=None, target_height=0, time_out=0, raise_if_not_found=False,
-                       recheck_time=0, after_sleep=0, post_action=None, log=False, screenshot=False,
-                       settle_time=-1, lib="default", alt=False):
+    def wait_click_ocr(
+        self,
+        x=0,
+        y=0,
+        to_x=1,
+        to_y=1,
+        width=0,
+        height=0,
+        box=None,
+        name=None,
+        match=None,
+        threshold=0,
+        frame=None,
+        target_height=0,
+        time_out=0,
+        raise_if_not_found=False,
+        recheck_time=0,
+        after_sleep=0,
+        post_action=None,
+        log=False,
+        screenshot=False,
+        settle_time=-1,
+        lib="default",
+        alt=False,
+    ):
         """
         等待 OCR 命中并点击，``alt=True`` 时改用 alt 组合键点击。
 
         参数与父类一致；``alt=False`` 直接走父类实现，不做任何改动。
         """
         if not alt:
-            return super().wait_click_ocr(x=x, y=y, to_x=to_x, to_y=to_y, width=width, height=height, box=box,
-                                          name=name, match=match, threshold=threshold, frame=frame,
-                                          target_height=target_height, time_out=time_out,
-                                          raise_if_not_found=raise_if_not_found, recheck_time=recheck_time,
-                                          after_sleep=after_sleep, post_action=post_action, log=log,
-                                          screenshot=screenshot, settle_time=settle_time, lib=lib)
+            return super().wait_click_ocr(
+                x=x,
+                y=y,
+                to_x=to_x,
+                to_y=to_y,
+                width=width,
+                height=height,
+                box=box,
+                name=name,
+                match=match,
+                threshold=threshold,
+                frame=frame,
+                target_height=target_height,
+                time_out=time_out,
+                raise_if_not_found=raise_if_not_found,
+                recheck_time=recheck_time,
+                after_sleep=after_sleep,
+                post_action=post_action,
+                log=log,
+                screenshot=screenshot,
+                settle_time=settle_time,
+                lib=lib,
+            )
 
-        result = self.wait_ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name,
-                               match=match, threshold=threshold, frame=frame, target_height=target_height,
-                               time_out=time_out, raise_if_not_found=raise_if_not_found,
-                               post_action=post_action, log=log, screenshot=screenshot,
-                               settle_time=settle_time, lib=lib)
+        result = self.wait_ocr(
+            x,
+            y,
+            width=width,
+            height=height,
+            to_x=to_x,
+            to_y=to_y,
+            box=box,
+            name=name,
+            match=match,
+            threshold=threshold,
+            frame=frame,
+            target_height=target_height,
+            time_out=time_out,
+            raise_if_not_found=raise_if_not_found,
+            post_action=post_action,
+            log=log,
+            screenshot=screenshot,
+            settle_time=settle_time,
+            lib=lib,
+        )
         if recheck_time > 0:
             self.sleep(1)
-            result = self.ocr(x, y, width=width, height=height, to_x=to_x, to_y=to_y, box=box, name=name,
-                              match=match, threshold=threshold, frame=frame, target_height=target_height,
-                              log=log, screenshot=screenshot, lib=lib)
+            result = self.ocr(
+                x,
+                y,
+                width=width,
+                height=height,
+                to_x=to_x,
+                to_y=to_y,
+                box=box,
+                name=name,
+                match=match,
+                threshold=threshold,
+                frame=frame,
+                target_height=target_height,
+                log=log,
+                screenshot=screenshot,
+                lib=lib,
+            )
         if result is not None:
             self.click_with_alt(result, after_sleep=after_sleep)
             return result
-        logger.warning(f'wait ocr no box {x} {y} {width} {height} {to_x} {to_y} {match}')
+        logger.warning(f"wait ocr no box {x} {y} {width} {height} {to_x} {to_y} {match}")
 
-    def wait_click_feature(self, feature, horizontal_variance=0, vertical_variance=0, threshold=0, relative_x=0.5,
-                           relative_y=0.5, time_out=0, pre_action=None, post_action=None, box=None,
-                           raise_if_not_found=True, use_gray_scale=False, canny_lower=0, canny_higher=0,
-                           click_after_delay=0, settle_time=-1, after_sleep=0, target_height=0, alt=False):
+    def wait_click_feature(
+        self,
+        feature,
+        horizontal_variance=0,
+        vertical_variance=0,
+        threshold=0,
+        relative_x=0.5,
+        relative_y=0.5,
+        time_out=0,
+        pre_action=None,
+        post_action=None,
+        box=None,
+        raise_if_not_found=True,
+        use_gray_scale=False,
+        canny_lower=0,
+        canny_higher=0,
+        click_after_delay=0,
+        settle_time=-1,
+        after_sleep=0,
+        target_height=0,
+        alt=False,
+    ):
         """
         等待特征命中并点击，``alt=True`` 时改用 alt 组合键点击。
 
         参数与父类一致；``alt=False`` 直接走父类实现，不做任何改动。
         """
         if not alt:
-            return super().wait_click_feature(feature, horizontal_variance, vertical_variance, threshold,
-                                              relative_x=relative_x, relative_y=relative_y, time_out=time_out,
-                                              pre_action=pre_action, post_action=post_action, box=box,
-                                              raise_if_not_found=raise_if_not_found, use_gray_scale=use_gray_scale,
-                                              canny_lower=canny_lower, canny_higher=canny_higher,
-                                              click_after_delay=click_after_delay, settle_time=settle_time,
-                                              after_sleep=after_sleep, target_height=target_height)
+            return super().wait_click_feature(
+                feature,
+                horizontal_variance,
+                vertical_variance,
+                threshold,
+                relative_x=relative_x,
+                relative_y=relative_y,
+                time_out=time_out,
+                pre_action=pre_action,
+                post_action=post_action,
+                box=box,
+                raise_if_not_found=raise_if_not_found,
+                use_gray_scale=use_gray_scale,
+                canny_lower=canny_lower,
+                canny_higher=canny_higher,
+                click_after_delay=click_after_delay,
+                settle_time=settle_time,
+                after_sleep=after_sleep,
+                target_height=target_height,
+            )
 
         found = self.wait_until(
-            lambda: self.find_one(feature, horizontal_variance, vertical_variance, threshold, box=box,
-                                  use_gray_scale=use_gray_scale, canny_lower=canny_lower,
-                                  canny_higher=canny_higher, target_height=target_height),
+            lambda: self.find_one(
+                feature,
+                horizontal_variance,
+                vertical_variance,
+                threshold,
+                box=box,
+                use_gray_scale=use_gray_scale,
+                canny_lower=canny_lower,
+                canny_higher=canny_higher,
+                target_height=target_height,
+            ),
             time_out=time_out,
             pre_action=pre_action,
             post_action=post_action,
             raise_if_not_found=raise_if_not_found,
-            settle_time=settle_time)
+            settle_time=settle_time,
+        )
         if found is not None:
             if click_after_delay > 0:
                 self.sleep(click_after_delay)
@@ -419,10 +660,10 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return False
 
     def find_top_right_count(self):
-        result = self.ocr(0.89, 0.01, 0.99, 0.1, match=re.compile(r"^\d+/\d+$"), box='top_right')
+        result = self.ocr(0.89, 0.01, 0.99, 0.1, match=re.compile(r"^\d+/\d+$"), box="top_right")
         if not result:
-            raise Exception('找不到当前体力或票')
-        return int(result[0].name.split('/')[0])
+            raise Exception("找不到当前体力或票")
+        return int(result[0].name.split("/")[0])
 
     def find_cost(self, boxes=None, default=30):
         boundary = self.box_of_screen(0.48, 0.56, 0.57, 0.7)
@@ -436,8 +677,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return cost
 
     def out_free_layer(self):
-        self.info_set('current_task', 'out_free_layer')
-        while not self.wait_click_ocr(match=['确认'], time_out=2):
+        self.info_set("current_task", "out_free_layer")
+        while not self.wait_click_ocr(match=["确认"], time_out=2):
             self.back()
             self.sleep(2)
 
@@ -446,10 +687,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
 
         for _ in range(max_count):
             result = self.wait_ocr(
-                match=['Esc', 'P', 'M', 'F1', 'F2', 'F3', 'F4'],
-                settle_time=every_time,
-                box=self.box.top,
-                time_out=0
+                match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], settle_time=every_time, box=self.box.top, time_out=0
             )
 
             if result and len(result) >= 5:
@@ -458,8 +696,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return False
 
     def break_if_not_enough(self):
-        if self.wait_ocr(match=re.compile('坍塌晶条'), time_out=2, log=True):
-            self.wait_click_ocr(match=['取消'], after_sleep=2, time_out=2, raise_if_not_found=True)
+        if self.wait_ocr(match=re.compile("坍塌晶条"), time_out=2, log=True):
+            self.wait_click_ocr(match=["取消"], after_sleep=2, time_out=2, raise_if_not_found=True)
             return True
         return False
 
@@ -474,43 +712,44 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 self.back(after_sleep=2)
         return
 
-    def fast_combat(self, *, set_cost, battle_max=10, plus_x=0.616, plus_y=0.52, click_all=False,
-                    activity=False):
+    def fast_combat(self, *, set_cost, battle_max=10, plus_x=0.616, plus_y=0.52, click_all=False, activity=False):
         if activity:
             click_all = True
         if click_all:
             plus_x = 0.65
             plus_y = 0.52
-            self.wait_click_ocr(match=['自律'], box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
+            self.wait_click_ocr(match=["自律"], box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
             if self.break_if_not_enough():
-                self.wait_ocr(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
+                self.wait_ocr(match=["自律"], box=self.box.bottom_right, raise_if_not_found=True)
                 return 0
             self.click(plus_x, plus_y)
             self.wait_click_ocr(match=["确认"], after_sleep=1, raise_if_not_found=False)
-            if not self.wait_click_ocr(match=["取消"], time_out=2, raise_if_not_found=False):   
+            if not self.wait_click_ocr(match=["取消"], time_out=2, raise_if_not_found=False):
                 self.wait_pop_up(count=1)
-            self.back_if_not_ocr_match(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
+            self.back_if_not_ocr_match(match=["自律"], box=self.box.bottom_right, raise_if_not_found=True)
             return 0
 
-        self.wait_click_ocr(match=['自律'], box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
+        self.wait_click_ocr(match=["自律"], box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
         if self.break_if_not_enough():
-            self.wait_ocr(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
+            self.wait_ocr(match=["自律"], box=self.box.bottom_right, raise_if_not_found=True)
             return 0
         boxes = self.ocr(log=True, threshold=0.8, frame_processor=self.make_hsv_isolator(hR.WHITE))
-        if next_step := self.find_boxes(boxes, '下一步', self.box.bottom_right):
+        if next_step := self.find_boxes(boxes, "下一步", self.box.bottom_right):
             self.click(next_step, after_sleep=1)
             boxes = self.ocr(log=True, threshold=0.8, frame_processor=self.make_hsv_isolator(hR.WHITE))
             # default_cost = 30
         current = self.ocr(match=[stamina_re, number_re], box=self.box_of_screen(0.84, 0, 0.99, 0.10))
         if current:
-            current = int(current[0].name.split('/')[0])
+            current = int(current[0].name.split("/")[0])
         else:
             current = 1
         self.sleep(1)
-        if len(find_boxes_by_name(boxes, ["确认", "取消", "上一步"])) != 2 and len(
-                find_boxes_by_name(boxes, ["确认", "取消", "上", "一步"])) != 3:
+        if (
+            len(find_boxes_by_name(boxes, ["确认", "取消", "上一步"])) != 2
+            and len(find_boxes_by_name(boxes, ["确认", "取消", "上", "一步"])) != 3
+        ):
             if self.debug:
-                self.screenshot('fast_no_zilv')
+                self.screenshot("fast_no_zilv")
             self.log_info("自律没有弹窗, 可能是调度权限不足")
             return current
         cost = set_cost
@@ -519,21 +758,21 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         # else:
         #     cost = self.find_cost(boxes, default=default_cost)
 
-        self.info_set('current_stamina', current)
-        self.info_set('battle_cost', cost)
-        self.info_set('battle_max', battle_max)
+        self.info_set("current_stamina", current)
+        self.info_set("battle_cost", cost)
+        self.info_set("battle_max", battle_max)
         can_fast_count = min(int(current / cost), battle_max)
-        self.info_set('can_fast_count', can_fast_count)
-        self.info_set('click_battle_plus', 0)
-        self.log_info(f'battle cost: {cost} current_stamina: {current} can_fast_count: {can_fast_count}')
+        self.info_set("can_fast_count", can_fast_count)
+        self.info_set("click_battle_plus", 0)
+        self.log_info(f"battle cost: {cost} current_stamina: {current} can_fast_count: {can_fast_count}")
 
         for _ in range(can_fast_count - 1):
             self.click(plus_x, plus_y)
-            self.info_incr('click_battle_plus')
+            self.info_incr("click_battle_plus")
             self.sleep(0.2)
         self.sleep(1)
         remaining = current - can_fast_count * cost
-        self.info_set('remaining_stamina', remaining)
+        self.info_set("remaining_stamina", remaining)
         if can_fast_count <= 0:
             self.click(find_boxes_by_name(boxes, "取消"))
             return remaining
@@ -547,11 +786,11 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             self.click(find_boxes_by_name(boxes, "确认"), after_sleep=2)
 
         self.wait_pop_up(count=1)
-        self.wait_ocr(match=['自律'], box=self.box.bottom_right, raise_if_not_found=True)
+        self.wait_ocr(match=["自律"], box=self.box.bottom_right, raise_if_not_found=True)
 
         return remaining
 
-    def click_box_by_match_position(self, box: Union[Box, list[Box]], match: Union[str, re.Pattern], after_sleep=None):
+    def click_box_by_match_position(self, box: Box | list[Box], match: str | re.Pattern, after_sleep=None):
         if isinstance(box, list):
             box = box[0]
         text = box.name
@@ -576,7 +815,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         x = box.x
         y = box.y
         w = box.width
-        h = min(box.height, int(30/1080 * self.height))  # 限制高度，避免匹配到下方的按钮
+        h = min(box.height, int(30 / 1080 * self.height))  # 限制高度，避免匹配到下方的按钮
 
         click_y = y + h // 2
 
@@ -590,27 +829,24 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.click(click_x, click_y, after_sleep=after_sleep)
 
     def fast_disassemble_loop(self, model_re):
-        while self.wait_click_ocr(match=['快捷选择'], after_sleep=2):
-            ocr_select_num = self.wait_ocr(
-                match=re.compile(model_re),
-                box=self.box.bottom_right
-            )
+        while self.wait_click_ocr(match=["快捷选择"], after_sleep=2):
+            ocr_select_num = self.wait_ocr(match=re.compile(model_re), box=self.box.bottom_right)
 
             if not ocr_select_num:
                 self.back(after_sleep=2)
                 break
 
-            self.wait_click_ocr(match=['拆解'], box=self.box.bottom_right, after_sleep=2)
+            self.wait_click_ocr(match=["拆解"], box=self.box.bottom_right, after_sleep=2)
             self.wait_pop_up(count=1)
 
     def enter_fast_disassemble(self):
         # 拆解入口是硬条件
-        if not self.wait_click_ocr(match=['拆解'], box=self.box.top_right, after_sleep=2):
+        if not self.wait_click_ocr(match=["拆解"], box=self.box.top_right, after_sleep=2):
             return False
 
         # 以下是“尽力而为”的筛选条件
-        self.wait_click_ocr(match=['工业级及以下未培养'], after_sleep=2)
-        self.wait_click_ocr(match=['精密级及以下未培养'], after_sleep=2)
+        self.wait_click_ocr(match=["工业级及以下未培养"], after_sleep=2)
+        self.wait_click_ocr(match=["精密级及以下未培养"], after_sleep=2)
 
         return True
 
@@ -636,8 +872,16 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             else:
                 check.append(other)
         found_count = 0
-        while self.wait_ocr(match=pop_ups, box=box, settle_time=2, time_out=int(time_out - (time.time() - start)),
-                            raise_if_not_found=False) and found_count < count:
+        while (
+            self.wait_ocr(
+                match=pop_ups,
+                box=box,
+                settle_time=2,
+                time_out=int(time_out - (time.time() - start)),
+                raise_if_not_found=False,
+            )
+            and found_count < count
+        ):
             found_count += 1
             self.back(after_sleep=3)
 
@@ -680,7 +924,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             # 执行当前步骤
             try:
                 success = func()
-            except Exception as e:
+            except Exception:
                 success = False
 
             if success:
@@ -702,11 +946,15 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             # 否则：留在当前步，下一轮重试（因 i 未变）
 
         return True
+
     def kill_all_related_processes(self):
         """尝试杀死游戏进程和本软件自身进程（除当前进程外）"""
-        import os, sys
-        import win32process, win32gui, win32api, win32con
+        import os
+
         import psutil
+        import win32api
+        import win32con
+        import win32process
 
         # 1. 杀死游戏进程
         try:

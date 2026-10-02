@@ -13,6 +13,4 @@
     success, msg = helper.create_scheduled_task(...)
 """
 
-
-__all__ = ['TaskSchedulerHelper']
-
+__all__ = ["TaskSchedulerHelper"]

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.tasks.DailyTaskRunner import DailyTaskRunner  # noqa: E402
+from src.tasks.DailyTaskRunner import DailyTaskRunner
 
 
 class StubTask:
@@ -145,5 +145,5 @@ class TestDailyTaskRunner(unittest.TestCase):
         self.assertEqual(stub.infos, {})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -15,8 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from ok import Box  # noqa: E402
-from src.core.BaseGfTask import BaseGfTask  # noqa: E402
+from ok import Box
+
+from src.core.BaseGfTask import BaseGfTask
 
 
 class BaseStub(BaseGfTask):
@@ -162,5 +163,5 @@ class TestFreeLayerClick(unittest.TestCase):
         self.assertEqual(kwargs.get("debug_name"), "free_layer_click")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

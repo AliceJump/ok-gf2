@@ -1,7 +1,6 @@
 import hashlib
 import json
 import time
-from typing import List, Optional
 
 import requests
 
@@ -16,12 +15,12 @@ class CommunityMixin:
 
     # ================== 通用请求 ==================
     def request_json(
-            self,
-            method: str,
-            url: str,
-            headers: dict | None = None,
-            data: dict | None = None,
-    ) -> Optional[dict]:
+        self,
+        method: str,
+        url: str,
+        headers: dict | None = None,
+        data: dict | None = None,
+    ) -> dict | None:
         try:
             resp = requests.request(
                 method=method,
@@ -44,7 +43,7 @@ class CommunityMixin:
     def md5_hex(text: str) -> str:
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
-    def login(self, account: str, password: str, source: str = "phone") -> Optional[str]:
+    def login(self, account: str, password: str, source: str = "phone") -> str | None:
         self.log_info("开始登录")
 
         url = f"{self.BASE_API}/login/account"
@@ -92,7 +91,7 @@ class CommunityMixin:
             self.log_info(f"返回信息: {data}")
         return False
 
-    def get_top_topic_ids(self, count: int) -> List[int]:
+    def get_top_topic_ids(self, count: int) -> list[int]:
         self.log_info(f"获取热门帖子（数量: {count}）")
 
         url = (
@@ -141,7 +140,7 @@ class CommunityMixin:
         return False
 
     # ================== 兑换 ==================
-    def get_exchange_list(self, auth_token: str) -> List[dict]:
+    def get_exchange_list(self, auth_token: str) -> list[dict]:
         self.log_info("获取兑换列表")
 
         url = f"{self.BASE_API}/community/item/exchange_list"
@@ -153,7 +152,7 @@ class CommunityMixin:
         self.log_info(f"可兑换项目数量: {len(items)}")
         return items
 
-    def get_user_score(self, auth_token: str) -> Optional[int]:
+    def get_user_score(self, auth_token: str) -> int | None:
         self.log_info("查询当前积分")
 
         url = f"{self.BASE_API}/community/member/info"

@@ -3,14 +3,14 @@ import os
 
 def count_lines_of_code(folder_path, extensions=None):
     total_lines = 0
-    extensions = extensions or ['.py', '.cpp', '.h', '.js', '.html']  # Specify file types to count
+    extensions = extensions or [".py", ".cpp", ".h", ".js", ".html"]  # Specify file types to count
 
     for root, _, files in os.walk(folder_path):
         for file in files:
             if any(file.endswith(ext) for ext in extensions):
                 file_path = os.path.join(root, file)
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, encoding="utf-8") as f:
                         lines = f.readlines()
                         total_lines += len(lines)
                         print(f"{file}: {len(lines)} lines")
@@ -22,10 +22,11 @@ def count_lines_of_code(folder_path, extensions=None):
 
 
 # Example usage
-folder_path = r'src'  # Replace with the folder path
+folder_path = r"src"  # Replace with the folder path
 count_lines_of_code(folder_path)
 
 import sys
+
 from PySide6.QtCore import QLocale
 
 
@@ -45,7 +46,7 @@ def get_language_fallbacks(locale_name: str) -> list[str]:
 
     # Get canonical names using QLocale for consistency
     target_name = input_locale.name()  # e.g., "en_US
-    parts = locale_name.split('_')
+    parts = locale_name.split("_")
     base_lang_code = parts[0]
 
     fallbacks = [locale_name]
@@ -78,17 +79,17 @@ def get_language_fallbacks(locale_name: str) -> list[str]:
 
 
 # Example usage:
-target_locale_name = 'en_US'
+target_locale_name = "en_US"
 fallbacks = get_language_fallbacks(target_locale_name)
 print(f"Fallbacks for {target_locale_name}: {fallbacks}")
 # Example output: Fallbacks for en_US: ['en_US', 'en', 'en_GB', 'en_CA', 'en_AU', ...]
 
-target_locale_name = 'fr_CA'
+target_locale_name = "fr_CA"
 fallbacks = get_language_fallbacks(target_locale_name)
 print(f"Fallbacks for {target_locale_name}: {fallbacks}")
 # Example output: Fallbacks for fr_CA: ['fr_CA', 'fr', 'fr_BE', 'fr_FR', 'fr_CH', ...]
 
-target_locale_name = 'de'
+target_locale_name = "de"
 fallbacks = get_language_fallbacks(target_locale_name)
 print(f"Fallbacks for {target_locale_name}: {fallbacks}")
 # Example output: Fallbacks for de: ['de', 'de_DE', 'de_AT', 'de_CH', ...]

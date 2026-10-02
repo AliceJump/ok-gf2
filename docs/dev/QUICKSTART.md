@@ -61,6 +61,7 @@ python main_debug.py
 ```python
 from src.core.BaseGfTask import BaseGfTask
 
+
 class MyTask(BaseGfTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,12 +1,12 @@
-from src.tasks.DailyTask import DailyTask,stamina_re
-from src.image.hsv_config import HSVRange as hR
+from src.tasks.DailyTask import DailyTask
+
 
 class TestTask(DailyTask):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "测试用"
-        self.default_config=dict()
+        self.default_config = dict()
+
     def run(self):
         self.auto_loop()
         self.find_one(feature_name="dog_icon")

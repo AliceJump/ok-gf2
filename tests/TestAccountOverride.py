@@ -11,8 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.core.base_mixin.account_override_mixin import AccountOverrideMixin  # noqa: E402
-from src.tasks import account_scope_store  # noqa: E402
+from src.core.base_mixin.account_override_mixin import AccountOverrideMixin
+from src.tasks import account_scope_store
 
 
 class FakeConfig:
@@ -106,9 +106,7 @@ class TestAccountOverride(unittest.TestCase):
         account_scope_store.set_account_task_overrides(
             account_id, "FakeTask", {"开关": "false", "数量": "7", "比例": "1.5", "文本": 42}
         )
-        task = self.make_task(
-            {"开关": True, "数量": 3, "比例": 0.5, "文本": "x", "多账户独立配置": True}
-        )
+        task = self.make_task({"开关": True, "数量": 3, "比例": 0.5, "文本": "x", "多账户独立配置": True})
         task.current_account_id = account_id
 
         self.assertIs(task.config.get("开关"), False, "字符串 false 应转成布尔")
@@ -157,5 +155,5 @@ class TestAccountOverride(unittest.TestCase):
         self.assertTrue(task.config.get("邮件"))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

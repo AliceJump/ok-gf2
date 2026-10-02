@@ -61,7 +61,7 @@ description: Create and modify automation task classes for the ok-script Python 
 
   ```python
   self.default_config_group.update({"购买免费礼包": ["商店心愿单购买"]})
-  self.config_type.update({"购买免费礼包": {'sub_configs': {True: ["商店心愿单购买"]}}})
+  self.config_type.update({"购买免费礼包": {"sub_configs": {True: ["商店心愿单购买"]}}})
   ```
 
   规则是「父值 → 子键列表」。子项只在父项当前值命中映射的键时可见；没有对应条目（如 `False`）则全部隐藏。

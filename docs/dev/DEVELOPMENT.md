@@ -195,6 +195,7 @@ python main_debug.py
    ```python
    from src.core.BaseGfTask import BaseGfTask
 
+
    class MyTask(BaseGfTask):
        def __init__(self, *args, **kwargs):
            super().__init__(*args, **kwargs)
@@ -211,7 +212,7 @@ python main_debug.py
 2. 在 `src/config.py` 的 `onetime_tasks` 列表中注册：
 
    ```python
-   ["src.tasks.MyTask", "MyTask"],
+   (["src.tasks.MyTask", "MyTask"],)
    ```
 
 ### 5.2 添加新的模板图片（Feature）

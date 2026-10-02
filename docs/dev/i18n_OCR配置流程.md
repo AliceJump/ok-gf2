@@ -79,7 +79,7 @@ results = self.wait_ocr_until_count(match="目标", min_count=2, timeout=5)
 通用弹窗匹配列表定义在 `BaseGfTask.pop_ups`：
 
 ```python
-pop_ups = ['点击空白处关闭', '点击屏幕任意位置继续', '点击任意位置继续', '新周期开启']
+pop_ups = ["点击空白处关闭", "点击屏幕任意位置继续", "点击任意位置继续", "新周期开启"]
 ```
 
 通过 `wait_pop_up()` 方法自动检测并关闭弹窗。
@@ -89,8 +89,8 @@ pop_ups = ['点击空白处关闭', '点击屏幕任意位置继续', '点击任
 ## 常用正则表达式
 
 ```python
-number_re = re.compile(r"^\d+$")           # 纯数字
-stamina_re = re.compile(r"^\d+/\d+")       # 体力值 (如 120/120)
+number_re = re.compile(r"^\d+$")  # 纯数字
+stamina_re = re.compile(r"^\d+/\d+")  # 体力值 (如 120/120)
 map_re = re.compile(r"^.{0,2}\s*-?\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$")  # 地图关卡名
 ```
 

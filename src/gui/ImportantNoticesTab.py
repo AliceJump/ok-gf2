@@ -68,16 +68,17 @@ class ImportantNoticesTab(CustomTab):
         dialog.viewLayout.addWidget(SubtitleLabel(og.app.tr("重要提醒"), dialog))
         for notice in notices:
             content = BodyLabel(
-                og.app.tr(notice.title) + "\n"
-                + og.app.tr("受影响任务：{task}").format(task=og.app.tr(notice.task)) + "\n"
-                + og.app.tr("解决方法：{solution}").format(solution=og.app.tr(notice.solution)), dialog
+                og.app.tr(notice.title)
+                + "\n"
+                + og.app.tr("受影响任务：{task}").format(task=og.app.tr(notice.task))
+                + "\n"
+                + og.app.tr("解决方法：{solution}").format(solution=og.app.tr(notice.solution)),
+                dialog,
             )
             content.setWordWrap(True)
             dialog.viewLayout.addWidget(content)
             details_button = PushButton(og.app.tr("查看详情"), dialog)
-            details_button.clicked.connect(
-                lambda checked=False, url=notice.url: QDesktopServices.openUrl(QUrl(url))
-            )
+            details_button.clicked.connect(lambda checked=False, url=notice.url: QDesktopServices.openUrl(QUrl(url)))
             dialog.viewLayout.addWidget(details_button)
         dialog.yesButton.setText(og.app.tr("不再提示"))
         dialog.cancelButton.setText(og.app.tr("关闭"))

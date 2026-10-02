@@ -1,6 +1,7 @@
 # ===== device layer =====
 import ctypes
 import time
+
 import win32gui
 
 user32 = ctypes.windll.user32
@@ -94,7 +95,6 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
 
             # 如果当前窗口不是目标窗口
             if current_hwnd != hwnd:
-
                 # 检查窗口句柄是否有效
                 if not win32gui.IsWindow(hwnd):
                     print(f"窗口激活失败: 无效的窗口句柄 {hwnd}")
@@ -135,7 +135,7 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
                 # 检查窗口是否真的在前台
                 final_hwnd = win32gui.GetForegroundWindow()
                 if final_hwnd != hwnd:
-                    print(f"窗口激活警告: 窗口未完全置于前台 " f"(目标:{hwnd}, 当前:{final_hwnd})")
+                    print(f"窗口激活警告: 窗口未完全置于前台 (目标:{hwnd}, 当前:{final_hwnd})")
 
         except win32gui.error as e:
             # 错误码 0 通常不是严重错误
@@ -147,10 +147,8 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
 
     # 只激活窗口不发送鼠标移动
     if not only_activate:
-
         # 将移动拆分为多个小步执行
         for _ in range(steps):
-
             step_dx = round(dx / steps)
             step_dy = round(dy / steps)
 

@@ -75,7 +75,9 @@ class TemplateMonitorTask(BaseGfTask, TriggerTask):
 
         result = self.find_one(feature_name, use_gray_scale=True)
         if result:
-            self.log_info(f"检测到模板: {feature_name}, 置信度: {result.confidence:.2f}, 区域: {result.x},{result.y},{result.width},{result.height}")
+            self.log_info(
+                f"检测到模板: {feature_name}, 置信度: {result.confidence:.2f}, 区域: {result.x},{result.y},{result.width},{result.height}"
+            )
             return True
         self.log_info(f"未检测到模板: {feature_name}")
         return False

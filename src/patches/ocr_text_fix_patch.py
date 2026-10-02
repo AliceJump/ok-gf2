@@ -126,7 +126,7 @@ def _tokenize_pattern(pattern: str) -> list:
 
         # ── ESCAPE: \x ────────────────────────────────────────────
         if ch == "\\" and i + 1 < n:
-            tokens.append(("ESCAPE", pattern[i:i + 2]))
+            tokens.append(("ESCAPE", pattern[i : i + 2]))
             i += 2
             continue
 
@@ -141,7 +141,7 @@ def _tokenize_pattern(pattern: str) -> list:
                     break
                 j += 1
             if j < n and pattern[j] == "]":
-                tokens.append(("CHAR_CLASS", pattern[i:j + 1]))
+                tokens.append(("CHAR_CLASS", pattern[i : j + 1]))
                 i = j + 1
             else:
                 # 孤立的 [ → 当作字面量处理，避免 grammar 破坏
@@ -235,7 +235,7 @@ def _apply_confusion_to_regex(pattern):
             while j < len(inner):
                 c = inner[j]
                 if c == "\\" and j + 1 < len(inner):
-                    new_inner.append(inner[j:j + 2])
+                    new_inner.append(inner[j : j + 2])
                     j += 2
                     continue
                 new_inner.append(c)

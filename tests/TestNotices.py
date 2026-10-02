@@ -29,8 +29,9 @@ class NoticesTest(unittest.TestCase):
             mark_read("another", state)
             mark_read(NOTICES[0].id, state)
             self.assertEqual({NOTICES[0].id, "another"}, load_read_ids(state))
-            self.assertEqual(sorted([NOTICES[0].id, "another"]),
-                             json.loads(state.read_text(encoding="utf-8"))["read_ids"])
+            self.assertEqual(
+                sorted([NOTICES[0].id, "another"]), json.loads(state.read_text(encoding="utf-8"))["read_ids"]
+            )
 
     def test_mark_read_repairs_damaged_state(self):
         with tempfile.TemporaryDirectory() as directory:

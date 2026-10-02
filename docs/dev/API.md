@@ -85,7 +85,7 @@ def find_one(self, feature_name=None, ..., feature=None) -> Box | None
 
 ```python
 result = self.find_one(feature=fL.dog_icon, vertical_variance=0.002)
-result = self.find_one('dog_icon', 0.002, 0.002, 0.5)   # 位置参数同样可用
+result = self.find_one("dog_icon", 0.002, 0.002, 0.5)  # 位置参数同样可用
 ```
 
 #### `get_feature_by_resolution`
@@ -192,8 +192,8 @@ def click(self, x=-1, y=-1, *, box=None, name=None, interval=-1, move=True, down
 点击指定坐标或 `Box` 中心。
 
 ```python
-self.click(0.5, 0.5)          # 屏幕中心（比例）
-self.click(box=confirm_box)   # 点击 Box 中心
+self.click(0.5, 0.5)  # 屏幕中心（比例）
+self.click(box=confirm_box)  # 点击 Box 中心
 ```
 
 #### `click_with_key`
@@ -205,7 +205,7 @@ def click_with_key(self, key, box)
 按住指定修饰键再点击，常用于物品转移等需要组合键的操作。
 
 ```python
-self.click_with_key('alt', result)
+self.click_with_key("alt", result)
 ```
 
 #### `back`
@@ -223,7 +223,7 @@ def press_keys_sequence(self, keys, down_times, sleep_between=0.5)
 依次按住多个按键指定时长后松开。
 
 ```python
-self.press_keys_sequence(['a', 'w', 'd'], [1.087, 1.4, 0.5], sleep_between=0.5)
+self.press_keys_sequence(["a", "w", "d"], [1.087, 1.4, 0.5], sleep_between=0.5)
 ```
 
 ### 1.5 场景判断

@@ -2,8 +2,8 @@
 import unittest
 
 from src.config import config
-from tests.OkTestCase import OkTestCase
 from src.core.BaseGfTask import BaseGfTask
+from tests.OkTestCase import OkTestCase
 
 
 class TestBattleBaseSerialization(OkTestCase):
@@ -13,9 +13,9 @@ class TestBattleBaseSerialization(OkTestCase):
 
     def test_base(self):
         # Create a BattleReport object
-        self.set_image('tests/images/main.png')
+        self.set_image("tests/images/main.png")
         self.task.ensure_main()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

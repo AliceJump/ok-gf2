@@ -48,16 +48,9 @@ class AccountMixin(AccountOverrideMixin):
         )
         self.config_description.update(
             {
-                "多账户模式": (
-                    "开启后按账号列表逐个切换账号执行"
-                ),
-                "多账户独立配置": (
-                    "开启后同一任务可为不同账号使用不同参数\n"
-                    "在「账号配置」页为每个账号设置要覆盖的项"
-                ),
-                "账号列表": (
-                    "每行一个账号，切换顺序即执行顺序"
-                ),
+                "多账户模式": ("开启后按账号列表逐个切换账号执行"),
+                "多账户独立配置": ("开启后同一任务可为不同账号使用不同参数\n在「账号配置」页为每个账号设置要覆盖的项"),
+                "账号列表": ("每行一个账号，切换顺序即执行顺序"),
             }
         )
         if not hasattr(self, "config_type") or self.config_type is None:
@@ -121,13 +114,16 @@ class AccountMixin(AccountOverrideMixin):
         self.ensure_main()
         self.back()
         self.wait_click_ocr(match="设置", box=self.box.top_right)
-        self.wait_click_feature(fL.login_out, settle_time=0.5, raise_if_not_found=False) 
+        self.wait_click_feature(fL.login_out, settle_time=0.5, raise_if_not_found=False)
         self.wait_click_feature(fL.confirm, settle_time=0.5, raise_if_not_found=False)
         self.wait_click_feature(fL.login_switch, settle_time=0.5, raise_if_not_found=False)
         self.wait_click_feature(fL.login_down, settle_time=0.5, raise_if_not_found=False)
-        self.wait_click_ocr(match=re.compile(username[-4:]), box=self.box_of_screen(0.272, 0.474, 0.414, 0.991), raise_if_not_found=False)
+        self.wait_click_ocr(
+            match=re.compile(username[-4:]),
+            box=self.box_of_screen(0.272, 0.474, 0.414, 0.991),
+            raise_if_not_found=False,
+        )
         self.wait_click_feature(fL.login_in, settle_time=0.5, raise_if_not_found=False)
-
 
     def iter_multi_account_context(
         self,
@@ -165,9 +161,7 @@ class AccountMixin(AccountOverrideMixin):
                 account_id = str(account.get("account_id", "")).strip() or username
                 if not username:
                     self.log_info(
-                        self.tr("第 {idx}/{total} 个账号为空，已跳过").format(
-                            idx=repeat_idx + 1, total=repeat_times
-                        )
+                        self.tr("第 {idx}/{total} 个账号为空，已跳过").format(idx=repeat_idx + 1, total=repeat_times)
                     )
                     continue
 

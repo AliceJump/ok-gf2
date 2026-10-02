@@ -6,7 +6,6 @@ import tempfile
 import threading
 from pathlib import Path
 
-
 _lock = threading.Lock()
 
 
@@ -14,6 +13,7 @@ def _state_path(path: str | Path | None) -> Path:
     if path is not None:
         return Path(path)
     from ok.util.file import get_relative_path
+
     return Path(get_relative_path("configs", "notice_state.json"))
 
 
@@ -38,8 +38,14 @@ def mark_read(notice_id: str, path: str | Path | None = None) -> None:
         state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = None
         try:
-            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=state_path.parent,
-                                             prefix=f"{state_path.name}.", suffix=".tmp", delete=False) as state_file:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=state_path.parent,
+                prefix=f"{state_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as state_file:
                 temporary_path = state_file.name
                 json.dump({"read_ids": sorted(read_ids)}, state_file, ensure_ascii=False, indent=2)
                 state_file.flush()

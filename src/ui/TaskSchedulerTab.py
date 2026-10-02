@@ -10,37 +10,35 @@ Schedule Task Tab - 计划任务管理界面
 6. 实时更新（基于缓存和信号通知）
 """
 
-from typing import Optional, List
 import re
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLabel,
-    QMessageBox,
-    QTableWidgetItem,
-    QHeaderView,
-)
-from qfluentwidgets import (
-    PushButton,
-    SwitchButton,
-    FluentIcon,
-    InfoBar,
-    InfoBarPosition,
-    TableWidget,
-    MessageBoxBase,
-    SubtitleLabel,
-    ComboBox,
-    SpinBox,
-    CheckBox,
-)
 
 from ok import Logger, og
 from ok.gui.widget.Tab import Tab
-from src.scheduler.windows_schedule import WindowsScheduleManager, ScheduleTaskInfo, TriggerType
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QTableWidgetItem,
+    QWidget,
+)
+from qfluentwidgets import (
+    CheckBox,
+    ComboBox,
+    FluentIcon,
+    InfoBar,
+    InfoBarPosition,
+    MessageBoxBase,
+    PushButton,
+    SpinBox,
+    SubtitleLabel,
+    SwitchButton,
+    TableWidget,
+)
+
 from src.config import config as main_config
+from src.scheduler.windows_schedule import ScheduleTaskInfo, TriggerType, WindowsScheduleManager
 
 logger = Logger.get_logger(__name__)
 
@@ -64,22 +62,24 @@ def normalize_trigger_type(raw_type: str) -> TriggerType:
     return TriggerType.DAILY
 
 
-def display_trigger_type(raw_type: str, task_info: Optional[ScheduleTaskInfo] = None) -> str:
+def display_trigger_type(raw_type: str, task_info: ScheduleTaskInfo | None = None) -> str:
     """用于 UI 展示的触发器文本，通过框架翻译"""
     trigger = normalize_trigger_type(raw_type)
-    
+
     # 调试：打印实际的值
     if task_info and (task_info.interval_days > 0 or task_info.interval_hours > 0):
-        logger.debug(f"Task: {task_info.name}, raw_type={raw_type}, trigger={trigger}, "
-                    f"interval_days={task_info.interval_days}, interval_hours={task_info.interval_hours}")
-    
+        logger.debug(
+            f"Task: {task_info.name}, raw_type={raw_type}, trigger={trigger}, "
+            f"interval_days={task_info.interval_days}, interval_hours={task_info.interval_hours}"
+        )
+
     # 如果是自定义类型，显示具体的间隔信息
     if trigger == TriggerType.CUSTOM and task_info:
         if task_info.interval_days > 0:
             return og.app.tr("Custom") + f" ({task_info.interval_days} " + og.app.tr("days") + ")"
         elif task_info.interval_hours > 0:
             return og.app.tr("Custom") + f" ({task_info.interval_hours} " + og.app.tr("hours") + ")"
-    
+
     # 使用框架翻译系统自动处理多语言
     return og.app.tr(trigger.value)
 
@@ -503,7 +503,7 @@ class ModifyScheduleTaskDialog(MessageBoxBase):
         )
         trigger_index = 0
         trigger_lower = (task_info.trigger_type or "").lower()
-        
+
         # 如果有自定义间隔，优先使用 Custom
         if task_info.interval_days > 1 or task_info.interval_hours > 0:
             trigger_index = 4  # Custom
@@ -517,7 +517,7 @@ class ModifyScheduleTaskDialog(MessageBoxBase):
             trigger_index = 3
         else:
             trigger_index = 0  # Daily 作为默认值
-            
+
         self.trigger_combo.setCurrentIndex(trigger_index)
         self.trigger_combo.setFixedHeight(34)
         self.trigger_combo.currentIndexChanged.connect(self._on_trigger_type_changed)
@@ -751,8 +751,8 @@ class TaskSchedulerTab(Tab):
     def __init__(self):
         super().__init__()
         self.config = main_config
-        self.schedule_manager: Optional[WindowsScheduleManager] = None
-        self.task_table: Optional[ScheduleTaskTable] = None
+        self.schedule_manager: WindowsScheduleManager | None = None
+        self.task_table: ScheduleTaskTable | None = None
         self.refreshing = False
         self.icon = FluentIcon.CALENDAR  # 设置侧边栏图标
         self.tasks_loaded.connect(self.on_tasks_loaded)
@@ -816,7 +816,7 @@ class TaskSchedulerTab(Tab):
             logger.error(f"Failed to load tasks: {e}")
             self.show_error(og.app.tr("Failed to load tasks") + f": {e}")
 
-    def render_tasks(self, tasks: List[ScheduleTaskInfo]):
+    def render_tasks(self, tasks: list[ScheduleTaskInfo]):
         """渲染任务列表（智能更新，只在数据变化时重新渲染）"""
         # 构建新任务字典
         new_tasks_dict = {task.name: task for task in tasks}
@@ -878,7 +878,7 @@ class TaskSchedulerTab(Tab):
 
         return False
 
-    def on_tasks_loaded(self, tasks: List[ScheduleTaskInfo]):
+    def on_tasks_loaded(self, tasks: list[ScheduleTaskInfo]):
         """后台刷新完成后在主线程更新 UI"""
         self.refreshing = False
         self.refresh_btn.setEnabled(True)

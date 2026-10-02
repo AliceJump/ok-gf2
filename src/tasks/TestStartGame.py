@@ -1,6 +1,8 @@
-from src.core.BaseGfTask import BaseGfTask
 from ok import TaskDisabledException
-import time
+
+from src.core.BaseGfTask import BaseGfTask
+
+
 class TestStartGame(BaseGfTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -9,6 +11,7 @@ class TestStartGame(BaseGfTask):
         self.add_exit_after_config()
         self.default_config.update({"回到主页后等待的时间": 15, "Exit After Task": True})
         self.support_schedule_task = True
+
     def run(self):
         try:
             self.ensure_main(time_out=120)

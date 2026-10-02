@@ -12,12 +12,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.tasks.DailyTaskRunner import DailyTaskRunner  # noqa: E402
-from src.tasks.daily_summary import (  # noqa: E402
+from src.tasks.daily_summary import (
     build_summary_lines,
     create_task_summary_report,
     iter_summary_candidates,
 )
+from src.tasks.DailyTaskRunner import DailyTaskRunner
 
 
 class StubTask:
@@ -181,5 +181,5 @@ class TestSummaryReport(unittest.TestCase):
         self.assertIn("裸任务执行情况汇总", lines[0])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
