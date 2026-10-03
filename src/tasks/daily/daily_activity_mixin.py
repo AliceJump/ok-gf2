@@ -69,18 +69,25 @@ class DailyActivityMixin:
                 self.log_error("没检测到活动层页面")
                 completed = False
             self.ensure_main(time_out=60)
-        if self.config.get("活动层浇花", True):
-            self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
-            if self.is_free_layer():
+        # 奖励领取属于活动层本身；即使关闭浇花，也要进入一次 F2 面板处理逸趣导算奖励。
+        self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
+        if self.is_free_layer():
+            if self.config.get("活动层浇花", True):
                 completed = self.water_flowers() and completed
+            elif self._ensure_activity_panel():
+                self._claim_activity_panel_rewards()
             else:
-                self.log_error("没检测到活动层页面，跳过浇花")
                 completed = False
-            self.ensure_main(time_out=60)
+        else:
+            self.log_error("没检测到活动层页面，跳过领奖和浇花")
+            completed = False
+        self.ensure_main(time_out=60)
         return completed
 
     def _ensure_activity_panel(self):
-        panel_match = re.compile(r"逸\s*趣\s*事\s*件|宜\s*居\s*值|栽\s*培|生\s*长\s*阶\s*段|浇\s*灌")
+        panel_match = re.compile(
+            r"逸\s*趣(?:\s*导\s*算|\s*事\s*件)?|宜\s*居\s*值|栽\s*培|生\s*长\s*阶\s*段|浇\s*灌|一\s*键\s*领\s*取"
+        )
         panel_box = self.box_of_screen(0.13, 0.16, 0.87, 0.82)
 
         def is_open(timeout):
@@ -88,7 +95,7 @@ class DailyActivityMixin:
                 self.wait_ocr(match=panel_match, box=panel_box, time_out=timeout, raise_if_not_found=False, log=True)
             )
 
-        # 已打开时不要再次按 F2，以免把面板关闭。
+        # 已打开时不要再次按 F2，以免把面板关闭。领奖态也属于已打开状态。
         if is_open(1):
             self.log_info("活动层面板已打开")
             return True
@@ -110,13 +117,36 @@ class DailyActivityMixin:
             if is_open(4):
                 self.log_info("点击入口后已确认活动层面板打开")
                 return True
-        self.log_error("活动层 F2 面板未打开：按键重试及入口点击未成功，跳过浇花")
+        self.log_error("活动层 F2 面板未打开：按键重试及入口点击未成功，跳过领奖和浇花")
         return False
+
+    def _claim_activity_panel_rewards(self):
+        """领取逸趣导算进度奖励，并关闭每次领取后的通用奖励弹层。"""
+        claim_match = re.compile(r"一\s*键\s*领\s*取")
+        claim_box = self.box_of_screen(0.10, 0.08, 0.95, 0.90)
+        claimed = False
+        for _ in range(5):
+            if not self.wait_click_ocr(
+                match=claim_match,
+                box=claim_box,
+                time_out=1,
+                raise_if_not_found=False,
+                after_sleep=0.5,
+                log=True,
+            ):
+                break
+            claimed = True
+            self.wait_pop_up(time_out=6, count=1)
+        if claimed:
+            self.log_info("活动层逸趣导算进度奖励已领取")
+        return claimed
 
     def water_flowers(self):
         self.info_set("current_task", "water_flowers")
         if not self._ensure_activity_panel():
             return False
+        # F2 可能先停在逸趣导算奖励页；先处理奖励，再导航到栽培。
+        self._claim_activity_panel_rewards()
         watering_match = re.compile(r"浇\s*灌")
         # F2 可能直接选中栽培页；优先识别内容，避免依赖选中页签的黑字。
         on_watering_page = self.wait_ocr(match=watering_match, box=self.box.right, time_out=2, raise_if_not_found=False)
