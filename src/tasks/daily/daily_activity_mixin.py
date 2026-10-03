@@ -88,7 +88,7 @@ class DailyActivityMixin:
         panel_match = re.compile(
             r"逸\s*趣(?:\s*导\s*算|\s*事\s*件)?|宜\s*居\s*值|栽\s*培|生\s*长\s*阶\s*段|浇\s*灌|一\s*键\s*领\s*取"
         )
-        panel_box = self.box_of_screen(0.10, 0.08, 0.95, 0.90)
+        panel_box = self.box_of_screen(0.13, 0.16, 0.87, 0.82)
 
         def is_open(timeout):
             return bool(
@@ -117,7 +117,7 @@ class DailyActivityMixin:
             if is_open(4):
                 self.log_info("点击入口后已确认活动层面板打开")
                 return True
-        self.log_error("活动层 F2 面板未打开：按键重试及入口点击未成功，跳过浇花")
+        self.log_error("活动层 F2 面板未打开：按键重试及入口点击未成功，跳过领奖和浇花")
         return False
 
     def _claim_activity_panel_rewards(self):
