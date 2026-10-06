@@ -115,5 +115,5 @@ jobs:
           gh api repos/"$GITHUB_REPOSITORY"/dispatches \
             -X POST \
             -f event_type="auto-release" \
-            -f client_payload.tag="$next"
+            -F "client_payload[tag]=$next"
           echo "Dispatched repository_dispatch for $next"
