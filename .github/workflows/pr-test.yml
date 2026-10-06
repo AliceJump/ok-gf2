@@ -38,6 +38,41 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Run actionlint
+        shell: pwsh
+        run: |
+          $version = "1.7.12"
+          $archive = Join-Path $env:RUNNER_TEMP "actionlint.zip"
+          $toolDir = Join-Path $env:RUNNER_TEMP "actionlint"
+          $expected = "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
+          $url = "https://github.com/rhysd/actionlint/releases/download/v$version/actionlint_${version}_windows_amd64.zip"
+
+          Invoke-WebRequest -Uri $url -OutFile $archive
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "actionlint archive checksum mismatch: $actual"
+          }
+
+          New-Item -ItemType Directory -Path $toolDir -Force | Out-Null
+          Expand-Archive -LiteralPath $archive -DestinationPath $toolDir -Force
+          $actionlint = Get-ChildItem -LiteralPath $toolDir -Filter "actionlint.exe" -Recurse -File | Select-Object -First 1
+          if (-not $actionlint) {
+            throw "actionlint.exe not found in downloaded archive"
+          }
+
+          $workflowFiles = @(
+            Get-ChildItem -LiteralPath ".github/workflows" -File |
+              Where-Object { $_.Extension -in ".yml", ".yaml" }
+          )
+          if ($workflowFiles.Count -eq 0) {
+            throw "No workflow YAML files found"
+          }
+          $workflowPaths = @($workflowFiles.FullName)
+          & $actionlint.FullName @workflowPaths
+          if ($LASTEXITCODE -ne 0) {
+            throw "actionlint failed"
+          }
+
       - name: Output immutable commit SHA
         id: sha
         shell: pwsh
