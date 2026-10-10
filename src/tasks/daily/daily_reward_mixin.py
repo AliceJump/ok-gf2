@@ -79,10 +79,11 @@ class DailyRewardMixin:
             self.log_info("未确认进入每日行动页面，跳过领取")
             self.ensure_main()
             return False
-        # 单项“领取”也在右下半屏，只匹配底部的一键领取，避免仅领取一项就离开。
+        # 单项“领取”也在右下半屏，只匹配一键领取，避免仅领取一项就离开。
         # 分别确认行动里程和巡录道具，不能用行动按钮是否存在决定整项成败。
-        action_box = self.box_of_screen(0.70, 0.88, 1, 1)
-        claim_match = re.compile(r"^一\s*键\s*领\s*取$")
+        action_box = self.box_of_screen(0.50, 0.50, 1, 1)
+        # 兼容 OCR 漏掉首字“一”，仍排除单项“领取”；点击后复查共用此规则。
+        claim_match = re.compile(r"^(?:一\s*)?键\s*领\s*取$")
         clicked = self.wait_click_ocr(
             match=[claim_match], box=action_box, time_out=4, raise_if_not_found=False, after_sleep=1
         )
@@ -107,7 +108,11 @@ class DailyRewardMixin:
             self.ensure_main()
             return False
         if self.wait_click_ocr(
-            match=[claim_match], box=self.box.bottom_right, time_out=4, raise_if_not_found=False, after_sleep=1
+            match=[claim_match],
+            box=self.box_of_screen(0.50, 0.80, 1, 1),
+            time_out=4,
+            raise_if_not_found=False,
+            after_sleep=1,
         ):
             reward_result = self._claim_xunlu_rewards()
         else:
@@ -180,7 +185,8 @@ class DailyRewardMixin:
 
     def _claim_xunlu_rewards(self):
         # 自选补给包可能直接出现，也可能跟在普通奖励确认之后。
-        pack_title = re.compile(r"^拂晓之光补给包$")
+        # 两种补给包共用已有奖励选择，逐页选择后仍需确认获得道具。
+        pack_title = re.compile(r"^\s*(?:拂\s*晓\s*之\s*光|破\s*晓\s*天\s*光)\s*补\s*给\s*包\s*$")
         reward_title = re.compile(r"^领取奖励$")
         # 「获得道具」是奖励到账的正面证据，缺少它不能判定领取成功。
         obtained_title = re.compile(r"^获得道具$")

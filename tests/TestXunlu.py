@@ -31,7 +31,7 @@ class XunluTest(unittest.TestCase):
                 self.assertEqual(task.box.top, calls[1].kwargs["box"])
                 self.assertTrue(calls[2].kwargs["match"][0].fullmatch("一键领取"))
                 self.assertFalse(calls[2].kwargs["match"][0].fullmatch("领取"))
-                self.assertEqual((0.70, 0.88, 1, 1), calls[2].kwargs["box"])
+                self.assertEqual((0.50, 0.50, 1, 1), calls[2].kwargs["box"])
                 task._switch_xunlu_rewards_page.assert_called_once()
                 task._claim_xunlu_rewards.assert_called_once()
                 for call in task.wait_click_ocr.call_args_list:
