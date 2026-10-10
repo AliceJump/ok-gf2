@@ -17,6 +17,7 @@ class XunluRewardsTest(unittest.TestCase):
         show_obtained=True,
         next_buttons=0,
         missing_after=None,
+        advance_next=False,
     ):
         task = Mock()
         task.config = {}
@@ -27,7 +28,11 @@ class XunluRewardsTest(unittest.TestCase):
         clicks = []
 
         def ocr(**kwargs):
-            return [SimpleNamespace(name=pages[0])] if pages else []
+            return (
+                [SimpleNamespace(name=pages[0])]
+                if pages and any(pattern.search(pages[0]) for pattern in kwargs["match"])
+                else []
+            )
 
         def click(**kwargs):
             nonlocal next_buttons
@@ -37,13 +42,15 @@ class XunluRewardsTest(unittest.TestCase):
                     return False
                 clicks.append(reward)
                 return True
-            expected = ("下一个" if next_buttons else "开启") if pages[0] == "拂晓之光补给包" else "确认"
+            expected = ("下一个" if next_buttons else "开启") if "补给包" in pages[0].replace(" ", "") else "确认"
             if not pattern.search(expected):
                 return False
             clicks.append(expected)
             if not stuck:
                 if expected == "下一个":
                     next_buttons -= 1
+                    if advance_next:
+                        pages.pop(0)
                 else:
                     pages.pop(0)
             return True
@@ -52,6 +59,35 @@ class XunluRewardsTest(unittest.TestCase):
         task.wait_ocr.side_effect = ocr
         task.wait_click_ocr.side_effect = click
         return task, clicks
+
+    def test_dawn_pack_is_claimed(self):
+        for title in ("破晓天光补给包", " 破 晓 天 光 补 给 包 "):
+            with self.subTest(title=title):
+                task, clicks = self.task([title])
+                self.assertIs(True, claim(task))
+                self.assertEqual(["数据链路", "开启"], clicks)
+
+    def test_mixed_pack_pages_reselect_before_opening(self):
+        task, clicks = self.task(["拂晓之光补给包", "破晓天光补给包"], next_buttons=1, advance_next=True)
+        self.assertIs(True, claim(task))
+        self.assertEqual(["数据链路", "下一个", "数据链路", "开启"], clicks)
+
+    def test_mixed_pack_missing_reward_never_opens(self):
+        task, clicks = self.task(
+            ["拂晓之光补给包", "破晓天光补给包"], next_buttons=1, advance_next=True, missing_after=1
+        )
+        self.assertIs(False, claim(task))
+        self.assertEqual(["数据链路", "下一个"], clicks)
+
+    def test_dawn_pack_requires_obtained_confirmation(self):
+        task, clicks = self.task(["破晓天光补给包"], show_obtained=False)
+        self.assertEqual("待核查", claim(task))
+        self.assertEqual(["数据链路", "开启"], clicks)
+
+    def test_unknown_pack_is_not_claimed(self):
+        task, clicks = self.task(["未知补给包"])
+        self.assertEqual("待核查", claim(task))
+        self.assertEqual([], clicks)
 
     def test_popup_orders_and_repeated_packs(self):
         for pages in (
