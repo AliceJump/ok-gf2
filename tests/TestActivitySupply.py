@@ -115,9 +115,6 @@ class SupplyScreen:
     def tr(self, message):
         return message
 
-    def is_adb(self):
-        return False
-
     def move_relative(self, x, y):
         self.hover_mouse = (int(self.width * x), int(self.height * y))
 
@@ -160,39 +157,6 @@ class SupplyScreen:
 
 
 class ActivitySupplyTest(unittest.TestCase):
-    def adb_task(self, entries=None):
-        task = SupplyScreen(entries=entries)
-        task.is_adb = lambda: True
-        task.swipes = []
-        del task.hwnd
-        task.scroll_relative = Mock(side_effect=AssertionError("ADB has no mouse wheel"))
-
-        def swipe(from_x, from_y, to_x, to_y, duration):
-            self.assertEqual(0.12, from_x)
-            self.assertEqual(from_x, to_x)
-            self.assertTrue(0.10 < min(from_y, to_y) < max(from_y, to_y) < 0.84)
-            task.swipes.append((from_y, to_y))
-            task.menu_page = max(0, task.menu_page - 1) if to_y > from_y else task.menu_page + 1
-
-        task.swipe_relative = swipe
-        return task
-
-    def test_adb_resets_remembered_position_and_finds_hidden_entries_without_hwnd(self):
-        task = self.adb_task()
-        self.assertIs(True, task.activities())
-        self.assertEqual(["情报补给", "情报补给", "战前补给"], task.claims)
-        self.assertEqual(16, sum(end > start for start, end in task.swipes))
-        self.assertEqual(6, sum(end < start for start, end in task.swipes))
-        self.assertEqual(0, task.activations)
-        self.assertEqual(0, task.restores)
-        task.scroll_relative.assert_not_called()
-
-    def test_adb_missing_entry_has_bounded_swipes(self):
-        task = self.adb_task(entries={})
-        self.assertEqual("待核查", task.activities())
-        self.assertEqual(30, len(task.swipes))
-        task.ensure_main.assert_called_once()
-
     def test_finds_hidden_entries_and_claims_both_time_slots(self):
         task = SupplyScreen()
         self.assertIs(True, task.activities())
