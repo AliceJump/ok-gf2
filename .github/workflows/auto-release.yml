@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check changes in deploy.txt paths since last tag
+      - name: Check release-relevant changes since last tag
         id: check
         run: |
           set -euo pipefail
@@ -36,8 +36,6 @@ jobs:
             [ -z "$line" ] && continue
             watched+=("$line")
           done
-          echo "watched paths: ${watched[*]}"
-
           last_tag=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 || true)
           echo "last_tag=${last_tag:-<none>}"
           echo "last_tag=$last_tag" >> "$GITHUB_OUTPUT"
@@ -48,6 +46,16 @@ jobs:
             echo "no watched paths in deploy.txt; skip release"
             exit 0
           fi
+
+          # 部署清单也包含文档和统计图；它们参与同步，但不触发发版。
+          watched+=(
+            ':(top,exclude)assets/downloads.svg'
+            ':(top,glob,icase,exclude)**/*.md'
+            ':(top,glob,icase,exclude)**/*.markdown'
+            ':(top,glob,icase,exclude)**/*.rst'
+            ':(top,glob,icase,exclude)**/*.adoc'
+          )
+          echo "watched paths: ${watched[*]}"
 
           if [ -z "$last_tag" ]; then
             latest_commit=$(git log --topo-order --format=%H -- "${watched[@]}" | head -n 1 || true)
