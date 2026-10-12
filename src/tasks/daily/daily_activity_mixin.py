@@ -2,7 +2,8 @@
 
 import re
 
-from src.core.BaseGfTask import map_re, parse_time_option
+from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
+from src.interaction.Mouse import active_and_send_mouse_delta, run_at_window_pos, run_in_window
 from src.tasks.daily.daily_common_mixin import (
     chapter_suffix_re,
     down_chapter_re,
@@ -16,15 +17,106 @@ activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours
 class DailyActivityMixin:
     def activities(self):
         self.info_set("current_task", "activity_stamina")
-        self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=0.5, raise_if_not_found=True)
-        reward_activities = ["情报补给", "战前补给"]
-        for reward_activity in reward_activities:
-            if self.wait_click_ocr(match=reward_activity, box=self.box.left, time_out=3, raise_if_not_found=False):
-                while self.wait_click_ocr(
-                    match=["领取"], box=self.box.right, time_out=3, raise_if_not_found=False, after_sleep=0.2
-                ):
-                    self.wait_pop_up(time_out=6, count=1)
-        self.ensure_main()
+        if self.is_adb():
+            return self._collect_supply_activities()
+        # 整个补给流程只恢复一次原窗口，避免每次滚动都来回切换。
+        return run_in_window(self.hwnd.hwnd, self._collect_supply_activities)
+
+    def _collect_supply_activities(self):
+        checked = False
+        uncertain = False
+        try:
+            self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=1, raise_if_not_found=True)
+            for reward_activity in ("情报补给", "战前补给"):
+                self.info_set(reward_activity, "检查中")
+                if not self._open_supply_activity(reward_activity):
+                    if reward_activity == "情报补给":
+                        self.info_set(reward_activity, "待核查：未找到入口")
+                        uncertain = True
+                    else:
+                        self.info_set(reward_activity, "未找到入口，跳过")
+                    self.log_info(f"{reward_activity}：滚动搜索后未找到入口")
+                    continue
+                checked = True
+                if self._claim_supply_activity(reward_activity) == "待核查":
+                    uncertain = True
+            if not checked:
+                self.log_info("情报和战前补给：未找到任何补给入口，结果待核查")
+            return "待核查" if uncertain or not checked else True
+        finally:
+            self.ensure_main()
+
+    def _open_supply_activity(self, reward_activity):
+        menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
+        match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
+        # 活动列表会记住滚动位置；从顶部开始，覆盖藏在列表下方的补给入口。
+        self._scroll_supply_menu(30)
+        for page in range(8):
+            if self.wait_click_ocr(
+                match=match, box=menu_box, time_out=1, raise_if_not_found=False, after_sleep=0.6, log=True
+            ):
+                return True
+            if page < 7:
+                self._scroll_supply_menu(-3)
+        return False
+
+    def _scroll_supply_menu(self, count):
+        # Unity 滚动列表需要真实鼠标和悬停事件都在列表内。
+        # Genshin 后台滚轮会恢复鼠标，必须保持前台直到滚动帧更新。
+        x, y = 0.12, 0.60
+        if self.is_adb():
+            # ADB 没有滚轮实现；多次下滑复位，再逐页上滑查找。
+            for _ in range(8 if count > 0 else 1):
+                start_y, end_y = (0.30, 0.80) if count > 0 else (0.75, 0.40)
+                self.swipe_relative(x, start_y, x, end_y, duration=0.3)
+                self.sleep(0.2)
+            self.sleep(0.6)
+            return
+
+        def scroll_with_hover():
+            self.move_relative(x, y)
+            self.sleep(0.2)
+            self.scroll_relative(x, y, count)
+            self.sleep(0.6)
+
+        self._ensure_supply_foreground()
+        run_at_window_pos(self.hwnd.hwnd, scroll_with_hover, int(self.width * x), int(self.height * y), sleep_time=0.2)
+
+    def _ensure_supply_foreground(self):
+        if not self.is_adb():
+            # 此函数内部会检查当前前台窗口；只有焦点被打断才重新激活。
+            active_and_send_mouse_delta(self.hwnd.hwnd, only_activate=True)
+
+    def _claim_supply_activity(self, reward_activity):
+        page_match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
+        claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
+        empty_match = re.compile(r"已\s*领\s*取|暂无可领取|未到领取时间|未到开放时间")
+        claimed = 0
+        for _ in range(10):
+            self._ensure_supply_foreground()
+            if not self.wait_ocr(match=page_match, box=self.box.right, time_out=3, raise_if_not_found=False):
+                self.info_set(reward_activity, "待核查：未确认补给页面")
+                return "待核查"
+            # 必须完整匹配，不能把「已领取」当成「领取」反复点击。
+            if not self.wait_click_ocr(
+                match=claim_match, box=self.box.right, time_out=2, raise_if_not_found=False, after_sleep=0.3
+            ):
+                if claimed:
+                    self.info_set(reward_activity, self.tr("已确认领取 {count} 次").format(count=claimed))
+                    self.log_info(f"{reward_activity}：已确认领取 {claimed} 次")
+                    return True
+                if self.wait_ocr(match=empty_match, box=self.box.right, time_out=1, raise_if_not_found=False):
+                    self.info_set(reward_activity, "已领取或未到领取时间")
+                    return True
+                self.info_set(reward_activity, "待核查：未识别到领取按钮或领取状态")
+                return "待核查"
+            if not self.wait_ocr(match=pop_ups, box=self.box.bottom, time_out=5, raise_if_not_found=False):
+                self.info_set(reward_activity, "待核查：点击后未确认奖励弹窗")
+                return "待核查"
+            self.wait_pop_up(time_out=6, count=1)
+            claimed += 1
+        self.info_set(reward_activity, "待核查：领取按钮持续出现")
+        return "待核查"
 
     def free_time_layer(self):
         self.info_set("current_task", "free_time_layer")

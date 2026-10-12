@@ -1,5 +1,6 @@
 # ===== device layer =====
 import ctypes
+import ctypes.wintypes
 import time
 
 import win32gui
