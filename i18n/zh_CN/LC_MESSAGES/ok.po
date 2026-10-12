@@ -347,3 +347,37 @@ msgstr "不再提示"
 
 msgid "关闭"
 msgstr "关闭"
+
+
+msgid "情报补给"
+msgstr "情报补给"
+
+msgid "战前补给"
+msgstr "战前补给"
+
+msgid "检查中"
+msgstr "检查中"
+
+msgid "待核查：未找到入口"
+msgstr "待核查：未找到入口"
+
+msgid "未找到入口，跳过"
+msgstr "未找到入口，跳过"
+
+msgid "待核查：未确认补给页面"
+msgstr "待核查：未确认补给页面"
+
+msgid "已确认领取 {count} 次"
+msgstr "已确认领取 {count} 次"
+
+msgid "已领取或未到领取时间"
+msgstr "已领取或未到领取时间"
+
+msgid "待核查：未识别到领取按钮或领取状态"
+msgstr "待核查：未识别到领取按钮或领取状态"
+
+msgid "待核查：点击后未确认奖励弹窗"
+msgstr "待核查：点击后未确认奖励弹窗"
+
+msgid "待核查：领取按钮持续出现"
+msgstr "待核查：领取按钮持续出现"

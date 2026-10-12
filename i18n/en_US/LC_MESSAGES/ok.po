@@ -350,3 +350,37 @@ msgstr "Don't show again"
 
 msgid "关闭"
 msgstr "Close"
+
+
+msgid "情报补给"
+msgstr "Intelligence Supply"
+
+msgid "战前补给"
+msgstr "Pre-battle Supply"
+
+msgid "检查中"
+msgstr "Checking"
+
+msgid "待核查：未找到入口"
+msgstr "Needs review: entry not found"
+
+msgid "未找到入口，跳过"
+msgstr "Entry not found; skipped"
+
+msgid "待核查：未确认补给页面"
+msgstr "Needs review: supply page not confirmed"
+
+msgid "已确认领取 {count} 次"
+msgstr "Confirmed {count} claims"
+
+msgid "已领取或未到领取时间"
+msgstr "Already claimed or not yet available"
+
+msgid "待核查：未识别到领取按钮或领取状态"
+msgstr "Needs review: claim button or status not recognized"
+
+msgid "待核查：点击后未确认奖励弹窗"
+msgstr "Needs review: reward popup not confirmed after click"
+
+msgid "待核查：领取按钮持续出现"
+msgstr "Needs review: claim button keeps appearing"
