@@ -65,7 +65,11 @@ class DailyActivityMixin:
         # Genshin 后台滚轮会恢复鼠标，必须保持前台直到滚动帧更新。
         x, y = 0.12, 0.60
         if self.is_adb():
-            self.scroll_relative(x, y, count)
+            # ADB 没有滚轮实现；多次下滑复位，再逐页上滑查找。
+            for _ in range(8 if count > 0 else 1):
+                start_y, end_y = (0.30, 0.80) if count > 0 else (0.75, 0.40)
+                self.swipe_relative(x, start_y, x, end_y, duration=0.3)
+                self.sleep(0.2)
             self.sleep(0.6)
             return
 
