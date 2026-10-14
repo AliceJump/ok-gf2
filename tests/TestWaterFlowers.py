@@ -80,6 +80,7 @@ class ActivityPanelTest(unittest.TestCase):
         self.assertFalse(ensure_panel(task))
 
     def test_water_stops_before_searching_when_panel_fails(self):
+        """Verify water stops before searching when panel fails."""
         task = Mock()
         task._ensure_activity_panel.return_value = False
         self.assertEqual("待核查", water_flowers(task))
@@ -148,12 +149,14 @@ class WaterFlowersTest(unittest.TestCase):
         return task, clicks
 
     def test_icon_prefix_from_failure_log_is_accepted(self):
+        """Verify icon prefix from failure log is accepted."""
         task, clicks = self.make_task()
         self.assertIs(True, water_flowers(task))
         self.assertEqual(["上栽培", "浇灌"], clicks)
         task.back.assert_called_once()
 
     def test_overview_requires_go_button(self):
+        """Verify overview requires go button."""
         task, clicks = self.make_task(overview=True)
         self.assertIs(True, water_flowers(task))
         self.assertEqual(["上栽培", "前往", "浇灌"], clicks)
@@ -166,11 +169,13 @@ class WaterFlowersTest(unittest.TestCase):
                 self.assertEqual(["前往", "浇灌"], clicks)
 
     def test_f2_direct_watering_page_skips_tab(self):
+        """Verify f2 direct watering page skips tab."""
         task, clicks = self.make_task(initial_page="plant", missing_tab=True)
         self.assertIs(True, water_flowers(task))
         self.assertEqual(["浇灌"], clicks)
 
     def test_unrelated_go_button_skips_watering(self):
+        """Verify unrelated go button skips watering."""
         task, clicks = self.make_task(initial_page="overview", missing_tab=True, overview_text="前往")
         self.assertEqual("待核查", water_flowers(task))
         self.assertEqual([], clicks)
@@ -210,6 +215,7 @@ class WaterFlowersTest(unittest.TestCase):
         self.assertEqual(["浇灌"], clicks)
 
     def test_missing_tab_does_not_water(self):
+        """Verify missing tab does not water."""
         task, clicks = self.make_task(missing_tab=True)
         self.assertEqual("待核查", water_flowers(task))
         self.assertEqual([], clicks)
@@ -240,6 +246,7 @@ class FoodFlowResultTest(unittest.TestCase):
 
 class WaterIntegrationTest(unittest.TestCase):
     def test_skipped_water_is_uncertain_and_returns_to_main(self):
+        """Verify skipped water is uncertain and returns to main."""
         task = Mock()
         task.config = {"活动层浇花": True}
         task.is_free_layer.return_value = True

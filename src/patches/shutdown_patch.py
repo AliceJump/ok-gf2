@@ -1,5 +1,6 @@
 """兼容 ok-script 2.0.5 的退出清理；真实权限失败仍明确报告。"""
 
+import logging
 import os
 from functools import wraps
 
@@ -9,8 +10,11 @@ _installed = False
 
 
 def guard_destroy(original, is_window):
+    """只对仍有效的游戏窗口执行原销毁逻辑。"""
+
     @wraps(original)
     def guarded(self):
+        """跳过已失效窗口，避免退出时激活不存在的窗口。"""
         hwnd = self.hwnd_window.hwnd
         if hwnd and is_window(hwnd):
             return original(self)
@@ -20,6 +24,7 @@ def guard_destroy(original, is_window):
 
 
 def stop_launcher(pid, executable, timeout, process_factory, logger):
+    """核对进程路径后终止启动器，返回是否退出并报告权限失败。"""
     if not pid or not executable:
         return False
     try:
@@ -40,6 +45,7 @@ def stop_launcher(pid, executable, timeout, process_factory, logger):
 
 
 def install_shutdown_patch():
+    """幂等安装退出保护，兼容普通和 DML 依赖中的日志接口。"""
     global _installed
     if _installed:
         return
@@ -50,10 +56,15 @@ def install_shutdown_patch():
     GenshinInteraction.on_destroy = guard_destroy(GenshinInteraction.on_destroy, win32gui.IsWindow)
 
     def kill_launcher(timeout=30, exit_event=None):
+        """取消退出时不终止启动器，缺少私有日志接口时使用标准日志。"""
         if exit_event is not None and exit_event.is_set():
             return False
         return stop_launcher(
-            pyappify.pid, pyappify.pyappify_executable, timeout, psutil.Process, pyappify._get_logger()
+            pyappify.pid,
+            pyappify.pyappify_executable,
+            timeout,
+            psutil.Process,
+            getattr(pyappify, "_get_logger", lambda: logging.getLogger(__name__))(),
         )
 
     pyappify.kill_pyappify = kill_launcher

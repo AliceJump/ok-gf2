@@ -108,6 +108,7 @@ class DailyActivityMixin:
         return "待核查"
 
     def free_time_layer(self):
+        """执行活动层日常，区分失败和跳过结果并返回主页。"""
         self.info_set("current_task", "free_time_layer")
         completed = True
         uncertain = False
@@ -228,6 +229,7 @@ class DailyActivityMixin:
         return claimed
 
     def water_flowers(self):
+        """验证浇灌次数，无法识别栽培入口时标记待核查。"""
         self.info_set("current_task", "water_flowers")
         if not self._ensure_activity_panel():
             self.info_set("浇灌", "已跳过：未识别到栽培入口")

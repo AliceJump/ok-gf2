@@ -178,6 +178,7 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def guild(self):
+        """执行班组要务和尘烟，助战失败时返回主页并报告失败。"""
         self.info_set("current_task", "guild")
         if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
             self.click_box_by_match_position(result, "班组", after_sleep=2)
@@ -210,6 +211,7 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def chenyan(self):
+        """按当前剩余票数执行尘烟，每次作战后重新读取次数。"""
         if not self.config.get("尘烟"):
             return
         end = self.ocr(match=re.compile("前线"), box=self.box.bottom_right, log=True)
@@ -235,6 +237,7 @@ class DailyBattleMixin:
         return True
 
     def _select_chenyan_attribute(self, attr):
+        """切换助战属性，OCR 漏读时在确认列表后使用比例坐标。"""
         if self.wait_click_ocr(match=attr, box=self.box_of_screen(0.28, 0.24, 0.81, 0.29), time_out=2, after_sleep=1):
             return True
         # 选中页签和属性图标会被 OCR 漏读；只在确认助战列表后使用固定比例位置。
@@ -246,6 +249,7 @@ class DailyBattleMixin:
 
     def _scroll_chenyan_list(self, count):
         # 在输入之外检查停止状态，避免设备层吞掉任务取消异常。
+        """可取消地滚动一页，桌面端恢复原窗口和鼠标位置。"""
         self.sleep(0.01)
         executor = getattr(self, "executor", None)
         if executor is not None and executor.paused:
@@ -258,6 +262,7 @@ class DailyBattleMixin:
             scrolled = False
 
             def scroll_with_hover():
+                """悬停后检查暂停状态并发送一次滚动。"""
                 nonlocal scrolled
                 self.move_relative(0.65, 0.60)
                 self.sleep(0.1)
@@ -281,6 +286,7 @@ class DailyBattleMixin:
         return True
 
     def _find_chenyan_assist(self, name):
+        """逐页查找指定助战，找到目标或连续相同页面时立即停止。"""
         previous = None
         for page in range(100):
             self.sleep(0.01)
@@ -294,7 +300,7 @@ class DailyBattleMixin:
             visible = chars
             self.log_info(f"助战翻页搜索 {name} 第{page + 1}页: {[box.name for box in visible]}")
             signature = tuple((box.name, round(box.x / 10), round(box.y / 10)) for box in visible)
-            if signature and signature == previous:
+            if previous is not None and signature == previous:
                 self.log_info(f"助战列表未移动，结束搜索: {name}")
                 break
             previous = signature
@@ -303,6 +309,7 @@ class DailyBattleMixin:
         return None
 
     def _chenyan_candidates(self):
+        """提取卡片名称，排除等级、按钮和短装饰文字。"""
         chars = self.ocr(0.18, 0.31, 0.82, 0.79)
         valid = re.compile(
             r"^(?!.*(?:[LlVv][Vv]?\.?\s*\d|等级|战力|入队|确认|确定|心\s*\d))(?=.*[A-Za-z\u4e00-\u9fff]).{2,20}$"
@@ -314,6 +321,7 @@ class DailyBattleMixin:
         ]
 
     def _is_chenyan_list(self):
+        """确认列表标题及属性页签可见，并排除覆盖列表的弹窗。"""
         if self.ocr(
             match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案"],
             box=self.box_of_screen(0.2, 0.25, 0.8, 0.78),
@@ -325,6 +333,7 @@ class DailyBattleMixin:
         )
 
     def _restore_chenyan_list(self):
+        """取消冲突或关闭详情，False 可重试，None 表示恢复失败。"""
         self.wait_click_ocr(match="取消", box=self.box_of_screen(0.28, 0.65, 0.50, 0.75), time_out=0.5, after_sleep=0.3)
         if self._is_chenyan_list():
             return False
@@ -336,6 +345,7 @@ class DailyBattleMixin:
         return None  # 恢复失败，禁止继续使用旧列表坐标。
 
     def _try_chenyan_assist(self, char, duplicates):
+        """尝试入队，True 成功，False 可重试，None 终止流程。"""
         self.click(char, after_sleep=1)
         join = self.wait_ocr(match=["入队", "替换"], box=self.box.bottom_right, time_out=3)
         if not join:
@@ -355,6 +365,7 @@ class DailyBattleMixin:
         return True
 
     def _order_chenyan_candidates(self, chars):
+        """容忍 OCR 行位置偏移，按从上到下、每行从左到右排序。"""
         rows = []
         for char in sorted(chars, key=lambda box: box.y + box.height / 2):
             center = char.y + char.height / 2
@@ -365,6 +376,7 @@ class DailyBattleMixin:
         return [char for _, _, row in rows for char in sorted(row, key=lambda box: box.x)]
 
     def choose_chenyan(self, tickets):
+        """配置自有人形和可用助战，只有编队确认成功才启动作战。"""
         existing = self.ocr(box=self.box_of_screen(0.61, 0.69, 0.88, 0.83), match=re.compile(r"^\d+$"))
         for exist in existing:
             self.click_box(exist, after_sleep=0.1)

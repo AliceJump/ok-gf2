@@ -159,6 +159,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
     def auto_battle(
         self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False, has_dialog_behind_start=False
     ):
+        """确认战斗界面后执行自动作战；开局无法识别时抛出明确错误。"""
         self.info_set("current_task", "auto battle")
         result = self.skip_dialogs(
             end_match=["作战开始", "行动结束", "继续前进"],
