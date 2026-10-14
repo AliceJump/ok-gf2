@@ -178,6 +178,7 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def guild(self):
+        """执行班组要务和尘烟，助战失败时返回主页并报告失败。"""
         self.info_set("current_task", "guild")
         if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
             self.click_box_by_match_position(result, "班组", after_sleep=2)
@@ -195,7 +196,9 @@ class DailyBattleMixin:
                 self.log_info("每日要务已完成")
             self.back()
             self.sleep(1)
-            self.chenyan()
+            if self.chenyan() is False:
+                self.ensure_main()
+                return False
 
             self.wait_click_ocr(match=["补给"], box=self.box.bottom_right, after_sleep=0.5)
             if result := self.wait_ocr(
@@ -208,6 +211,7 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def chenyan(self):
+        """按当前剩余票数执行尘烟，每次作战后重新读取次数。"""
         if not self.config.get("尘烟"):
             return
         end = self.ocr(match=re.compile("前线"), box=self.box.bottom_right, log=True)
@@ -225,12 +229,154 @@ class DailyBattleMixin:
                 break
             self.wait_click_ocr(match="攻坚战", box=self.box.top_right, after_sleep=0.5, raise_if_not_found=True)
             self.wait_click_ocr(match="开始作战", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
-            self.choose_chenyan(tickets)
+            if not self.choose_chenyan(tickets):
+                return False
             self.sleep(2)
-            result = self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re, box=self.box.top_right)
+            result = self.wait_ocr(match=stamina_re, box=self.box.top_right, time_out=10, raise_if_not_found=True)
         self.back(after_sleep=2)
+        return True
+
+    def _select_chenyan_attribute(self, attr):
+        """切换助战属性，OCR 漏读时在确认列表后使用比例坐标。"""
+        if self.wait_click_ocr(match=attr, box=self.box_of_screen(0.28, 0.24, 0.81, 0.29), time_out=2, after_sleep=1):
+            return True
+        # 选中页签和属性图标会被 OCR 漏读；只在确认助战列表后使用固定比例位置。
+        if not self.wait_ocr(match="班组助战", box=self.box_of_screen(0.35, 0.12, 0.65, 0.24), time_out=2):
+            return False
+        positions = {"物理": 0.313, "燃烧": 0.405, "电导": 0.500, "冷凝": 0.592, "酸蚀": 0.684, "浊刻": 0.776}
+        self.click_relative(positions[attr], 0.264, after_sleep=1)
+        return True
+
+    def _scroll_chenyan_list(self, count):
+        # 在输入之外检查停止状态，避免设备层吞掉任务取消异常。
+        """可取消地滚动一页，桌面端恢复原窗口和鼠标位置。"""
+        self.sleep(0.01)
+        executor = getattr(self, "executor", None)
+        if executor is not None and executor.paused:
+            return False
+        if self.is_adb():
+            self.swipe_relative(0.65, 0.72 if count > 0 else 0.40, 0.65, 0.40 if count > 0 else 0.72, duration=0.3)
+        else:
+            from src.interaction.Mouse import run_at_window_pos, run_in_window
+
+            scrolled = False
+
+            def scroll_with_hover():
+                """悬停后检查暂停状态并发送一次滚动。"""
+                nonlocal scrolled
+                self.move_relative(0.65, 0.60)
+                self.sleep(0.1)
+                if executor is not None and executor.paused:
+                    return False
+                # 焦点和悬停稳定后滚动；此时设备层不会锁住后台输入。
+                self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
+                scrolled = True
+                self.sleep(0.15)
+                return True
+
+            run_in_window(
+                self.hwnd.hwnd,
+                lambda: run_at_window_pos(
+                    self.hwnd.hwnd, scroll_with_hover, int(self.width * 0.65), int(self.height * 0.60), sleep_time=0.03
+                ),
+            )
+            if not scrolled:
+                return False
+        self.sleep(0.05)
+        return True
+
+    def _find_chenyan_assist(self, name):
+        """逐页查找指定助战，找到目标或连续相同页面时立即停止。"""
+        previous = None
+        for page in range(100):
+            self.sleep(0.01)
+            executor = getattr(self, "executor", None)
+            if executor is not None and executor.paused:
+                return None
+            chars = self.ocr(0.18, 0.31, 0.82, 0.79)
+            found = next((char for char in chars if char.name == name), None)
+            if found is not None:
+                return found
+            visible = chars
+            self.log_info(f"助战翻页搜索 {name} 第{page + 1}页: {[box.name for box in visible]}")
+            signature = tuple((box.name, round(box.x / 10), round(box.y / 10)) for box in visible)
+            if previous is not None and signature == previous:
+                self.log_info(f"助战列表未移动，结束搜索: {name}")
+                break
+            previous = signature
+            if page < 99 and self._scroll_chenyan_list(1) is False:
+                return None
+        return None
+
+    def _chenyan_candidates(self):
+        """提取卡片名称，排除等级、按钮和短装饰文字。"""
+        chars = self.ocr(0.18, 0.31, 0.82, 0.79)
+        valid = re.compile(
+            r"^(?!.*(?:[LlVv][Vv]?\.?\s*\d|等级|战力|入队|确认|确定|心\s*\d))(?=.*[A-Za-z\u4e00-\u9fff]).{2,20}$"
+        )
+        return [
+            char
+            for char in chars
+            if valid.fullmatch(char.name) and (re.search(r"[\u4e00-\u9fff]", char.name) or len(char.name) >= 3)
+        ]
+
+    def _is_chenyan_list(self):
+        """确认列表标题及属性页签可见，并排除覆盖列表的弹窗。"""
+        if self.ocr(
+            match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案"],
+            box=self.box_of_screen(0.2, 0.25, 0.8, 0.78),
+        ):
+            return False
+        return bool(
+            self.wait_ocr(match="班组助战", box=self.box_of_screen(0.35, 0.12, 0.65, 0.24), time_out=1)
+            and self.ocr(0.28, 0.24, 0.81, 0.29, match=["物理", "酸蚀", "浊刻", "燃烧", "冷凝", "电导"])
+        )
+
+    def _restore_chenyan_list(self):
+        """取消冲突或关闭详情，False 可重试，None 表示恢复失败。"""
+        self.wait_click_ocr(match="取消", box=self.box_of_screen(0.28, 0.65, 0.50, 0.75), time_out=0.5, after_sleep=0.3)
+        if self._is_chenyan_list():
+            return False
+        for _ in range(2):
+            self.back(after_sleep=1)
+            if self._is_chenyan_list():
+                return False  # 列表已恢复，可以尝试下一位。
+        self.log_error("未能返回助战列表，停止本次尘烟作战")
+        return None  # 恢复失败，禁止继续使用旧列表坐标。
+
+    def _try_chenyan_assist(self, char, duplicates):
+        """尝试入队，True 成功，False 可重试，None 终止流程。"""
+        self.click(char, after_sleep=1)
+        join = self.wait_ocr(match=["入队", "替换"], box=self.box.bottom_right, time_out=3)
+        if not join:
+            self.screenshot("chenyan_join_missing")
+            # 国际服详情页文字可能是英文；无论详情文字是否可识别，都返回列表。
+            return self._restore_chenyan_list()
+        self.click_box(join, after_sleep=1)
+        result = self.wait_ocr(match=["确认", "确定"], box=self.box.bottom_right, time_out=3)
+        if not result:
+            self.screenshot("chenyan_confirm_missing")
+            return self._restore_chenyan_list()
+        if any(box.name == "确认" for box in result):
+            duplicates.add(char.name)
+            self.log_info(f"duplicate char {sorted(duplicates)}")
+            return self._restore_chenyan_list()
+        self.log_info(f"助战已入队: {char.name}")
+        return True
+
+    def _order_chenyan_candidates(self, chars):
+        """容忍 OCR 行位置偏移，按从上到下、每行从左到右排序。"""
+        rows = []
+        for char in sorted(chars, key=lambda box: box.y + box.height / 2):
+            center = char.y + char.height / 2
+            if rows and abs(center - rows[-1][0]) <= max(char.height, rows[-1][1]) / 2:
+                rows[-1][2].append(char)
+            else:
+                rows.append((center, char.height, [char]))
+        return [char for _, _, row in rows for char in sorted(row, key=lambda box: box.x)]
 
     def choose_chenyan(self, tickets):
+        """配置自有人形和可用助战，只有编队确认成功才启动作战。"""
         existing = self.ocr(box=self.box_of_screen(0.61, 0.69, 0.88, 0.83), match=re.compile(r"^\d+$"))
         for exist in existing:
             self.click_box(exist, after_sleep=0.1)
@@ -263,30 +409,21 @@ class DailyBattleMixin:
             "琼玖",
         ]
         selected = False
-        my_chars = []
+        my_chars = set()
+        # 排除顶部属性/装饰区；允许国际服名称和未录入角色表的新角色。
 
         for name, m in [(i, self.get_role_by_name(i)) for i in priority]:
-            self.wait_click_ocr(match=m, time_out=2, after_sleep=2)
-
-            chars = self.ocr(0.18, 0.27, 0.82, 0.79, match=re.compile(r"^\D*$"))
-            solved_chars = [char for char in chars if char.name == name]
-
-            if not solved_chars:
+            if not m or not self._select_chenyan_attribute(m):
                 continue
 
-            self.click(solved_chars[0], after_sleep=1)
-
-            join = self.ocr(match="入队", box=self.box.bottom_right)
-            if not join:
+            char = self._find_chenyan_assist(name)
+            if char is None:
                 continue
 
-            self.click_box(join, after_sleep=1)
-
-            if self.ocr(box=self.box.bottom_right, match="确认"):
-                my_chars.append(name)
-                self.back(after_sleep=1)
-                self.log_info(f"duplicate char {my_chars}")
-            else:
+            joined = self._try_chenyan_assist(char, my_chars)
+            if joined is None:
+                return False
+            if joined:
                 selected = True
                 break
         if not selected:
@@ -295,27 +432,19 @@ class DailyBattleMixin:
             attr_order = ["物理", "酸蚀", "浊刻", "燃烧", "冷凝", "电导"]
 
             for attr in attr_order:
-                self.wait_click_ocr(match=attr, time_out=2, after_sleep=2)
+                if not self._select_chenyan_attribute(attr):
+                    continue
 
-                chars = self.ocr(0.18, 0.27, 0.82, 0.79, match=re.compile(r"^\D*$"))
+                chars = self._order_chenyan_candidates(self._chenyan_candidates())
 
                 for char in chars:
                     if char.name in my_chars:
                         continue
 
-                    self.click(char, after_sleep=1)
-
-                    join = self.ocr(match="入队", box=self.box.bottom_right)
-                    if not join:
-                        continue
-
-                    self.click_box(join, after_sleep=1)
-
-                    if self.ocr(box=self.box.bottom_right, match="确认"):
-                        my_chars.append(char.name)
-                        self.back(after_sleep=1)
-                        self.log_info(f"duplicate char {char.name}")
-                    else:
+                    joined = self._try_chenyan_assist(char, my_chars)
+                    if joined is None:
+                        return False
+                    if joined:
                         self.log_info(f"fallback joined char: {char.name}")
                         selected = True
                         break
@@ -323,5 +452,11 @@ class DailyBattleMixin:
                 if selected:
                     break
 
-        self.wait_click_ocr(match="确定", box=self.box.bottom_right)
+        if not selected:
+            self.log_error("未找到可入队的助战角色，停止本次尘烟作战")
+            return False
+        if not self.wait_click_ocr(match="确定", box=self.box.bottom_right, time_out=5):
+            self.log_error("助战入队后未找到编队确定按钮，停止本次尘烟作战")
+            return False
         self.auto_battle("开始作战", self.box.bottom_right)
+        return True
