@@ -21,12 +21,14 @@ free_time_layer = ns["free_time_layer"]
 
 class ActivityPanelRewardRegressionTest(unittest.TestCase):
     def test_reward_or_leisure_page_counts_as_open_without_toggling_f2(self):
+        """Verify reward or leisure page counts as open without toggling f2."""
         for visible_text in ("逸趣导算", "一键领取"):
             with self.subTest(visible_text=visible_text):
                 task = Mock()
                 task.box_of_screen.side_effect = lambda *bounds: bounds
 
-                def ocr(*, match, **kwargs):
+                def ocr(*, match, visible_text=visible_text, **kwargs):
+                    """Return fixture boxes matching the visible page and requested text."""
                     return [object()] if isinstance(match, re.Pattern) and match.search(visible_text) else []
 
                 task.wait_ocr.side_effect = ocr
@@ -60,6 +62,23 @@ class ActivityPanelRewardRegressionTest(unittest.TestCase):
         task.water_flowers.assert_not_called()
         self.assertEqual(2, task.do_food_flow.call_count)
         self.assertEqual(3, task.ensure_main.call_count)
+
+    def test_missing_first_character_in_claim_button_is_accepted(self):
+        """Verify missing first character in claim button is accepted."""
+        task = Mock()
+        task.box_of_screen.side_effect = lambda *bounds: bounds
+        state = {"claimed": False}
+
+        def click(*, match, **kwargs):
+            """Apply the selected fixture button or candidate transition."""
+            if not state["claimed"] and match.fullmatch("键领取"):
+                state["claimed"] = True
+                return True
+            return False
+
+        task.wait_click_ocr.side_effect = click
+        self.assertTrue(claim_rewards(task))
+        self.assertTrue(state["claimed"])
 
 
 if __name__ == "__main__":
