@@ -26,7 +26,7 @@ class ActivityPanelRewardRegressionTest(unittest.TestCase):
                 task = Mock()
                 task.box_of_screen.side_effect = lambda *bounds: bounds
 
-                def ocr(*, match, **kwargs):
+                def ocr(*, match, visible_text=visible_text, **kwargs):
                     return [object()] if isinstance(match, re.Pattern) and match.search(visible_text) else []
 
                 task.wait_ocr.side_effect = ocr
@@ -60,6 +60,21 @@ class ActivityPanelRewardRegressionTest(unittest.TestCase):
         task.water_flowers.assert_not_called()
         self.assertEqual(2, task.do_food_flow.call_count)
         self.assertEqual(3, task.ensure_main.call_count)
+
+    def test_missing_first_character_in_claim_button_is_accepted(self):
+        task = Mock()
+        task.box_of_screen.side_effect = lambda *bounds: bounds
+        state = {"claimed": False}
+
+        def click(*, match, **kwargs):
+            if not state["claimed"] and match.fullmatch("键领取"):
+                state["claimed"] = True
+                return True
+            return False
+
+        task.wait_click_ocr.side_effect = click
+        self.assertTrue(claim_rewards(task))
+        self.assertTrue(state["claimed"])
 
 
 if __name__ == "__main__":

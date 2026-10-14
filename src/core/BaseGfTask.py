@@ -167,6 +167,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             has_dialog=has_dialog,
             raise_if_not_found=False,
         )
+        if not result:
+            raise RuntimeError("等待作战开始超时：未识别到战斗界面，请检查编队或助战选择是否完成")
         if result and result[0].name == "继续前进":
             self.log_info("开局检测到继续前进，点击后开启新一轮自动战斗", notify=True)
             self.click_box(result, after_sleep=2)
