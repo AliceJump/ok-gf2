@@ -108,8 +108,10 @@ class DailyActivityMixin:
         return "待核查"
 
     def free_time_layer(self):
+        """执行活动层日常，区分失败和跳过结果并返回主页。"""
         self.info_set("current_task", "free_time_layer")
         completed = True
+        uncertain = False
         for i in range(2):
             self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
@@ -154,7 +156,11 @@ class DailyActivityMixin:
         self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
         if self.is_free_layer():
             if self.config.get("活动层浇花", True):
-                completed = self.water_flowers() and completed
+                water_result = self.water_flowers()
+                if water_result is False:
+                    completed = False
+                elif water_result == "待核查":
+                    uncertain = True
             elif self._ensure_activity_panel():
                 self._claim_activity_panel_rewards()
             else:
@@ -163,7 +169,7 @@ class DailyActivityMixin:
             self.log_error("没检测到活动层页面，跳过领奖和浇花")
             completed = False
         self.ensure_main(time_out=60)
-        return completed
+        return "待核查" if uncertain and completed else completed
 
     def _ensure_activity_panel(self):
         panel_match = re.compile(
@@ -203,7 +209,7 @@ class DailyActivityMixin:
 
     def _claim_activity_panel_rewards(self):
         """领取逸趣导算进度奖励，并关闭每次领取后的通用奖励弹层。"""
-        claim_match = re.compile(r"一\s*键\s*领\s*取")
+        claim_match = re.compile(r"^\s*(?:一\s*)?键\s*领\s*取\s*$")
         claim_box = self.box_of_screen(0.10, 0.08, 0.95, 0.90)
         claimed = False
         for _ in range(5):
@@ -223,9 +229,12 @@ class DailyActivityMixin:
         return claimed
 
     def water_flowers(self):
+        """验证浇灌次数，无法识别栽培入口时标记待核查。"""
         self.info_set("current_task", "water_flowers")
         if not self._ensure_activity_panel():
-            return False
+            self.info_set("浇灌", "已跳过：未识别到栽培入口")
+            self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
+            return "待核查"
         # F2 可能先停在逸趣导算奖励页；先处理奖励，再导航到栽培。
         self._claim_activity_panel_rewards()
         watering_match = re.compile(r"浇\s*灌")
@@ -252,8 +261,9 @@ class DailyActivityMixin:
                 after_sleep=2,
                 log=True,
             ):
-                self.log_error("未找到栽培入口，跳过浇花")
-                return False
+                self.info_set("浇灌", "已跳过：未识别到栽培入口")
+                self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
+                return "待核查"
         if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3, raise_if_not_found=False):
             # 部分界面先显示栽培概览，需点击“前往”才进入花盆页面。
             if not self.wait_click_ocr(
@@ -264,14 +274,16 @@ class DailyActivityMixin:
                 after_sleep=3,
                 log=True,
             ):
-                self.log_error("栽培页面未找到浇灌或前往入口")
-                return False
+                self.info_set("浇灌", "已跳过：未识别到浇灌入口")
+                self.log_info("未识别到浇灌入口，跳过浇灌并继续后续任务")
+                return "待核查"
         watering_buttons = self.wait_ocr(
             match=watering_match, box=self.box.right, time_out=10, raise_if_not_found=False
         )
         if not watering_buttons:
-            self.log_error("未进入浇灌页面，跳过浇花")
-            return False
+            self.info_set("浇灌", "已跳过：未进入浇灌页面")
+            self.log_info("未进入浇灌页面，跳过浇灌并继续后续任务")
+            return "待核查"
         # 用按钮文字定位下方次数。旧固定区域只框住“浇灌”，漏掉了次数。
         # 限制在浇灌这一列，避免把右侧施肥的 1/1 当成浇水完成。
         watering_button = watering_buttons[0]
