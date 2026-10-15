@@ -324,6 +324,25 @@ class DailyActivityMixin:
         self.log_info("已确认同名饮食增益生效，取消重复制作，继续日常")
         return True
 
+    def _confirm_drink_result(self):
+        """确认饮品结果页已关闭并回到活动层，丢失点击最多重试三次。"""
+        def returned_to_layer():
+            return not self.wait_ocr(
+                match="饮品加成", time_out=0, raise_if_not_found=False
+            ) and self.is_free_layer(time_out=1)
+
+        for attempt in range(3):
+            if not self.wait_click_ocr(
+                match=re.compile(r"^\s*确\s*认\s*$"),
+                box=self.box.bottom, time_out=3, raise_if_not_found=False, after_sleep=1,
+            ):
+                if returned_to_layer():
+                    return True
+            elif self.wait_until(returned_to_layer, time_out=4):
+                return True
+            self.log_warning(f"饮品加成确认后未返回活动层，重试 {attempt + 1}/3")
+        self.screenshot("drink_result_blocked")
+        return False
 
     def do_food_flow(
         self,
@@ -364,6 +383,10 @@ class DailyActivityMixin:
                 if need_extra_confirm:
                     self.wait_click_ocr(match="确认", time_out=3, after_sleep=1)
                 self.skip_dialogs(end_match=skip_end_match, time_out=60)
+                if skip_end_match == ["饮品加成"]:
+                    if self._confirm_drink_result() is False:
+                        raise RuntimeError("饮品加成确认失败：结果页未关闭，停止本轮以免在错误页面继续操作")
+                    return True
                 self.wait_click_ocr(match="确认", time_out=3, box=self.box.bottom, after_sleep=1)
                 self.wait_pop_up(count=1)
                 return True
