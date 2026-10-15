@@ -328,7 +328,7 @@ class DailyBattleMixin:
         ]
 
     def _is_chenyan_list(self):
-        """确认列表标题及属性页签可见，并排除覆盖列表的弹窗。"""
+        """排除弹窗后按标题确认列表，允许属性和当前卡片同时漏读。"""
         if self.ocr(
             match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案", "Firepower Preview", "Combat Effectiveness"],
             box=self.box_of_screen(0.2, 0.25, 0.8, 0.78),
@@ -336,10 +336,6 @@ class DailyBattleMixin:
             return False
         return bool(
             self.wait_ocr(match="班组助战", box=self.box_of_screen(0.35, 0.12, 0.65, 0.24), time_out=1)
-            and (
-                self.ocr(0.28, 0.24, 0.81, 0.29, match=["物理", "酸蚀", "浊刻", "燃烧", "冷凝", "电导"])
-                or self._chenyan_candidates()
-            )
         )
 
     def _restore_chenyan_list(self):

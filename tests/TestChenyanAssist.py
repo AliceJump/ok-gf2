@@ -210,10 +210,59 @@ class ChenyanAssistTest(unittest.TestCase):
         self.assertEqual("list", task.page)
         self.assertEqual([], task.errors)
 
-    def test_unreadable_attributes_do_not_accept_title_without_cards(self):
+    def test_unreadable_attributes_accept_empty_list_with_title(self):
+        """An empty attribute page remains a recoverable assist list."""
         task = AssistDevice(filter_readable=False, available=False)
         task.page = "list"
-        self.assertFalse(battle["_is_chenyan_list"](task))
+        self.assertTrue(battle["_is_chenyan_list"](task))
+
+    def test_conflict_with_unreadable_empty_attribute_continues_to_next_attribute(self):
+        """Cancel a duplicate on an empty OCR page, then join another attribute."""
+        task = AssistDevice(filter_readable=False, candidates=["可露凯", "新助战"])
+        cancelled = []
+        original_visible = task.visible
+        original_click = task.click
+        original_wait_click = task.wait_click_ocr
+
+        def visible():
+            if task.page != "list":
+                return original_visible()
+            names = ["班组助战", "NMU", "庆", "😂"]
+            if task.attr == "酸蚀" and not cancelled:
+                names.append("可露凯")
+            elif task.attr == "燃烧":
+                names.append("新助战")
+            return names
+
+        def click(target, **kwargs):
+            original_click(target, **kwargs)
+            if task.clicked[-1] == "入队" and task.chosen == "可露凯":
+                task.page = "duplicate"
+
+        def wait_click(*args, match=None, **kwargs):
+            if match == "取消" and task.page == "duplicate":
+                cancelled.append(True)
+                task.page = "list"
+                return [SimpleNamespace(name="取消")]
+            return original_wait_click(*args, match=match, **kwargs)
+
+        task.visible = visible
+        task.click = click
+        task.click_box = click
+        task.wait_click_ocr = wait_click
+        self.assertIs(True, task.choose_chenyan(1))
+        self.assertTrue(cancelled)
+        self.assertEqual("新助战", task.chosen)
+        self.assertEqual(1, task.battles)
+        self.assertEqual([], task.errors)
+
+    def test_missing_assist_title_is_not_a_recoverable_list(self):
+        """Card OCR alone must not authorize list recovery on an unknown page."""
+        task = AssistDevice()
+        task.page = "list"
+        original_visible = task.visible
+        task.visible = lambda: [name for name in original_visible() if name != "班组助战"]
+        self.assertFalse(task._is_chenyan_list())
 
     def test_two_empty_pages_stop_after_one_scroll(self):
         """Verify two empty pages stop after one scroll."""
