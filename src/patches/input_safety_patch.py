@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def install_input_safety_patch():
+    """Install idempotent background input hooks without globally locking input."""
     try:
         import win32api
         import win32con
@@ -19,6 +20,7 @@ def install_input_safety_patch():
         return True
 
     def operate(self, fun, block=False):
+        """Run input and restore background window state without hiding operation errors."""
         background = not self.hwnd_window.is_foreground()
         position = win32api.GetCursorPos() if background else None
         try:
@@ -37,6 +39,7 @@ def install_input_safety_patch():
                     logger.warning("恢复鼠标位置失败", exc_info=True)
 
     def send_key_up(self, key):
+        """Release the key through window messages and tolerate deactivation failure."""
         try:
             self.post_interaction.send_key_up(key)
         finally:
@@ -46,9 +49,11 @@ def install_input_safety_patch():
                 logger.warning("松开按键后停用游戏窗口失败", exc_info=True)
 
     def scroll(self, x, y, scroll_amount):
+        """Send wheel input through the background window interaction."""
         return self.post_interaction.scroll(x, y, scroll_amount)
 
     def do_send_key(self, key, down_time=0.02):
+        """Always post key release after a timed key press, including interrupted holds."""
         vk_code = self.get_key_by_str(key)
         try:
             self.post(win32con.WM_KEYDOWN, vk_code, 0x1E0001)
@@ -61,6 +66,7 @@ def install_input_safety_patch():
         time.sleep(down_time if down_time <= 0.1 else 0.02)
 
     def do_click(self, x=-1, y=-1, move_back=False, name=None, down_time=0.02, move=True, key="left"):
+        """Hold the selected mouse button and release it even when interrupted."""
         position = self.make_mouse_position(x, y)
         buttons = {
             "left": (win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32con.WM_LBUTTONUP),

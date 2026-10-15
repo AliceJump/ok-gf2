@@ -240,6 +240,7 @@ def run_at_window_pos(hwnd, func, x, y, sleep_time=0.5, *args, **kwargs):
 
 
 def run_in_window(hwnd, func, *args, **kwargs):
+    """Run after successful activation and restore focus only if still owned."""
     prev = win32gui.GetForegroundWindow()
     need_restore = prev != hwnd
 

@@ -10,6 +10,7 @@ from src.interaction import Mouse
 
 class InputSafetyTest(unittest.TestCase):
     def test_denied_activation_never_injects_alt_or_mouse(self):
+        """Respect failed foreground activation without injecting global input."""
         import win32api
         import win32gui
 
@@ -32,6 +33,7 @@ class InputSafetyTest(unittest.TestCase):
         user.mouse_event.assert_not_called()
 
     def test_failed_activation_does_not_execute_window_callback(self):
+        """Skip the callback when foreground activation fails."""
         gui = Mock()
         gui.GetForegroundWindow.return_value = 99
         callback = Mock()
@@ -43,11 +45,13 @@ class InputSafetyTest(unittest.TestCase):
         callback.assert_not_called()
 
     def test_window_restore_respects_user_switch_during_callback(self):
+        """Leave the foreground unchanged when the user switches windows."""
         state = {"foreground": 99}
         gui = Mock()
         gui.GetForegroundWindow.side_effect = lambda: state["foreground"]
 
         def activate(hwnd, **kwargs):
+            """Simulate successful window activation without touching the desktop."""
             state["foreground"] = hwnd
             return True
 
@@ -60,6 +64,7 @@ class InputSafetyTest(unittest.TestCase):
 
 
     def test_click_with_key_releases_modifier_when_click_fails(self):
+        """Release the modifier after a failed click and retain the click error."""
         path = Path(__file__).resolve().parents[1] / "src/core/BaseGfTask.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "click_with_key")

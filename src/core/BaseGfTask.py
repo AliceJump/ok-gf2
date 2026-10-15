@@ -469,6 +469,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
 
     def click_with_key(self, hold_key, result, delay1=1, delay2=0.5, after_sleep=0):
         # 任务线程内执行，异常可传播且修饰键总会释放。
+        """Click while holding a modifier and guarantee its release on failure."""
         try:
             self.send_key_down(hold_key)
             self.sleep(delay2)

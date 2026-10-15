@@ -14,6 +14,7 @@ else:
 
 class InteractionSafetyTest(unittest.TestCase):
     def make_interaction(self):
+        """Create isolated interaction state without sending desktop input."""
         obj = SimpleNamespace(
             hwnd_window=SimpleNamespace(is_foreground=lambda: False),
             post_interaction=Mock(),
@@ -27,11 +28,13 @@ class InteractionSafetyTest(unittest.TestCase):
         return obj
 
     def test_background_key_up_posts_release_before_deactivation(self):
+        """Release the modifier through the background interaction."""
         obj = self.make_interaction()
         GenshinInteraction.send_key_up(obj, "alt")
         obj.post_interaction.send_key_up.assert_called_once_with("alt")
 
     def test_background_scroll_never_uses_global_wheel(self):
+        """Keep wheel input on the window message path."""
         obj = self.make_interaction()
         obj.operate = Mock(side_effect=AssertionError("global wheel path"))
         GenshinInteraction.scroll(obj, 100, 200, -3)
@@ -61,6 +64,7 @@ class InteractionSafetyTest(unittest.TestCase):
         obj.deactivate.assert_called_once()
 
     def test_click_holds_button_before_releasing(self):
+        """Preserve the requested button hold and post-click delay."""
         from ok.device.interaction_methods import genshin
 
         obj = self.make_interaction()
@@ -72,6 +76,7 @@ class InteractionSafetyTest(unittest.TestCase):
         self.assertEqual([genshin.win32con.WM_LBUTTONDOWN, ("hold", 0.04), genshin.win32con.WM_LBUTTONUP, ("hold", 0.04)], events)
 
     def test_interrupted_click_releases_button(self):
+        """Post mouse release when the hold is interrupted."""
         from ok.device.interaction_methods import genshin
 
         obj = self.make_interaction()
@@ -85,6 +90,7 @@ class InteractionSafetyTest(unittest.TestCase):
         self.assertEqual(genshin.win32con.WM_LBUTTONUP, obj.post.call_args.args[0])
 
     def test_interrupted_key_hold_still_releases_key(self):
+        """Post key release when a long hold is interrupted."""
         from ok.device.interaction_methods import genshin
 
         obj = self.make_interaction()
@@ -97,6 +103,7 @@ class InteractionSafetyTest(unittest.TestCase):
         self.assertEqual(genshin.win32con.WM_KEYUP, obj.post.call_args.args[0])
 
     def test_click_callback_error_propagates_without_locking_input(self):
+        """Preserve callback errors while cleaning up without global input locks."""
         from ok.device.interaction_methods import genshin
 
         obj = self.make_interaction()
@@ -110,6 +117,7 @@ class InteractionSafetyTest(unittest.TestCase):
         obj.deactivate.assert_called_once()
 
     def test_cleanup_failure_never_hides_operation_error(self):
+        """Preserve the operation error and restore the cursor if deactivation fails."""
         from ok.device.interaction_methods import genshin
 
         obj = self.make_interaction()
