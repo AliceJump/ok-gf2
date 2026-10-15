@@ -180,6 +180,28 @@ class AssistDevice:
 
 
 class ChenyanAssistTest(unittest.TestCase):
+    def test_ots14_precedes_available_weimaxi_na_across_attributes(self):
+        task = AssistDevice(candidates=["威玛西娜", "OTs-14"])
+        original_visible = task.visible
+        task.visible = lambda: (original_visible() + ["威玛西娜"]
+                                if task.page == "list" and task.attr == "物理" else original_visible())
+        self.assertTrue(task.choose_chenyan(2))
+        self.assertEqual("OTs-14", task.chosen)
+        self.assertNotIn("威玛西娜", task.clicked)
+
+    def test_missing_ots14_returns_to_original_first_choice(self):
+        task = AssistDevice(candidates=["威玛西娜"])
+        original_visible = task.visible
+        task.visible = lambda: (original_visible() + ["威玛西娜"]
+                                if task.page == "list" and task.attr == "物理" else original_visible())
+        self.assertTrue(task.choose_chenyan(2))
+        self.assertEqual("威玛西娜", task.chosen)
+
+    def test_ots14_search_accepts_uppercase_ocr(self):
+        task = AssistDevice(candidates=["OTS-14"])
+        self.assertTrue(task.choose_chenyan(1))
+        self.assertEqual("OTS-14", task.chosen)
+
     def test_unreadable_attributes_restore_list_after_failed_join(self):
         task = AssistDevice(filter_readable=False)
         task.page = "card"
@@ -409,9 +431,9 @@ class ChenyanAssistTest(unittest.TestCase):
 
     def test_fallback_tries_visible_unknown_role_after_duplicate(self):
         """Verify fallback tries visible unknown role after duplicate."""
-        task = AssistDevice(candidates=["春田", "OTs-14"])
+        task = AssistDevice(candidates=["春田", "新助战"])
         self.assertIs(True, battle["choose_chenyan"](task, 1))
-        self.assertEqual("OTs-14", task.chosen)
+        self.assertEqual("新助战", task.chosen)
         self.assertEqual(1, task.battles)
 
     def test_details_are_closed_before_trying_next_visible_role(self):

@@ -290,7 +290,7 @@ class DailyBattleMixin:
             if executor is not None and executor.paused:
                 return None
             chars = self.ocr(0.18, 0.31, 0.82, 0.79)
-            found = next((char for char in chars if char.name == name), None)
+            found = next((char for char in chars if char.name.casefold() == name.casefold()), None)
             if found is not None:
                 return found
             visible = chars
@@ -302,6 +302,17 @@ class DailyBattleMixin:
             previous = signature
             if page < 99 and self._scroll_chenyan_list(1) is False:
                 return None
+        return None
+
+    def _find_priority_chenyan_assist(self, name):
+        """已知角色按属性查找，未录入属性的首选角色遍历属性页。"""
+        attr = self.get_role_by_name(name)
+        for candidate_attr in ([attr] if attr else self.roles_dict):
+            if not self._select_chenyan_attribute(candidate_attr):
+                continue
+            char = self._find_chenyan_assist(name)
+            if char is not None:
+                return char
         return None
 
     def _chenyan_candidates(self):
@@ -395,6 +406,7 @@ class DailyBattleMixin:
             match="助战", box=self.box.bottom_right, settle_time=1, after_sleep=1, raise_if_not_found=True
         )
         priority = [
+            "OTs-14",
             "威玛西娜",
             "可露凯",
             "夏安",
@@ -411,11 +423,8 @@ class DailyBattleMixin:
         my_chars = set()
         # 排除顶部属性/装饰区；允许国际服名称和未录入角色表的新角色。
 
-        for name, m in [(i, self.get_role_by_name(i)) for i in priority]:
-            if not m or not self._select_chenyan_attribute(m):
-                continue
-
-            char = self._find_chenyan_assist(name)
+        for name in priority:
+            char = self._find_priority_chenyan_assist(name)
             if char is None:
                 continue
 
