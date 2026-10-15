@@ -214,25 +214,39 @@ class DailyBattleMixin:
         """按当前剩余票数执行尘烟，每次作战后重新读取次数。"""
         if not self.config.get("尘烟"):
             return
-        end = self.ocr(match=re.compile("前线"), box=self.box.bottom_right, log=True)
+
+        def failed(reason):
+            self.log_warning(f"尘烟未完成：{reason}")
+            self.info_set("尘烟前线", f"待核查：{reason}")
+            self.screenshot("Chenyan_EntryOrTicketsFailed")
+            return False
+
+        end = self.wait_ocr(match=re.compile("前线"), box=self.box.bottom_right, time_out=5, log=True)
         if not end:
-            return
+            return failed("未找到尘烟前线入口")
         self.click(end, after_sleep=1)
-        result = self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re, box=self.box.top_right)
+        # 页面切换和后台截图可能延迟；先确认尘烟页，避免把其他页面的数字当成次数。
+        if not self.wait_ocr(match="攻坚战", box=self.box.top_right, time_out=10, log=True):
+            return failed("点击入口后未确认进入尘烟页面")
+        result = self.wait_ocr(match=stamina_re, box=self.box.top_right, time_out=10, log=True)
         if not result:
-            return
+            return failed("未读取到剩余挑战次数，不能按次数耗尽跳过")
         while True:
             tickets = int(result[0].name.split("/")[0])
             self.log_info(f"chenyan tickets {tickets}")
             self.info_set("chenyan tickets", tickets)
             if tickets == 0:
+                self.log_info("尘烟前线已确认剩余 0 次，跳过作战")
+                self.info_set("尘烟前线", "已确认剩余 0 次")
                 break
             self.wait_click_ocr(match="攻坚战", box=self.box.top_right, after_sleep=0.5, raise_if_not_found=True)
             self.wait_click_ocr(match="开始作战", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
             if not self.choose_chenyan(tickets):
                 return False
             self.sleep(2)
-            result = self.wait_ocr(match=stamina_re, box=self.box.top_right, time_out=10, raise_if_not_found=True)
+            result = self.wait_ocr(match=stamina_re, box=self.box.top_right, time_out=10, log=True)
+            if not result:
+                return failed("作战后未读取到剩余挑战次数")
         self.back(after_sleep=2)
         return True
 
