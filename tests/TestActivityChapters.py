@@ -89,6 +89,19 @@ class ActivityChaptersTest(unittest.TestCase):
         for title in ('活动一·特别物资篇', '活动(一)·特别物资篇后续', '其他活动(一)·特别物资篇'):
             self.assertIsNone(pattern.search(title))
 
+    def test_missing_first_event_still_matches_second_configuration(self):
+        _, clicked = self.run_activity(name='未开放活动-静默突触', chapter='初篇-转篇')
+        self.assertEqual(clicked, ['静默突触·转篇'])
+
+    def test_empty_other_chapter_does_not_skip_valid_event(self):
+        _, clicked = self.run_activity(name='其他活动-静默突触', chapter='-转篇')
+        self.assertEqual(clicked, ['静默突触·转篇'])
+
+    def test_internal_ocr_spaces(self):
+        pattern = namespace['_activity_chapter_pattern'](None, '静默突触', '转篇')
+        self.assertIsNotNone(pattern.search('静默 突触·转 篇'))
+        self.assertIsNone(pattern.search('静默突触·初篇'))
+
     def test_configuration_groups_new_text_field(self):
         methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)
                    and n.name in ('_init_default_config', '_init_default_config_group')]

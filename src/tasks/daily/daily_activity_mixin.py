@@ -358,27 +358,31 @@ class DailyActivityMixin:
 
     def _activity_chapter_pattern(self, name, chapter):
         # 名称按用户输入匹配，不把初篇/转篇映射为上篇/下篇。
-        return re.compile(rf'^\s*{re.escape(name)}\s*[·・：:]\s*{re.escape(chapter)}\s*$')
+        name_pattern = r'\s*'.join(re.escape(c) for c in name if not c.isspace())
+        chapter_pattern = r'\s*'.join(re.escape(c) for c in chapter if not c.isspace())
+        return re.compile(rf'^\s*{name_pattern}\s*[·・：:]\s*{chapter_pattern}\s*$')
 
     def activity(self):
         activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
         chapter_names = [name.strip() for name in str(self.config.get('物资篇章名称') or '').split('-')]
-        if not all(activity_wuzi_names) or not all(chapter_names) or len(activity_wuzi_names) != len(chapter_names):
+        if len(activity_wuzi_names) != len(chapter_names):
             self.log_info('请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律')
             return
+        patterns = [self._activity_chapter_pattern(name, chapter).pattern
+                    for name, chapter in zip(activity_wuzi_names, chapter_names) if name and chapter]
+        if not patterns:
+            self.log_info('未配置完整的活动名称和物资篇章名称，跳过活动自律')
+            return
+        chapter_re = re.compile('|'.join(patterns))
         self.info_set('current_task', 'activity')
         if to_activity_page := self.wait_click_ocr(match=['限时开启'], box=self.box.top_right, after_sleep=2,
                                                    raise_if_not_found=False,
                                                    time_out=4):
             if activities := self.wait_ocr(match=['开启中'], box=self.box.bottom_left, time_out=4):
-                for activity_count, activity in enumerate(activities):
+                for activity in activities:
                     self.ensure_main()
                     self.click(to_activity_page, after_sleep=2)
                     self.click(activity)
-                    if activity_count >= len(activity_wuzi_names):
-                        break
-                    name_re = activity_wuzi_names[activity_count]
-                    chapter_re = self._activity_chapter_pattern(name_re, chapter_names[activity_count])
                     to_clicks = self.wait_ocr_until_count(
                         match=[chapter_re],
                         box=None,
