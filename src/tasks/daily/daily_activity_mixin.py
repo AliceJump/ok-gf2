@@ -101,14 +101,37 @@ class DailyActivityMixin:
         self.info_set(reward_activity, "待核查：领取按钮持续出现")
         return "待核查"
 
+    def _enter_free_time_layer(self):
+        # 点击命中不代表切页成功；只有活动层 HUD 才能开始移动和交互。
+        for attempt in range(3):
+            self.log_info(f"尝试进入活动层：第 {attempt + 1}/3 次")
+            self.wait_click_ocr(
+                match="活动层", box=self.box.right, time_out=2,
+                raise_if_not_found=False, after_sleep=0.5,
+            )
+            if self.is_free_layer(time_out=8):
+                return True
+            # 已离开主页时可能正在加载，不在未知页面再次点击。
+            home = self.ocr(box=self.box.right, match=["整备室", "活动层", "招募"])
+            if len(home) < 2:
+                if self.is_free_layer(time_out=12):
+                    return True
+                break
+        self.log_warning("活动层入口未成功打开，本项结束，继续后续日常")
+        self.screenshot("activity_layer_entry_failed")
+        return False
+
+
     def free_time_layer(self):
         """执行活动层日常，区分失败和跳过结果并返回主页。"""
         self.info_set("current_task", "free_time_layer")
         completed = True
         uncertain = False
         for i in range(2):
-            self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
-            if self.is_free_layer():
+            if not self._enter_free_time_layer():
+                self.ensure_main(time_out=60)
+                return False
+            if self.is_free_layer(time_out=1):
                 if i == 0:
                     drink_result = self.do_food_flow(
                         enter_func=self.go_drink,
@@ -147,8 +170,10 @@ class DailyActivityMixin:
                 completed = False
             self.ensure_main(time_out=60)
         # 奖励领取属于活动层本身；即使关闭浇花，也要进入一次 F2 面板处理逸趣导算奖励。
-        self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
-        if self.is_free_layer():
+        if not self._enter_free_time_layer():
+            self.ensure_main(time_out=60)
+            return False
+        if self.is_free_layer(time_out=1):
             if self.config.get("活动层浇花", True):
                 water_result = self.water_flowers()
                 if water_result is False:

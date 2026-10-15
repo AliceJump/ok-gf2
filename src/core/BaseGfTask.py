@@ -683,17 +683,12 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             self.sleep(2)
 
     def is_free_layer(self, time_out=20, every_time=1):
-        max_count = int(time_out / every_time)
+        # wait_ocr(time_out=0) 使用框架默认超时，不能用于单次探测。
+        def detected():
+            result = self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)
+            return bool(result and len(result) >= 5)
 
-        for _ in range(max_count):
-            result = self.wait_ocr(
-                match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], settle_time=every_time, box=self.box.top, time_out=0
-            )
-
-            if result and len(result) >= 5:
-                return True
-
-        return False
+        return bool(self.wait_until(detected, time_out=max(time_out, 0.01), settle_time=0))
 
     def break_if_not_enough(self):
         if self.wait_ocr(match=re.compile("坍塌晶条"), time_out=2, log=True):
