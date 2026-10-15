@@ -4,12 +4,6 @@ import re
 
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
 from src.interaction.Mouse import active_and_send_mouse_delta, run_at_window_pos, run_in_window
-from src.tasks.daily.daily_common_mixin import (
-    chapter_suffix_re,
-    down_chapter_re,
-    middle_chapter_re,
-    up_chapter_re,
-)
 
 activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)", re.I)
 
@@ -362,64 +356,58 @@ class DailyActivityMixin:
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
+    def _activity_chapter_pattern(self, name, chapter):
+        # 名称按用户输入匹配，不把初篇/转篇映射为上篇/下篇。
+        return re.compile(rf'^\s*{re.escape(name)}\s*[·・：:]\s*{re.escape(chapter)}\s*$')
+
     def activity(self):
-        activity_wuzi_names = [name.strip() for name in str(self.config.get("当前物资关卡名称")).split("-")]
-        self.info_set("current_task", "activity")
-        if to_activity_page := self.wait_click_ocr(
-            match=["限时开启"], box=self.box.top_right, after_sleep=2, raise_if_not_found=False, time_out=4
-        ):
-            if activities := self.wait_ocr(match=["开启中"], box=self.box.bottom_left, time_out=4):
-                activity_count = 0
-                for activity in activities:
+        activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
+        chapter_names = [name.strip() for name in str(self.config.get('物资篇章名称') or '').split('-')]
+        if not all(activity_wuzi_names) or not all(chapter_names) or len(activity_wuzi_names) != len(chapter_names):
+            self.log_info('请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律')
+            return
+        self.info_set('current_task', 'activity')
+        if to_activity_page := self.wait_click_ocr(match=['限时开启'], box=self.box.top_right, after_sleep=2,
+                                                   raise_if_not_found=False,
+                                                   time_out=4):
+            if activities := self.wait_ocr(match=['开启中'], box=self.box.bottom_left, time_out=4):
+                for activity_count, activity in enumerate(activities):
                     self.ensure_main()
                     self.click(to_activity_page, after_sleep=2)
                     self.click(activity)
                     if activity_count >= len(activity_wuzi_names):
-                        activity_count -= 1
+                        break
                     name_re = activity_wuzi_names[activity_count]
-                    chapter_re = re.compile(rf"{re.escape(name_re)}[·・：]{chapter_suffix_re}")
+                    chapter_re = self._activity_chapter_pattern(name_re, chapter_names[activity_count])
                     to_clicks = self.wait_ocr_until_count(
-                        match=[chapter_re], box=None, min_count=2, timeout=5, settle_time=2, log=True
+                        match=[chapter_re],
+                        box=None,
+                        min_count=1,
+                        timeout=5,
+                        settle_time=2,
+                        log=True
                     )
                     if to_clicks:
-                        up = None
-                        middle = None
-                        down = None
-                        for click in to_clicks:
-                            if up_chapter_re.search(click.name):
-                                up = click
-                            elif middle_chapter_re.search(click.name):
-                                middle = click
-                            elif down_chapter_re.search(click.name):
-                                down = click
-
-                        chapter_boxes = [box for box in (up, middle, down) if box]
+                        chapter_boxes = to_clicks
                         wuzi_boxes = self.wait_ocr(
-                            match=re.compile("物资"), box=None, time_out=4, settle_time=2, log=True
+                            match=re.compile('物资'), box=None, time_out=4, settle_time=2, log=True,
+                            raise_if_not_found=False
                         )
-                        click_boxes = (
-                            self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
-                        )
-
+                        click_boxes = self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
+                        locked_boxes = self.ocr(match=re.compile('未开启|未开放|未解锁'), box=None)
+                        locked_chapters = self._filter_boxes_near_candidates(chapter_boxes, locked_boxes or [])
+                        click_boxes = [box for box in click_boxes if box not in locked_chapters]
                         if not click_boxes:
-                            click_boxes = chapter_boxes
-
-                        click_boxes = sorted(click_boxes, key=self._chapter_click_order)
-
-                        for chapter in click_boxes:
-                            self.click(chapter, after_sleep=0.2)
-                    elif to_clicks := self.wait_ocr(
-                        match=["活动战役", re.compile("物资")],
-                        box=self.box.bottom,
-                        raise_if_not_found=False,
-                        time_out=4,
-                        settle_time=2,
-                        log=True,
-                    ):
-                        self.click(to_clicks, after_sleep=2)
+                            self.log_info('未找到指定章节已开放的物资入口，跳过活动自律')
+                            continue
+                        # 只点击选中的章节，避免沿用旧画面的坐标再次点击上篇。
+                        self.click(click_boxes[0], after_sleep=2)
+                    else:
+                        self.log_info('未找到指定章节，跳过活动自律')
+                        continue
                     if to_clicks:
                         self.sleep(2)
-                        if wu_zi := self.ocr(match=re.compile("物资"), box=self.box.bottom_right):
+                        if wu_zi := self.ocr(match=re.compile('物资'), box=self.box.bottom_right):
                             self.click(wu_zi, after_sleep=0.5)
                         battles = self.wait_ocr(match=map_re, time_out=4)
                         if battles:

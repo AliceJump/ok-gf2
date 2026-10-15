@@ -384,3 +384,26 @@ msgstr "Needs review: reward popup not confirmed after click"
 
 msgid "待核查：领取按钮持续出现"
 msgstr "Needs review: claim button keeps appearing"
+
+msgid "当前物资关卡名称"
+msgstr "Event name"
+
+msgid "物资篇章名称"
+msgstr "Supply chapter name"
+
+msgid ""
+"活动自律中当前大活动的名称\n"
+"例：静默突触；多个活动用半角连字符分隔"
+msgstr "Event name, e.g. 静默突触. Separate multiple events with hyphens."
+
+msgid ""
+"自动进入限时开启活动并挑战物资关卡\n"
+"分别填写活动名称和物资篇章名称，按完整名称进入指定篇章"
+msgstr ""
+"Enter the event name and exact supply chapter name to farm the specified "
+"chapter."
+
+msgid "填写物资入口的完整篇章名，如转篇；多个篇章用半角连字符分隔，与活动名称一一对应；留空则跳过"
+msgstr ""
+"Enter the exact supply chapter name, e.g. 转篇. Separate multiple chapters "
+"with hyphens in event order. Leave blank to skip."
