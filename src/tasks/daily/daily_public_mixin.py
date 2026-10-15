@@ -121,17 +121,31 @@ class DailyPublicMixin:
     def shopping(self):
         self.info_set("current_task", "shopping")
         self.wait_click_ocr(match=["商城"], box=self.box.bottom_right, after_sleep=1.5, raise_if_not_found=True)
-        self.wait_click_ocr(match=["品质甄选"], box=self.box.top_left, after_sleep=1, raise_if_not_found=True)
-        self.wait_click_ocr(match=["周期礼包", "常驻礼包"], box=self.box.top, after_sleep=1, raise_if_not_found=True)
+        for _ in range(3):
+            self.wait_click_ocr(
+                match=["品质甄选"], box=self.box.top_left, after_sleep=1, time_out=2, raise_if_not_found=False
+            )
+            if self.wait_click_ocr(
+                match=["周期礼包", "常驻礼包"], box=self.box.top, after_sleep=1, time_out=2, raise_if_not_found=False
+            ):
+                break
+        else:
+            self.info_set("免费礼包", "待核查：未确认礼包页面")
+            self.log_warning("品质甄选点击后未出现礼包页签，跳过免费礼包并继续后续任务")
+            self.ensure_main()
+            return "待核查"
         if self.wait_click_ocr(match=["免费"], after_sleep=0.5, raise_if_not_found=False, time_out=1):
             self.log_info("found free item to buy")
             self.wait_click_ocr(match=["确认", "购买"], box=self.box.bottom, after_sleep=1.5, raise_if_not_found=True)
             self.wait_pop_up(time_out=5, count=1)
             self.back()
             self.sleep(1)
-        self.wait_click_ocr(
-            match=["臻品礼包", "限时礼包"], box=self.box.top, after_sleep=0.5, raise_if_not_found=True, time_out=2
-        )
+        if not self.wait_click_ocr(
+            match=["臻品礼包", "限时礼包"], box=self.box.top, after_sleep=0.5, raise_if_not_found=False, time_out=2
+        ):
+            self.info_set("免费礼包", "待核查：未确认限时礼包页面")
+            self.ensure_main()
+            return "待核查"
         if self.wait_click_ocr(match=["免费"], after_sleep=0.5, raise_if_not_found=False, time_out=1):
             self.log_info("found free item to buy")
             if self.wait_click_ocr(
