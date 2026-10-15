@@ -180,6 +180,18 @@ class AssistDevice:
 
 
 class ChenyanAssistTest(unittest.TestCase):
+    def test_unreadable_attributes_restore_list_after_failed_join(self):
+        task = AssistDevice(filter_readable=False)
+        task.page = "card"
+        self.assertIs(False, battle["_restore_chenyan_list"](task))
+        self.assertEqual("list", task.page)
+        self.assertEqual([], task.errors)
+
+    def test_unreadable_attributes_do_not_accept_title_without_cards(self):
+        task = AssistDevice(filter_readable=False, available=False)
+        task.page = "list"
+        self.assertFalse(battle["_is_chenyan_list"](task))
+
     def test_two_empty_pages_stop_after_one_scroll(self):
         """Verify two empty pages stop after one scroll."""
         task = AssistDevice()
