@@ -306,6 +306,25 @@ class DailyActivityMixin:
         self.back(after_sleep=2)
         return completed
 
+    def _skip_active_food_buff(self):
+        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。"""
+        duplicate = re.compile(r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)")
+        if not self.wait_ocr(match=duplicate, box=self.box.center, time_out=1, raise_if_not_found=False, log=True):
+            return None
+        if not self.wait_click_ocr(
+            match="取消", box=self.box.center, time_out=2, raise_if_not_found=False, after_sleep=0.5,
+        ):
+            self.screenshot("food_duplicate_cancel_failed")
+            return False
+        if not self.wait_until(
+            lambda: not self.ocr(match=duplicate, box=self.box.center), time_out=3, settle_time=0,
+        ):
+            self.screenshot("food_duplicate_dialog_blocked")
+            return False
+        self.log_info("已确认同名饮食增益生效，取消重复制作，继续日常")
+        return True
+
+
     def do_food_flow(
         self,
         *,
@@ -324,11 +343,23 @@ class DailyActivityMixin:
             times = 2
         for attempt in range(times):
             if result := self.wait_ocr(match=entry_match, time_out=3):
+                if main_btn == "制作" and any(
+                    re.search(r"茶\s*歇\s*一\s*刻\s*1\s*/\s*1", getattr(item, "name", ""))
+                    for item in result
+                ):
+                    self.log_info("茶歇一刻 1/1：今日喝水已完成，跳过重复制作")
+                    return True
                 self.click_with_key("alt", result)
             else:
                 return "entry"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
+                duplicate_result = self._skip_active_food_buff()
+                if duplicate_result is True:
+                    return True
+                if duplicate_result is False:
+                    return "confirm"
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
+                    self.screenshot("food_second_button_missing")
                     return "confirm"
                 if need_extra_confirm:
                     self.wait_click_ocr(match="确认", time_out=3, after_sleep=1)
@@ -340,6 +371,8 @@ class DailyActivityMixin:
                 if need_again_test and attempt == 0:
                     continue
                 else:
+                    self.ocr(log=True, screenshot=True)
+                    self.screenshot("food_main_button_missing")
                     self.back(after_sleep=2)
                     return "button"
         return "button"
