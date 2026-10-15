@@ -139,17 +139,35 @@ class DailyRewardMixin:
         # 仅接受明确的整体状态；单条任务的“已领取”不能证明全部领完。
         if self.wait_ocr(
             match=[re.compile(r"^\s*(?:已全部领取|全部已领取|暂无可领取奖励|无可领取奖励)\s*$")],
-            box=self.box.bottom_right,
+            box=self.box_of_screen(0, 0, 1, 1),
             time_out=2,
             raise_if_not_found=False,
             log=True,
         ):
             return True
-        return "待核查"
+        # 领完后按钮会直接消失，并不总有“已全部领取”文字。
+        # 两次都要确认页面及进度内容，不能仅凭一次按钮漏读判断无奖励。
+        for attempt in range(2):
+            boxes = self.ocr(box=self.box_of_screen(0, 0, 1, 1), log=True)
+            labels = [re.sub(r"\s+", "", box.name) for box in boxes]
+            if any(re.fullmatch(r"(?:一)?键领取|领取|领取全部", label) for label in labels):
+                return "待核查"
+            if any(re.search(r"获得道具|领取奖励|补给包", label) for label in labels):
+                return "待核查"
+            progress = any(re.fullmatch(r"\d+/\d+", label) for label in labels)
+            action_page = "每日行动" in labels and "沿途行动" in labels
+            reward_page = "通行证" in labels and "大奖预览" in labels
+            if not progress or not (action_page or reward_page):
+                return "待核查"
+            if attempt == 0:
+                self.sleep(0.8)
+        return "当前无可领取项"
 
     def _record_xunlu_result(self, name, result):
         status = (
-            "领取已确认／已无可领取奖励"
+            "当前无可领取项"
+            if result == "当前无可领取项"
+            else "领取已确认／已无可领取奖励"
             if result is True
             else "执行失败"
             if result is False
@@ -157,6 +175,8 @@ class DailyRewardMixin:
         )
         self.info_set(name, status)
         self.log_info(f"{name}：{status}")
+        if result == "待核查":
+            self.screenshot(f"Xunlu_Uncertain_{name}")
 
     def _switch_xunlu_rewards_page(self):
         for attempt in range(3):

@@ -81,6 +81,8 @@ class XunluOutcomeTest(unittest.TestCase):
             ("", "待核查"),
         ]:
             task = Mock()
+            task.ocr.return_value = []
+            task.box_of_screen.side_effect = lambda *bounds: bounds
             task.wait_ocr.side_effect = lambda label=label, **kw: bool(kw["match"][0].search(label))
             self.assertEqual(expected, namespace["_xunlu_no_reward_status"](task))
 
@@ -108,3 +110,38 @@ class RewardEvidenceTest(unittest.TestCase):
 
     def test_stuck_dialog_is_failure(self):
         self.assertIs(False, claim(self.task(["领取奖励"] * 8)))
+
+
+class NoClaimableRewardTest(unittest.TestCase):
+    def task(self, pages):
+        task = Mock()
+        task.box_of_screen.side_effect = lambda *bounds: bounds
+        task.wait_ocr.return_value = []
+        task.ocr.side_effect = [[SimpleNamespace(name=n) for n in page] for page in pages]
+        return task
+
+    def test_action_page_with_progress_and_no_claim_is_normal(self):
+        page = ["每日行动", "沿途行动", "完成日常委托", "5/5", "已领取"]
+        task = self.task([page, page])
+        self.assertEqual("当前无可领取项", DailyRewardMixin._xunlu_no_reward_status(task))
+
+    def test_reward_page_with_level_and_no_claim_is_normal(self):
+        page = ["大奖预览", "通行证", "等级Lv.48", "70/100"]
+        task = self.task([page, page])
+        self.assertEqual("当前无可领取项", DailyRewardMixin._xunlu_no_reward_status(task))
+
+    def test_missing_or_wrong_page_stays_uncertain(self):
+        for page in ([], ["已领取"], ["每日行动"], ["通行证", "大奖预览"], ["商城", "5/5"]):
+            with self.subTest(page=page):
+                self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([page, page])))
+
+    def test_visible_claim_or_loading_transition_is_not_no_rewards(self):
+        page = ["每日行动", "沿途行动", "5/5"]
+        for second in ([], page + ["领取"], page + ["键领取"]):
+            with self.subTest(second=second):
+                self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([page, second])))
+
+    def test_no_claimable_label_does_not_claim_all_rewards_were_received(self):
+        task = Mock()
+        DailyRewardMixin._record_xunlu_result(task, "每日行动", "当前无可领取项")
+        task.info_set.assert_called_once_with("每日行动", "当前无可领取项")
