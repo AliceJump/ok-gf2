@@ -37,6 +37,29 @@ class InteractionSafetyTest(unittest.TestCase):
         GenshinInteraction.scroll(obj, 100, 200, -3)
         obj.post_interaction.scroll.assert_called_once_with(100, 200, -3)
 
+    def test_key_release_error_survives_cleanup_failure(self):
+        """Keep the original release error when window cleanup also fails."""
+        obj = self.make_interaction()
+        original_error = RuntimeError("release failed")
+        obj.post_interaction.send_key_up.side_effect = original_error
+        obj.deactivate.side_effect = OSError("closed window")
+        with (
+            self.assertLogs("src.patches.input_safety_patch", level="WARNING"),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            GenshinInteraction.send_key_up(obj, "alt")
+        self.assertIs(original_error, raised.exception)
+        obj.deactivate.assert_called_once()
+
+    def test_successful_key_release_tolerates_cleanup_failure(self):
+        """Log a cleanup error without failing a completed key release."""
+        obj = self.make_interaction()
+        obj.deactivate.side_effect = OSError("closed window")
+        with self.assertLogs("src.patches.input_safety_patch", level="WARNING"):
+            GenshinInteraction.send_key_up(obj, "alt")
+        obj.post_interaction.send_key_up.assert_called_once_with("alt")
+        obj.deactivate.assert_called_once()
+
     def test_click_holds_button_before_releasing(self):
         from ok.device.interaction_methods import genshin
 

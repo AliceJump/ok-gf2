@@ -40,7 +40,10 @@ def install_input_safety_patch():
         try:
             self.post_interaction.send_key_up(key)
         finally:
-            self.deactivate()
+            try:
+                self.deactivate()
+            except Exception:
+                logger.warning("松开按键后停用游戏窗口失败", exc_info=True)
 
     def scroll(self, x, y, scroll_amount):
         return self.post_interaction.scroll(x, y, scroll_amount)
