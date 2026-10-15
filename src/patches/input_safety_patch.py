@@ -1,0 +1,82 @@
+"""桌面输入保护：不锁定全局输入，窗口消息释放按键和滚轮。"""
+
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
+
+def install_input_safety_patch():
+    try:
+        import win32api
+        import win32con
+        from ok.device.interaction_methods.genshin import GenshinInteraction
+    except ModuleNotFoundError as error:
+        if error.name not in {"ok.device", "ok.device.interaction_methods", "ok.device.interaction_methods.genshin"}:
+            raise
+        return False
+    if getattr(GenshinInteraction, "_gf2_input_safety", False):
+        return True
+
+    def operate(self, fun, block=False):
+        background = not self.hwnd_window.is_foreground()
+        position = win32api.GetCursorPos() if background else None
+        try:
+            if background:
+                self.activate()
+            return fun()
+        finally:
+            if background:
+                try:
+                    self.deactivate()
+                except Exception:
+                    logger.warning("输入结束后停用游戏窗口失败", exc_info=True)
+                try:
+                    win32api.SetCursorPos(position)
+                except Exception:
+                    logger.warning("恢复鼠标位置失败", exc_info=True)
+
+    def send_key_up(self, key):
+        try:
+            self.post_interaction.send_key_up(key)
+        finally:
+            self.deactivate()
+
+    def scroll(self, x, y, scroll_amount):
+        return self.post_interaction.scroll(x, y, scroll_amount)
+
+    def do_send_key(self, key, down_time=0.02):
+        vk_code = self.get_key_by_str(key)
+        try:
+            self.post(win32con.WM_KEYDOWN, vk_code, 0x1E0001)
+            if down_time > 0.1:
+                time.sleep(down_time)
+            else:
+                self.post(win32con.WM_CHAR, vk_code, 0x1E0001)
+        finally:
+            self.post(win32con.WM_KEYUP, vk_code, 0xC01E0001)
+        time.sleep(down_time if down_time <= 0.1 else 0.02)
+
+    def do_click(self, x=-1, y=-1, move_back=False, name=None, down_time=0.02, move=True, key="left"):
+        position = self.make_mouse_position(x, y)
+        buttons = {
+            "left": (win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, win32con.WM_LBUTTONUP),
+            "middle": (win32con.WM_MBUTTONDOWN, win32con.MK_MBUTTON, win32con.WM_MBUTTONUP),
+            "right": (win32con.WM_RBUTTONDOWN, win32con.MK_RBUTTON, win32con.WM_RBUTTONUP),
+        }
+        down, flag, up = buttons[key]
+        try:
+            self.post(down, flag, position)
+            time.sleep(down_time)
+        finally:
+            self.post(up, 0, position)
+        # 留出一次消息处理窗口，再由 operate 停用窗口并恢复光标。
+        time.sleep(down_time)
+
+    GenshinInteraction.operate = operate
+    GenshinInteraction.send_key_up = send_key_up
+    GenshinInteraction.scroll = scroll
+    GenshinInteraction.do_send_key = do_send_key
+    GenshinInteraction.do_click = do_click
+    GenshinInteraction._gf2_input_safety = True
+    return True

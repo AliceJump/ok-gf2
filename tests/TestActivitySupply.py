@@ -303,7 +303,7 @@ class NativeHoverTest(unittest.TestCase):
             "user32": user32,
             "win32gui": gui,
             "time": Mock(),
-            "active_and_send_mouse_delta": lambda hwnd, **kw: state.update(foreground=hwnd),
+            "active_and_send_mouse_delta": lambda hwnd, **kw: state.update(foreground=hwnd) or True,
         }
         exec(compile(ast.Module(body=methods, type_ignores=[]), str(mouse_source), "exec"), bridge)
         return bridge, state
