@@ -17,6 +17,29 @@ spec.loader.exec_module(patch)
 
 
 class ShutdownPatchTest(unittest.TestCase):
+    def test_legacy_dependency_without_device_module_still_installs_launcher_cleanup(self):
+        import builtins
+
+        original_import = builtins.__import__
+        launcher = SimpleNamespace(pid=123, pyappify_executable="C:/app/ok-gf2.exe")
+
+        def legacy_import(name, *args, **kwargs):
+            if name == "ok.device.interaction_methods.genshin":
+                raise ModuleNotFoundError("No module named ok.device", name="ok.device")
+            return original_import(name, *args, **kwargs)
+
+        process = Mock()
+        process.exe.return_value = launcher.pyappify_executable
+        with (
+            mock_patch.dict(sys.modules, {"pyappify": launcher}),
+            mock_patch.object(builtins, "__import__", side_effect=legacy_import),
+            mock_patch.object(patch, "_installed", False),
+            mock_patch.object(patch.psutil, "Process", return_value=process),
+        ):
+            patch.install_shutdown_patch()
+            self.assertTrue(launcher.kill_pyappify(timeout=2))
+        process.terminate.assert_called_once_with()
+
     def test_installed_launcher_supports_old_and_current_pyappify_loggers(self):
         """Verify installed launcher supports old and current pyappify loggers."""
         for has_logger in (False, True):

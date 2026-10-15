@@ -50,10 +50,17 @@ def install_shutdown_patch():
     if _installed:
         return
     import pyappify
-    import win32gui
-    from ok.device.interaction_methods.genshin import GenshinInteraction
 
-    GenshinInteraction.on_destroy = guard_destroy(GenshinInteraction.on_destroy, win32gui.IsWindow)
+    try:
+        from ok.device.interaction_methods.genshin import GenshinInteraction
+    except ModuleNotFoundError as error:
+        if error.name not in {"ok.device", "ok.device.interaction_methods", "ok.device.interaction_methods.genshin"}:
+            raise
+        logging.getLogger(__name__).info("旧版 ok-script 无桌面交互模块，跳过窗口退出保护")
+    else:
+        import win32gui
+
+        GenshinInteraction.on_destroy = guard_destroy(GenshinInteraction.on_destroy, win32gui.IsWindow)
 
     def kill_launcher(timeout=30, exit_event=None):
         """取消退出时不终止启动器，缺少私有日志接口时使用标准日志。"""
