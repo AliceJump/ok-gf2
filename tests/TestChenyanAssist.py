@@ -183,6 +183,7 @@ class ChenyanAssistTest(unittest.TestCase):
     def test_unreadable_attributes_restore_list_after_failed_join(self):
         task = AssistDevice(filter_readable=False)
         task.page = "card"
+        task.attr = "酸蚀"
         self.assertIs(False, battle["_restore_chenyan_list"](task))
         self.assertEqual("list", task.page)
         self.assertEqual([], task.errors)

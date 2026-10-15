@@ -323,7 +323,7 @@ class DailyBattleMixin:
     def _is_chenyan_list(self):
         """确认列表标题及属性页签可见，并排除覆盖列表的弹窗。"""
         if self.ocr(
-            match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案"],
+            match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案", "Firepower Preview", "Combat Effectiveness"],
             box=self.box_of_screen(0.2, 0.25, 0.8, 0.78),
         ):
             return False
