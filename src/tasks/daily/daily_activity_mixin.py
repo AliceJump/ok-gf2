@@ -4,12 +4,6 @@ import re
 
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
 from src.interaction.Mouse import active_and_send_mouse_delta, run_at_window_pos, run_in_window
-from src.tasks.daily.daily_common_mixin import (
-    chapter_suffix_re,
-    down_chapter_re,
-    middle_chapter_re,
-    up_chapter_re,
-)
 
 activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)", re.I)
 
@@ -108,8 +102,10 @@ class DailyActivityMixin:
         return "待核查"
 
     def free_time_layer(self):
+        """执行活动层日常，区分失败和跳过结果并返回主页。"""
         self.info_set("current_task", "free_time_layer")
         completed = True
+        uncertain = False
         for i in range(2):
             self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
             if self.is_free_layer():
@@ -154,7 +150,11 @@ class DailyActivityMixin:
         self.wait_click_ocr(match="活动层", box=self.box.right, time_out=2, raise_if_not_found=True)
         if self.is_free_layer():
             if self.config.get("活动层浇花", True):
-                completed = self.water_flowers() and completed
+                water_result = self.water_flowers()
+                if water_result is False:
+                    completed = False
+                elif water_result == "待核查":
+                    uncertain = True
             elif self._ensure_activity_panel():
                 self._claim_activity_panel_rewards()
             else:
@@ -163,7 +163,7 @@ class DailyActivityMixin:
             self.log_error("没检测到活动层页面，跳过领奖和浇花")
             completed = False
         self.ensure_main(time_out=60)
-        return completed
+        return "待核查" if uncertain and completed else completed
 
     def _ensure_activity_panel(self):
         panel_match = re.compile(
@@ -203,7 +203,7 @@ class DailyActivityMixin:
 
     def _claim_activity_panel_rewards(self):
         """领取逸趣导算进度奖励，并关闭每次领取后的通用奖励弹层。"""
-        claim_match = re.compile(r"一\s*键\s*领\s*取")
+        claim_match = re.compile(r"^\s*(?:一\s*)?键\s*领\s*取\s*$")
         claim_box = self.box_of_screen(0.10, 0.08, 0.95, 0.90)
         claimed = False
         for _ in range(5):
@@ -223,9 +223,12 @@ class DailyActivityMixin:
         return claimed
 
     def water_flowers(self):
+        """验证浇灌次数，无法识别栽培入口时标记待核查。"""
         self.info_set("current_task", "water_flowers")
         if not self._ensure_activity_panel():
-            return False
+            self.info_set("浇灌", "已跳过：未识别到栽培入口")
+            self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
+            return "待核查"
         # F2 可能先停在逸趣导算奖励页；先处理奖励，再导航到栽培。
         self._claim_activity_panel_rewards()
         watering_match = re.compile(r"浇\s*灌")
@@ -252,8 +255,9 @@ class DailyActivityMixin:
                 after_sleep=2,
                 log=True,
             ):
-                self.log_error("未找到栽培入口，跳过浇花")
-                return False
+                self.info_set("浇灌", "已跳过：未识别到栽培入口")
+                self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
+                return "待核查"
         if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3, raise_if_not_found=False):
             # 部分界面先显示栽培概览，需点击“前往”才进入花盆页面。
             if not self.wait_click_ocr(
@@ -264,14 +268,16 @@ class DailyActivityMixin:
                 after_sleep=3,
                 log=True,
             ):
-                self.log_error("栽培页面未找到浇灌或前往入口")
-                return False
+                self.info_set("浇灌", "已跳过：未识别到浇灌入口")
+                self.log_info("未识别到浇灌入口，跳过浇灌并继续后续任务")
+                return "待核查"
         watering_buttons = self.wait_ocr(
             match=watering_match, box=self.box.right, time_out=10, raise_if_not_found=False
         )
         if not watering_buttons:
-            self.log_error("未进入浇灌页面，跳过浇花")
-            return False
+            self.info_set("浇灌", "已跳过：未进入浇灌页面")
+            self.log_info("未进入浇灌页面，跳过浇灌并继续后续任务")
+            return "待核查"
         # 用按钮文字定位下方次数。旧固定区域只框住“浇灌”，漏掉了次数。
         # 限制在浇灌这一列，避免把右侧施肥的 1/1 当成浇水完成。
         watering_button = watering_buttons[0]
@@ -350,64 +356,62 @@ class DailyActivityMixin:
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
+    def _activity_chapter_pattern(self, name, chapter):
+        # 名称按用户输入匹配，不把初篇/转篇映射为上篇/下篇。
+        name_pattern = r'\s*'.join(re.escape(c) for c in name if not c.isspace())
+        chapter_pattern = r'\s*'.join(re.escape(c) for c in chapter if not c.isspace())
+        return re.compile(rf'^\s*{name_pattern}\s*[·・：:]\s*{chapter_pattern}\s*$')
+
     def activity(self):
-        activity_wuzi_names = [name.strip() for name in str(self.config.get("当前物资关卡名称")).split("-")]
-        self.info_set("current_task", "activity")
-        if to_activity_page := self.wait_click_ocr(
-            match=["限时开启"], box=self.box.top_right, after_sleep=2, raise_if_not_found=False, time_out=4
-        ):
-            if activities := self.wait_ocr(match=["开启中"], box=self.box.bottom_left, time_out=4):
-                activity_count = 0
+        activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
+        chapter_names = [name.strip() for name in str(self.config.get('物资篇章名称') or '').split('-')]
+        if len(activity_wuzi_names) != len(chapter_names):
+            self.log_info('请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律')
+            return
+        patterns = [self._activity_chapter_pattern(name, chapter).pattern
+                    for name, chapter in zip(activity_wuzi_names, chapter_names) if name and chapter]
+        if not patterns:
+            self.log_info('未配置完整的活动名称和物资篇章名称，跳过活动自律')
+            return
+        chapter_re = re.compile('|'.join(patterns))
+        self.info_set('current_task', 'activity')
+        if to_activity_page := self.wait_click_ocr(match=['限时开启'], box=self.box.top_right, after_sleep=2,
+                                                   raise_if_not_found=False,
+                                                   time_out=4):
+            if activities := self.wait_ocr(match=['开启中'], box=self.box.bottom_left, time_out=4):
                 for activity in activities:
                     self.ensure_main()
                     self.click(to_activity_page, after_sleep=2)
                     self.click(activity)
-                    if activity_count >= len(activity_wuzi_names):
-                        activity_count -= 1
-                    name_re = activity_wuzi_names[activity_count]
-                    chapter_re = re.compile(rf"{re.escape(name_re)}[·・：]{chapter_suffix_re}")
                     to_clicks = self.wait_ocr_until_count(
-                        match=[chapter_re], box=None, min_count=2, timeout=5, settle_time=2, log=True
+                        match=[chapter_re],
+                        box=None,
+                        min_count=1,
+                        timeout=5,
+                        settle_time=2,
+                        log=True
                     )
                     if to_clicks:
-                        up = None
-                        middle = None
-                        down = None
-                        for click in to_clicks:
-                            if up_chapter_re.search(click.name):
-                                up = click
-                            elif middle_chapter_re.search(click.name):
-                                middle = click
-                            elif down_chapter_re.search(click.name):
-                                down = click
-
-                        chapter_boxes = [box for box in (up, middle, down) if box]
+                        chapter_boxes = to_clicks
                         wuzi_boxes = self.wait_ocr(
-                            match=re.compile("物资"), box=None, time_out=4, settle_time=2, log=True
+                            match=re.compile('物资'), box=None, time_out=4, settle_time=2, log=True,
+                            raise_if_not_found=False
                         )
-                        click_boxes = (
-                            self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
-                        )
-
+                        click_boxes = self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
+                        locked_boxes = self.ocr(match=re.compile('未开启|未开放|未解锁'), box=None)
+                        locked_chapters = self._filter_boxes_near_candidates(chapter_boxes, locked_boxes or [])
+                        click_boxes = [box for box in click_boxes if box not in locked_chapters]
                         if not click_boxes:
-                            click_boxes = chapter_boxes
-
-                        click_boxes = sorted(click_boxes, key=self._chapter_click_order)
-
-                        for chapter in click_boxes:
-                            self.click(chapter, after_sleep=0.2)
-                    elif to_clicks := self.wait_ocr(
-                        match=["活动战役", re.compile("物资")],
-                        box=self.box.bottom,
-                        raise_if_not_found=False,
-                        time_out=4,
-                        settle_time=2,
-                        log=True,
-                    ):
-                        self.click(to_clicks, after_sleep=2)
+                            self.log_info('未找到指定章节已开放的物资入口，跳过活动自律')
+                            continue
+                        # 只点击选中的章节，避免沿用旧画面的坐标再次点击上篇。
+                        self.click(click_boxes[0], after_sleep=2)
+                    else:
+                        self.log_info('未找到指定章节，跳过活动自律')
+                        continue
                     if to_clicks:
                         self.sleep(2)
-                        if wu_zi := self.ocr(match=re.compile("物资"), box=self.box.bottom_right):
+                        if wu_zi := self.ocr(match=re.compile('物资'), box=self.box.bottom_right):
                             self.click(wu_zi, after_sleep=0.5)
                         battles = self.wait_ocr(match=map_re, time_out=4)
                         if battles:

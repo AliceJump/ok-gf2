@@ -1,18 +1,10 @@
 """日常任务的通用工具：OCR 轮询、弹窗兜底、候选框筛选。"""
 
-import re
 import time
 
 from ok import Box, find_boxes_by_name
 
 from src.core.BaseGfTask import pop_ups
-
-# 活动章节后缀："筒"是"篇"的 OCR 常见误读。
-# 部分活动用等价命名：初篇 = 上篇，转篇 = 下篇。
-chapter_suffix_re = r"[上下中初转][篇筒]"
-up_chapter_re = re.compile(r"(?:上|初)[篇筒]")
-middle_chapter_re = re.compile(r"中[篇筒]")
-down_chapter_re = re.compile(r"(?:下|转)[篇筒]")
 
 
 def find_boxes_within_boundary(boxes: list["Box"], boundary_box: "Box", sort: bool = False) -> list["Box"]:
@@ -88,14 +80,6 @@ class DailyCommonMixin:
 
         return filtered
 
-    def _chapter_click_order(self, box):
-        if down_chapter_re.search(box.name):
-            return 0
-        if middle_chapter_re.search(box.name):
-            return 1
-        if up_chapter_re.search(box.name):
-            return 2
-        return 3
 
     def wait_click_ocr_with_pop_up(self, match, box=None):
         if self.wait_until(lambda: self.do_wait_pop_up_and_click(match, box), time_out=10, raise_if_not_found=True):
