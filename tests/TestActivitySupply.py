@@ -21,7 +21,7 @@ methods = [
     in (
         "activities",
         "_collect_supply_activities",
-        "_ensure_supply_foreground",
+        "_ensure_supply_menu",
         "_open_supply_activity",
         "_scroll_supply_menu",
         "_claim_supply_activity",
@@ -73,7 +73,6 @@ namespace.update(
 class SupplyScreen:
     activities = namespace["activities"]
     _collect_supply_activities = namespace["_collect_supply_activities"]
-    _ensure_supply_foreground = namespace["_ensure_supply_foreground"]
     _open_supply_activity = namespace["_open_supply_activity"]
     _claim_supply_activity = namespace["_claim_supply_activity"]
     _scroll_supply_menu = namespace["_scroll_supply_menu"]
@@ -106,6 +105,7 @@ class SupplyScreen:
         self.status = {}
         self.info_set = lambda key, value: self.status.update({key: value})
         self.log_info = Mock()
+        self._ensure_supply_menu = Mock(return_value=True)
         self.sleep = Mock()
         self.ensure_main = Mock()
 
@@ -121,7 +121,7 @@ class SupplyScreen:
     def scroll_relative(self, x, y, count):
         self.scrolls.append((x, y, count))
         target = (int(self.width * x), int(self.height * y))
-        if not self.foreground or self.physical_mouse != target or self.hover_mouse != target:
+        if self.hover_mouse != target:
             self.ineffective_scrolls.append(count)
             return
         self.menu_page = 0 if count > 0 else self.menu_page + 1
@@ -167,19 +167,19 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.ineffective_scrolls)
         self.assertFalse(task.foreground)
         self.assertEqual((1500, 800), task.physical_mouse)
-        self.assertEqual(1, task.activations)
-        self.assertEqual(1, task.restores)
+        self.assertEqual(0, task.activations)
+        self.assertEqual(0, task.restores)
         task.ensure_main.assert_called_once()
 
-    def test_missing_entries_are_bounded_and_uncertain(self):
+    def test_absent_supply_events_are_bounded_and_skipped(self):
         task = SupplyScreen(entries={})
-        self.assertEqual("待核查", task.activities())
+        self.assertIs(True, task.activities())
         self.assertEqual(16, task.menu_checks)
         self.assertEqual([], task.claims)
         self.assertIn("未找到入口", task.status["情报补给"])
         task.ensure_main.assert_called_once()
 
-    def test_focus_interruption_reactivates_without_restoring_between_scrolls(self):
+    def test_focus_interruption_does_not_reactivate_game(self):
         task = SupplyScreen()
         original = task.wait_click_ocr
         interrupted = False
@@ -194,8 +194,8 @@ class ActivitySupplyTest(unittest.TestCase):
 
         task.wait_click_ocr = click
         self.assertIs(True, task.activities())
-        self.assertEqual(2, task.activations)
-        self.assertEqual(1, task.restores)
+        self.assertEqual(0, task.activations)
+        self.assertEqual(0, task.restores)
         self.assertEqual([], task.ineffective_scrolls)
 
     def test_already_foreground_does_not_switch_windows(self):
@@ -212,11 +212,18 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual(["情报补给", "情报补给"], task.claims)
         self.assertIn("未找到入口", task.status["战前补给"])
 
-    def test_prewar_success_does_not_hide_missing_intelligence_supply(self):
+    def test_intelligence_event_can_also_be_absent(self):
         task = SupplyScreen(entries={4: "战前补给"})
-        self.assertEqual("待核查", task.activities())
+        self.assertIs(True, task.activities())
         self.assertEqual(["战前补给"], task.claims)
-        self.assertIn("待核查", task.status["情报补给"])
+        self.assertIn("跳过", task.status["情报补给"])
+
+    def test_unopened_activity_menu_stays_uncertain_and_never_searches(self):
+        task = SupplyScreen()
+        task._ensure_supply_menu.return_value = False
+        self.assertEqual("待核查", task.activities())
+        self.assertEqual(0, task.menu_checks)
+        self.assertEqual([], task.claims)
 
     def test_wrong_page_never_clicks_a_claim_button(self):
         task = SupplyScreen()
@@ -265,7 +272,7 @@ class ActivitySupplyTest(unittest.TestCase):
             task.activities()
         task.ensure_main.assert_called_once()
 
-    def test_daily_run_does_not_report_complete_for_missing_supply(self):
+    def test_daily_run_continues_when_optional_supply_events_are_absent(self):
         from src.tasks.DailyTaskRunner import DailyTaskRunner
         from tests.TestDailyTaskRunner import StubTask
 
@@ -273,9 +280,18 @@ class ActivitySupplyTest(unittest.TestCase):
         supply = SupplyScreen(entries={})
         runner = DailyTaskRunner(task, [("活动情报补给", supply.activities)])
         runner.run()
-        self.assertEqual("待核查", runner.final_summary["status"])
-        self.assertEqual(["活动情报补给"], runner.task_status["uncertain"])
-        self.assertEqual([], runner.task_status["success"])
+        self.assertEqual([], runner.task_status["uncertain"])
+        self.assertEqual(["活动情报补给"], runner.task_status["success"])
+
+
+class SupplyMenuVerificationTest(unittest.TestCase):
+    def test_menu_content_is_required_and_home_labels_must_disappear(self):
+        task = Mock()
+        task.box_of_screen.side_effect = lambda *args: args
+        task.wait_until.side_effect = lambda predicate, **kw: predicate()
+        for menu, home, expected in [([object()], [], True), ([], [], False), ([object()], [1, 2, 3], False)]:
+            task.ocr.side_effect = [menu, home]
+            self.assertEqual(expected, namespace["_ensure_supply_menu"](task))
 
 
 class NativeHoverTest(unittest.TestCase):
@@ -303,7 +319,7 @@ class NativeHoverTest(unittest.TestCase):
             "user32": user32,
             "win32gui": gui,
             "time": Mock(),
-            "active_and_send_mouse_delta": lambda hwnd, **kw: state.update(foreground=hwnd),
+            "active_and_send_mouse_delta": lambda hwnd, **kw: state.update(foreground=hwnd) or True,
         }
         exec(compile(ast.Module(body=methods, type_ignores=[]), str(mouse_source), "exec"), bridge)
         return bridge, state
