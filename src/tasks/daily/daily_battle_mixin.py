@@ -213,7 +213,7 @@ class DailyBattleMixin:
     def chenyan(self):
         """按当前剩余票数执行尘烟，每次作战后重新读取次数。"""
         if not self.config.get("尘烟"):
-            return
+            return True
 
         def failed(reason):
             self.log_warning(f"尘烟未完成：{reason}")

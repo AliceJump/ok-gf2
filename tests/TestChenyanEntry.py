@@ -122,7 +122,7 @@ class TestChenyanEntry(unittest.TestCase):
     def test_disabled_chenyan_does_not_navigate(self):
         device = ChenyanDevice()
         device.config["尘烟"] = False
-        self.assertIsNone(device.chenyan())
+        self.assertIs(device.chenyan(), True)
         self.assertEqual(device.clicked, [])
 
 
