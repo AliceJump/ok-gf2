@@ -315,7 +315,7 @@ class ChenyanAssistTest(unittest.TestCase):
         with patch.dict(sys.modules, {"src.interaction.Mouse": helpers}):
             self.assertTrue(battle["_scroll_chenyan_list"](task, 120))
         self.assertEqual([-3], events)
-        self.assertEqual(["activate", "restore"], calls)
+        self.assertEqual([], calls)
 
     def test_search_reads_one_frame_per_step(self):
         """Verify search reads one frame per step."""
@@ -360,7 +360,7 @@ class ChenyanAssistTest(unittest.TestCase):
         ):
             battle["_scroll_chenyan_list"](task, 1)
         self.assertEqual([], events)
-        self.assertEqual([True], restored)
+        self.assertEqual([], restored)
 
     def test_stop_exception_propagates_before_mouse_input(self):
         """Verify stop exception propagates before mouse input."""

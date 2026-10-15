@@ -249,7 +249,7 @@ class DailyBattleMixin:
 
     def _scroll_chenyan_list(self, count):
         # 在输入之外检查停止状态，避免设备层吞掉任务取消异常。
-        """可取消地滚动一页，桌面端恢复原窗口和鼠标位置。"""
+        """可取消地滚动一页，桌面端不占用前台。"""
         self.sleep(0.01)
         executor = getattr(self, "executor", None)
         if executor is not None and executor.paused:
@@ -257,31 +257,13 @@ class DailyBattleMixin:
         if self.is_adb():
             self.swipe_relative(0.65, 0.72 if count > 0 else 0.40, 0.65, 0.40 if count > 0 else 0.72, duration=0.3)
         else:
-            from src.interaction.Mouse import run_at_window_pos, run_in_window
-
-            scrolled = False
-
-            def scroll_with_hover():
-                """悬停后检查暂停状态并发送一次滚动。"""
-                nonlocal scrolled
-                self.move_relative(0.65, 0.60)
-                self.sleep(0.1)
-                if executor is not None and executor.paused:
-                    return False
-                # 焦点和悬停稳定后滚动；此时设备层不会锁住后台输入。
-                self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
-                scrolled = True
-                self.sleep(0.15)
-                return True
-
-            run_in_window(
-                self.hwnd.hwnd,
-                lambda: run_at_window_pos(
-                    self.hwnd.hwnd, scroll_with_hover, int(self.width * 0.65), int(self.height * 0.60), sleep_time=0.03
-                ),
-            )
-            if not scrolled:
+            # 只向游戏发送窗口消息，不占用前台或物理鼠标。
+            self.move_relative(0.65, 0.60)
+            self.sleep(0.1)
+            if executor is not None and executor.paused:
                 return False
+            self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
+            self.sleep(0.15)
         self.sleep(0.05)
         return True
 
