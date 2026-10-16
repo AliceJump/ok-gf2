@@ -19,13 +19,16 @@ def install_input_safety_patch():
     if getattr(GenshinInteraction, "_gf2_input_safety", False):
         return True
 
-    def operate(self, fun, block=False):
+    def operate(self, fun, block=False, require_foreground=False):
         """Run input and restore background window state without hiding operation errors."""
         background = not self.hwnd_window.is_foreground()
         position = win32api.GetCursorPos() if background else None
         try:
             if background:
                 self.activate()
+                if require_foreground and not self.hwnd_window.is_foreground():
+                    logger.warning("游戏窗口激活失败，跳过需要前台窗口的输入")
+                    return False
             return fun()
         finally:
             if background:
@@ -51,6 +54,10 @@ def install_input_safety_patch():
     def scroll(self, x, y, scroll_amount):
         """Send wheel input through the background window interaction."""
         return self.post_interaction.scroll(x, y, scroll_amount)
+
+    def move_mouse_relative(self, dx, dy):
+        """Move the real mouse only after confirming that the game is foreground."""
+        return operate(self, lambda: self.do_move_mouse_relative(dx, dy), require_foreground=True)
 
     def do_send_key(self, key, down_time=0.02):
         """Always post key release after a timed key press, including interrupted holds."""
@@ -85,6 +92,7 @@ def install_input_safety_patch():
     GenshinInteraction.operate = operate
     GenshinInteraction.send_key_up = send_key_up
     GenshinInteraction.scroll = scroll
+    GenshinInteraction.move_mouse_relative = move_mouse_relative
     GenshinInteraction.do_send_key = do_send_key
     GenshinInteraction.do_click = do_click
     GenshinInteraction._gf2_input_safety = True
