@@ -164,7 +164,7 @@ class DailyRewardMixin:
             if attempt == 0:
                 self.sleep(0.8)
         if saw_explicit_no_reward:
-            return True
+            return "当前无可领取项"
         return "待核查"
 
     def _record_xunlu_result(self, name, result):

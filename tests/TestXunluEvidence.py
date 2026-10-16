@@ -39,6 +39,24 @@ class XunluOutcomeTest(unittest.TestCase):
         task = self.task()
         self.assertIs(True, namespace["xunlu"](task))
 
+    def test_confirmed_no_rewards_keep_specific_status_for_both_pages(self):
+        """实际无奖励核验应记录专用状态，同时保持整项成功。"""
+        task = self.task()
+        task.wait_click_ocr.side_effect = [False, True, False, False]
+        action_page = ["每日行动", "沿途行动", "已全部领取"]
+        reward_page = ["大奖预览", "通行证", "暂无可领取奖励"]
+        task.ocr.side_effect = [
+            [SimpleNamespace(name=name) for name in page]
+            for page in (action_page, action_page, reward_page, reward_page)
+        ]
+        task._xunlu_no_reward_status.side_effect = MethodType(namespace["_xunlu_no_reward_status"], task)
+
+        self.assertIs(True, namespace["xunlu"](task))
+        for name in ("每日行动", "巡录奖励"):
+            task.info_set.assert_any_call(name, "当前无可领取项")
+        task._claim_xunlu_rewards.assert_not_called()
+        task.screenshot.assert_not_called()
+
     def test_real_failure_takes_precedence(self):
         """Verify real failure takes precedence."""
         for action, reward in [(False, True), (True, False), ("待核查", False)]:
@@ -90,7 +108,7 @@ class XunluOutcomeTest(unittest.TestCase):
                 [SimpleNamespace(name=name) for name in ("每日行动", "沿途行动", "5/5", label) if name],
             ]
             task.box_of_screen.side_effect = lambda *bounds: bounds
-            self.assertIs(True, namespace["_xunlu_no_reward_status"](task, "action"))
+            self.assertEqual("当前无可领取项", namespace["_xunlu_no_reward_status"](task, "action"))
         for label in ("已领取", "每日行动", ""):
             task = Mock()
             task.ocr.side_effect = [
@@ -249,8 +267,8 @@ class NoClaimableRewardTest(unittest.TestCase):
             for notice in ("已全部领取", "全部已领取", "暂无可领取奖励", "无可领取奖励"):
                 with self.subTest(page=expected_page, notice=notice):
                     page = [*markers, notice]
-                    self.assertIs(
-                        True,
+                    self.assertEqual(
+                        "当前无可领取项",
                         DailyRewardMixin._xunlu_no_reward_status(self.task([page, page]), expected_page),
                     )
 
