@@ -255,6 +255,17 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.claims)
         self.assertEqual("已领取或未到领取时间", task.status["情报补给"])
 
+    def test_countdown_with_days_and_ocr_spacing_is_known_empty(self):
+        """带天数和 OCR 空格的倒计时也应确认冷却，且不点击领取。"""
+        for countdown in ("1天 02:54:28 后可领取", "1 天 02 : 54 : 28 后 可 领取"):
+            with self.subTest(countdown=countdown):
+                task = SupplyScreen(remaining={"情报补给": 0, "战前补给": 0})
+                task.empty_text = countdown
+                self.assertIs(True, task.activities())
+                self.assertEqual([], task.claims)
+                for reward_activity in ("情报补给", "战前补给"):
+                    self.assertEqual("已领取或未到领取时间", task.status[reward_activity])
+
     def test_lost_page_after_popup_is_uncertain(self):
         task = SupplyScreen(entries={2: "情报补给"})
         task.restore_page = False
