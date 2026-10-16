@@ -99,7 +99,7 @@ class DailyRewardMixin:
             else:
                 action_result = True
         else:
-            action_result = self._xunlu_no_reward_status()
+            action_result = self._xunlu_no_reward_status("action")
         self._record_xunlu_result("每日行动", action_result)
         # 先收集行动里程，再回到远航巡录页领取等级/盈余奖励。
         if not self._switch_xunlu_rewards_page():
@@ -126,7 +126,7 @@ class DailyRewardMixin:
                 self.log_error("未确认巡录奖励页面，无法检查领取状态")
                 reward_result = False
             else:
-                reward_result = self._xunlu_no_reward_status()
+                reward_result = self._xunlu_no_reward_status("reward")
         self._record_xunlu_result("巡录奖励", reward_result)
         self.ensure_main()
         if action_result is False or reward_result is False:
@@ -135,33 +135,38 @@ class DailyRewardMixin:
             return "待核查"
         return True
 
-    def _xunlu_no_reward_status(self):
-        # 仅接受明确的整体状态；单条任务的“已领取”不能证明全部领完。
-        if self.wait_ocr(
-            match=[re.compile(r"^\s*(?:已全部领取|全部已领取|暂无可领取奖励|无可领取奖励)\s*$")],
-            box=self.box_of_screen(0, 0, 1, 1),
-            time_out=2,
-            raise_if_not_found=False,
-            log=True,
-        ):
-            return True
+    def _xunlu_no_reward_status(self, expected_page):
+        if expected_page not in {"action", "reward"}:
+            raise ValueError(f"未知的巡录页面类型：{expected_page}")
         # 领完后按钮会直接消失，并不总有“已全部领取”文字。
-        # 两次都要确认页面及进度内容，不能仅凭一次按钮漏读判断无奖励。
+        # 两次 OCR 都必须确认同一个预期页面，避免把另一页的无按钮状态误判为当前页已领取。
+        page_markers = {
+            "action": {"每日行动", "沿途行动"},
+            "reward": {"通行证", "大奖预览"},
+        }[expected_page]
+        no_reward = re.compile(r"^\s*(?:已全部领取|全部已领取|暂无可领取奖励|无可领取奖励)\s*$")
+        saw_explicit_no_reward = False
+        progress_seen = []
         for attempt in range(2):
             boxes = self.ocr(box=self.box_of_screen(0, 0, 1, 1), log=True)
             labels = [re.sub(r"\s+", "", box.name) for box in boxes]
             if any(re.fullmatch(r"(?:一)?键领取|领取|领取全部", label) for label in labels):
                 return "待核查"
-            if any(re.search(r"获得道具|领取奖励|补给包", label) for label in labels):
+            if any(re.search(r"获得道具|领取奖励|补给包", label) for label in labels) and not any(
+                no_reward.fullmatch(label) for label in labels
+            ):
                 return "待核查"
-            progress = any(re.fullmatch(r"\d+/\d+", label) for label in labels)
-            action_page = "每日行动" in labels and "沿途行动" in labels
-            reward_page = "通行证" in labels and "大奖预览" in labels
-            if not progress or not (action_page or reward_page):
+            if not page_markers.issubset(labels):
                 return "待核查"
+            saw_explicit_no_reward |= any(no_reward.fullmatch(label) for label in labels)
+            progress_seen.append(any(re.fullmatch(r"\d+/\d+", label) for label in labels))
             if attempt == 0:
                 self.sleep(0.8)
-        return "当前无可领取项"
+        if saw_explicit_no_reward:
+            return True
+        if all(progress_seen):
+            return "当前无可领取项"
+        return "待核查"
 
     def _record_xunlu_result(self, name, result):
         status = (
