@@ -112,7 +112,7 @@ class DailyActivityMixin:
             if self.is_free_layer(time_out=8):
                 return True
             # 已离开主页时可能正在加载，不在未知页面再次点击。
-            home = self.ocr(box=self.box.right, match=["整备室", "活动层", "招募"])
+            home = self.ocr(box=self.box.right, match=["整备室", "公共区", "活动层", "招募"])
             if len(home) < 2:
                 if self.is_free_layer(time_out=12):
                     return True

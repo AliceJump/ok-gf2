@@ -3,12 +3,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
+
 def method(path, name):
     tree = ast.parse(Path(path).read_text(encoding="utf-8"))
     node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
     ns = {}
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), ns)
     return ns[name]
+
 
 class ActivityNavigationTest(unittest.TestCase):
     def test_layer_check_has_one_explicit_timeout_and_checks_full_hud(self):
@@ -52,9 +54,20 @@ class ActivityNavigationTest(unittest.TestCase):
         self.assertEqual(3, task.wait_click_ocr.call_count)
         task.screenshot.assert_called_once()
 
+    def test_entry_retries_when_only_activity_and_public_home_markers_are_readable(self):
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        task = Mock()
+        task.is_free_layer.side_effect = [False, False, True]
+        visible_labels = ["活动层", "公共区"]
+        task.ocr.side_effect = lambda **kw: [label for label in visible_labels if label in kw["match"]]
+        self.assertTrue(enter(task))
+        self.assertEqual(3, task.wait_click_ocr.call_count)
+        task.screenshot.assert_not_called()
+
     def test_failed_activity_entry_does_not_prevent_guild_task(self):
         from src.tasks.DailyTaskRunner import DailyTaskRunner
         from tests.TestDailyTaskRunner import StubTask
+
         run = method("src/tasks/daily/daily_activity_mixin.py", "free_time_layer")
         task = Mock()
         task._enter_free_time_layer.return_value = False
