@@ -372,7 +372,7 @@ class ChenyanAssistTest(unittest.TestCase):
         task.is_adb = lambda: False
         events = []
         post = SimpleNamespace(move=Mock(), scroll=lambda x, y, count: events.append(count), deactivate=Mock())
-        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         task.width = 3840
         task.height = 2160
@@ -416,7 +416,7 @@ class ChenyanAssistTest(unittest.TestCase):
         task.move_relative = lambda *args: None
         events = []
         post = SimpleNamespace(move=Mock(), scroll=lambda *args: events.append(args), deactivate=Mock())
-        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         restored = []
 
@@ -460,7 +460,7 @@ class ChenyanAssistTest(unittest.TestCase):
         post.post = Mock()
         post.update_mouse_pos = Mock(return_value=123)
         post.try_activate = Mock()
-        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
         self.assertEqual(
             [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
@@ -474,11 +474,57 @@ class ChenyanAssistTest(unittest.TestCase):
         task.is_adb = lambda: False
         task.width, task.height = 3840, 2160
         post = SimpleNamespace(move=Mock(), scroll=Mock(), deactivate=Mock())
-        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.sleep = lambda seconds: setattr(task.executor, "paused", True) if seconds == 0.1 else None
         self.assertFalse(battle["_scroll_chenyan_list"](task, 1))
         post.scroll.assert_not_called()
         post.deactivate.assert_called_once()
+
+    def test_foreground_activation_survives_scroll_pause_and_cancel(self):
+        """前台正常翻页、暂停和取消均保留消息激活，后续点击不缺失。"""
+        import win32con
+        from ok.device.interaction_methods.genshin import GenshinInteraction
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        for outcome in ("scroll", "pause", "cancel"):
+            with self.subTest(outcome=outcome):
+                task = AssistDevice()
+                task.is_adb = lambda: False
+                task.width, task.height = 3840, 2160
+                post = PostMessageInteraction.__new__(PostMessageInteraction)
+                post.update_mouse_pos = Mock(return_value=123)
+                state = {"active": True}
+
+                def send(message, wparam=0, *args, **kwargs):
+                    """只模拟接收消息后的窗口状态，不向游戏发送输入。"""
+                    if message == win32con.WM_ACTIVATE:
+                        state["active"] = wparam == win32con.WA_ACTIVE
+
+                post.post = Mock(side_effect=send)
+                post.try_activate = post.activate
+                interaction = GenshinInteraction.__new__(GenshinInteraction)
+                interaction.hwnd_window = SimpleNamespace(is_foreground=lambda: True)
+                interaction.post_interaction = post
+                task.executor = SimpleNamespace(paused=False, interaction=interaction)
+
+                def hover(seconds):
+                    """在悬停期间模拟暂停或任务取消。"""
+                    if seconds == 0.1 and outcome == "pause":
+                        task.executor.paused = True
+                    if seconds == 0.1 and outcome == "cancel":
+                        raise RuntimeError("task stopped")
+
+                task.sleep = hover
+                if outcome == "cancel":
+                    with self.assertRaisesRegex(RuntimeError, "task stopped"):
+                        battle["_scroll_chenyan_list"](task, 1)
+                else:
+                    self.assertEqual(outcome == "scroll", battle["_scroll_chenyan_list"](task, 1))
+                self.assertTrue(interaction.operate(lambda: state["active"]))
+                self.assertNotIn(
+                    (win32con.WM_ACTIVATE, win32con.WA_INACTIVE),
+                    [call.args[:2] for call in post.post.call_args_list],
+                )
 
     def test_stop_exception_propagates_before_mouse_input(self):
         """Verify stop exception propagates before mouse input."""

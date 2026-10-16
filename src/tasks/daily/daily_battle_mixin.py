@@ -277,6 +277,7 @@ class DailyBattleMixin:
             if post is None:
                 raise RuntimeError("当前输入后端不支持助战列表窗口消息滚动")
             x, y = int(self.width * 0.65), int(self.height * 0.60)
+            was_foreground = executor.interaction.hwnd_window.is_foreground()
             try:
                 post.move(x, y)
                 self.sleep(0.1)
@@ -284,7 +285,8 @@ class DailyBattleMixin:
                     return False
                 post.scroll(x, y, -3 if count > 0 else 3)
             finally:
-                post.deactivate()
+                if not was_foreground:
+                    post.deactivate()
             self.sleep(0.15)
         self.sleep(0.05)
         return True
