@@ -129,3 +129,30 @@ class InteractionSafetyTest(unittest.TestCase):
         ):
             GenshinInteraction.operate(obj, Mock(side_effect=RuntimeError("failed")), block=True)
         cursor.assert_called_once_with((30, 40))
+
+    def test_require_foreground_skips_callback_when_activation_is_not_confirmed(self):
+        """Do not run global input when activation did not reach the foreground."""
+        from ok.device.interaction_methods import genshin
+
+        obj = self.make_interaction()
+        callback = Mock()
+        with patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)), patch.object(
+            genshin.win32api, "SetCursorPos"
+        ):
+            result = GenshinInteraction.operate(obj, callback, require_foreground=True)
+        self.assertFalse(result)
+        callback.assert_not_called()
+        obj.activate.assert_called_once()
+
+    def test_move_mouse_relative_requires_foreground(self):
+        """Guard global mouse movement with a foreground check."""
+        from ok.device.interaction_methods import genshin
+
+        obj = self.make_interaction()
+        obj.do_move_mouse_relative = Mock()
+        with patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)), patch.object(
+            genshin.win32api, "SetCursorPos"
+        ):
+            result = GenshinInteraction.move_mouse_relative(obj, 3, -2)
+        self.assertFalse(result)
+        obj.do_move_mouse_relative.assert_not_called()
