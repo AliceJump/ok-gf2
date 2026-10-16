@@ -48,6 +48,7 @@ class DailyRewardMixin:
         self.ensure_main()
 
     def xunlu(self):
+        """检查每日行动与巡录奖励并保留无法确认的现场。"""
         self.info_set("current_task", "xunlu")
         self.info_set("每日行动", "未检查")
         self.info_set("巡录奖励", "未检查")
@@ -136,6 +137,7 @@ class DailyRewardMixin:
         return True
 
     def _xunlu_no_reward_status(self, expected_page):
+        """仅在预期页面连续确认无领取项时记录空奖励状态。"""
         if expected_page not in {"action", "reward"}:
             raise ValueError(f"未知的巡录页面类型：{expected_page}")
         # 领完后按钮会直接消失，并不总有“已全部领取”文字。
@@ -169,6 +171,7 @@ class DailyRewardMixin:
         return "待核查"
 
     def _record_xunlu_result(self, name, result):
+        """记录领取证据或待核查结果，必要时保存现场截图。"""
         status = (
             "当前无可领取项"
             if result == "当前无可领取项"
