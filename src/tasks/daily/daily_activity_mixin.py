@@ -9,10 +9,12 @@ activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours
 
 class DailyActivityMixin:
     def activities(self):
+        """检查补给活动入口并返回领取结果。"""
         self.info_set("current_task", "activity_stamina")
         return self._collect_supply_activities()
 
     def _collect_supply_activities(self):
+        """逐项领取补给，区分活动缺席与页面未确认并恢复主页。"""
         uncertain = False
         try:
             self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False)
@@ -33,9 +35,11 @@ class DailyActivityMixin:
             self.ensure_main()
 
     def _ensure_supply_menu(self):
+        """结合侧边列表与主页标识确认活动菜单打开。"""
         menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
 
         def opened():
+            """仅在侧栏可识别且不再是主页时确认菜单。"""
             menu = self.ocr(box=menu_box, match=re.compile(r"[一-鿿]{2,}"))
             home = self.ocr(box=self.box.right, match=["整备室", "活动层", "招募"])
             return bool(menu) and len(home) < 2
@@ -63,14 +67,22 @@ class DailyActivityMixin:
         return False
 
     def _scroll_supply_menu(self, count):
-        # 窗口消息滚动，不占用物理鼠标或前台。
+        """直接使用窗口消息悬停与滚动，不依赖全局输入补丁。"""
+        post = getattr(self.executor.interaction, "post_interaction", None)
+        if post is None:
+            raise RuntimeError("当前输入后端不支持补给列表窗口消息滚动")
+        x, y = int(self.width * 0.12), int(self.height * 0.60)
         self.sleep(0.01)
-        self.move_relative(0.12, 0.60)
-        self.scroll_relative(0.12, 0.60, count)
+        try:
+            post.move(x, y)
+            post.scroll(x, y, count)
+        finally:
+            post.deactivate()
         self.sleep(0.6)
 
 
     def _claim_supply_activity(self, reward_activity):
+        """验证补给页与领取结果，无法确认时保留待核查。"""
         page_match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
         claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
         empty_match = re.compile(r"已\s*领\s*取|暂无可领取|未到领取时间|未到开放时间")

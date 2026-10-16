@@ -78,6 +78,7 @@ class SupplyScreen:
     _scroll_supply_menu = namespace["_scroll_supply_menu"]
 
     def __init__(self, entries=None, remaining=None):
+        """Model init."""
         self.entries = entries if entries is not None else {2: "情报补给", 4: "战前补给"}
         self.remaining = remaining if remaining is not None else {"情报补给": 2, "战前补给": 1}
         self.box = SimpleNamespace(_activities="entry", right="right", bottom="bottom")
@@ -108,6 +109,15 @@ class SupplyScreen:
         self._ensure_supply_menu = Mock(return_value=True)
         self.sleep = Mock()
         self.ensure_main = Mock()
+        self.executor = SimpleNamespace(
+            interaction=SimpleNamespace(
+                post_interaction=SimpleNamespace(
+                    move=lambda x, y: self.move_relative(x / self.width, y / self.height),
+                    scroll=lambda x, y, count: self.scroll_relative(x / self.width, y / self.height, count),
+                    deactivate=Mock(),
+                )
+            )
+        )
 
     def box_of_screen(self, *bounds):
         return bounds
@@ -119,6 +129,7 @@ class SupplyScreen:
         self.hover_mouse = (int(self.width * x), int(self.height * y))
 
     def scroll_relative(self, x, y, count):
+        """Model scroll relative."""
         self.scrolls.append((x, y, count))
         target = (int(self.width * x), int(self.height * y))
         if self.hover_mouse != target:
@@ -158,6 +169,7 @@ class SupplyScreen:
 
 class ActivitySupplyTest(unittest.TestCase):
     def test_finds_hidden_entries_and_claims_both_time_slots(self):
+        """Verify finds hidden entries and claims both time slots."""
         task = SupplyScreen()
         self.assertIs(True, task.activities())
         self.assertEqual(["情报补给", "情报补给", "战前补给"], task.claims)
@@ -172,6 +184,7 @@ class ActivitySupplyTest(unittest.TestCase):
         task.ensure_main.assert_called_once()
 
     def test_absent_supply_events_are_bounded_and_skipped(self):
+        """Verify absent supply events are bounded and skipped."""
         task = SupplyScreen(entries={})
         self.assertIs(True, task.activities())
         self.assertEqual(16, task.menu_checks)
@@ -180,11 +193,13 @@ class ActivitySupplyTest(unittest.TestCase):
         task.ensure_main.assert_called_once()
 
     def test_focus_interruption_does_not_reactivate_game(self):
+        """Verify focus interruption does not reactivate game."""
         task = SupplyScreen()
         original = task.wait_click_ocr
         interrupted = False
 
         def click(**kwargs):
+            """Model click."""
             nonlocal interrupted
             result = original(**kwargs)
             if isinstance(kwargs["box"], tuple) and not interrupted:
@@ -213,12 +228,14 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertIn("未找到入口", task.status["战前补给"])
 
     def test_intelligence_event_can_also_be_absent(self):
+        """Verify intelligence event can also be absent."""
         task = SupplyScreen(entries={4: "战前补给"})
         self.assertIs(True, task.activities())
         self.assertEqual(["战前补给"], task.claims)
         self.assertIn("跳过", task.status["情报补给"])
 
     def test_unopened_activity_menu_stays_uncertain_and_never_searches(self):
+        """Verify unopened activity menu stays uncertain and never searches."""
         task = SupplyScreen()
         task._ensure_supply_menu.return_value = False
         self.assertEqual("待核查", task.activities())
@@ -273,6 +290,7 @@ class ActivitySupplyTest(unittest.TestCase):
         task.ensure_main.assert_called_once()
 
     def test_daily_run_continues_when_optional_supply_events_are_absent(self):
+        """Verify daily run continues when optional supply events are absent."""
         from src.tasks.DailyTaskRunner import DailyTaskRunner
         from tests.TestDailyTaskRunner import StubTask
 
@@ -286,6 +304,7 @@ class ActivitySupplyTest(unittest.TestCase):
 
 class SupplyMenuVerificationTest(unittest.TestCase):
     def test_menu_content_is_required_and_home_labels_must_disappear(self):
+        """Verify menu content is required and home labels must disappear."""
         task = Mock()
         task.box_of_screen.side_effect = lambda *args: args
         task.wait_until.side_effect = lambda predicate, **kw: predicate()
@@ -294,8 +313,61 @@ class SupplyMenuVerificationTest(unittest.TestCase):
             self.assertEqual(expected, namespace["_ensure_supply_menu"](task))
 
 
+class BackgroundSupplyScrollTest(unittest.TestCase):
+    """真实窗口消息方法通过桩边界验证，不对游戏发送输入。"""
+
+    def make_task(self):
+        """保留真实 move/scroll 方法，只替换 Win32 消息发送边界。"""
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.post = Mock()
+        post.update_mouse_pos = Mock(return_value=123)
+        post.try_activate = Mock()
+        task = SimpleNamespace(
+            width=2560,
+            height=1600,
+            sleep=Mock(),
+            executor=SimpleNamespace(interaction=SimpleNamespace(post_interaction=post)),
+            move_relative=Mock(side_effect=AssertionError("不应进入Genshin物理鼠标路径")),
+            scroll_relative=Mock(side_effect=AssertionError("不应依赖全局滚轮补丁")),
+        )
+        return task, post
+
+    def test_real_message_backend_scrolls_without_pr97_patch(self):
+        """未安装 #97 时也只发送悬停和滚轮消息。"""
+        import win32con
+
+        task, post = self.make_task()
+        namespace["_scroll_supply_menu"](task, -3)
+        self.assertEqual(
+            [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
+            [call.args[0] for call in post.post.call_args_list],
+        )
+        self.assertEqual((307, 960), post.update_mouse_pos.call_args.args)
+        task.move_relative.assert_not_called()
+        task.scroll_relative.assert_not_called()
+
+    def test_scroll_failure_still_deactivates_message_target(self):
+        """滚动异常时清理消息激活状态，并保留原异常。"""
+        task, post = self.make_task()
+        post.scroll = Mock(side_effect=RuntimeError("wheel failed"))
+        post.deactivate = Mock()
+        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
+            namespace["_scroll_supply_menu"](task, -3)
+        post.deactivate.assert_called_once()
+
+    def test_missing_message_backend_is_explicit_failure(self):
+        """缺少后台消息接口时明确失败，不能回落到物理滚轮。"""
+        task, _ = self.make_task()
+        task.executor.interaction = SimpleNamespace()
+        with self.assertRaisesRegex(RuntimeError, "窗口消息"):
+            namespace["_scroll_supply_menu"](task, -3)
+
+
 class NativeHoverTest(unittest.TestCase):
     def bridge(self):
+        """Model bridge."""
         mouse_source = Path(__file__).resolve().parents[1] / "src/interaction/Mouse.py"
         methods = [
             node
