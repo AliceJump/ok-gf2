@@ -118,7 +118,7 @@ class DailyActivityMixin:
                 if self.is_free_layer(time_out=12):
                     return True
                 break
-        self.log_warning("活动层入口未成功打开，本项结束，继续后续日常")
+        self.log_warning("活动层入口未成功打开，恢复主页后继续后续步骤")
         self.screenshot("activity_layer_entry_failed")
         return False
 
@@ -131,7 +131,8 @@ class DailyActivityMixin:
         for i in range(2):
             if not self._enter_free_time_layer():
                 self.ensure_main(time_out=60)
-                return False
+                completed = False
+                continue
             if self.is_free_layer(time_out=1):
                 if i == 0:
                     drink_result = self.do_food_flow(

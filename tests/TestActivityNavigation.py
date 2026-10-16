@@ -1,4 +1,5 @@
 import ast
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
@@ -8,7 +9,7 @@ def method(path, name):
     """Model method."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"))
     node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
-    ns = {}
+    ns = {"re": re}
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), ns)
     return ns[name]
 
@@ -38,7 +39,59 @@ class ActivityNavigationTest(unittest.TestCase):
         task.do_food_flow.assert_not_called()
         task.water_flowers.assert_not_called()
         task._ensure_activity_panel.assert_not_called()
-        task.ensure_main.assert_called_once()
+        self.assertEqual(3, task.ensure_main.call_count)
+
+    def test_failed_entry_recovers_home_and_continues_later_layer_steps(self):
+        """单步进入失败后恢复主页，后续喝水、吃饭或浇花仍独立尝试。"""
+        run = method("src/tasks/daily/daily_activity_mixin.py", "free_time_layer")
+        cases = [
+            ([False, True, True], ["enter", "home", "enter", "美味烹调", "home", "enter", "water", "home"]),
+            ([True, False, True], ["enter", "茶歇一刻", "home", "enter", "home", "enter", "water", "home"]),
+            ([False, False, True], ["enter", "home", "enter", "home", "enter", "water", "home"]),
+            ([True, True, False], ["enter", "茶歇一刻", "home", "enter", "美味烹调", "home", "enter", "home"]),
+        ]
+        for entries, expected in cases:
+            with self.subTest(entries=entries):
+                task = Mock()
+                task.config = {"活动层浇花": True}
+                task.is_free_layer.return_value = True
+                outcomes = iter(entries)
+                events = []
+                task._enter_free_time_layer.side_effect = lambda: events.append("enter") or next(outcomes)
+                task.ensure_main.side_effect = lambda **kw: events.append("home")
+                task.do_food_flow.side_effect = lambda **kw: events.append(kw["entry_match"].pattern) or True
+                task.water_flowers.side_effect = lambda: events.append("water") or True
+
+                self.assertIs(False, run(task))
+                self.assertEqual(expected, events)
+
+    def test_failed_home_recovery_stops_before_attempting_another_step(self):
+        """恢复主页失败必须向上传播，不能在未知页面继续点击。"""
+        run = method("src/tasks/daily/daily_activity_mixin.py", "free_time_layer")
+        task = Mock()
+        task._enter_free_time_layer.return_value = False
+        task.ensure_main.side_effect = RuntimeError("home recovery failed")
+        with self.assertRaisesRegex(RuntimeError, "home recovery failed"):
+            run(task)
+        task._enter_free_time_layer.assert_called_once()
+        task.do_food_flow.assert_not_called()
+        task.water_flowers.assert_not_called()
+
+    def test_lost_layer_hud_skips_food_but_still_attempts_later_steps(self):
+        """入口返回成功后 HUD 再次丢失时不操作食物，但仍可恢复后继续。"""
+        run = method("src/tasks/daily/daily_activity_mixin.py", "free_time_layer")
+        task = Mock()
+        task.config = {"活动层浇花": True}
+        task._enter_free_time_layer.return_value = True
+        task.is_free_layer.side_effect = [False, True, True]
+        task.do_food_flow.return_value = True
+        task.water_flowers.return_value = True
+
+        self.assertIs(False, run(task))
+        task.do_food_flow.assert_called_once()
+        self.assertEqual("美味烹调", task.do_food_flow.call_args.kwargs["entry_match"].pattern)
+        task.water_flowers.assert_called_once()
+        self.assertEqual(3, task.ensure_main.call_count)
 
     def test_entry_retries_click_only_until_hud_is_confirmed(self):
         """Verify entry retries click only until hud is confirmed."""
