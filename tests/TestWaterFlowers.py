@@ -90,6 +90,7 @@ class ActivityPanelTest(unittest.TestCase):
 
 class WaterFlowersTest(unittest.TestCase):
     def test_progress_rewards_dialog_is_closed_before_cultivation_lookup(self):
+        """Verify progress rewards dialog is closed before cultivation lookup."""
         tree = ast.parse(source.read_text(encoding="utf-8"))
         method = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_dismiss_activity_progress_dialog"), None)
         self.assertIsNotNone(method, "missing progress dialog recovery")
@@ -102,6 +103,7 @@ class WaterFlowersTest(unittest.TestCase):
         task.back.assert_called_once_with(after_sleep=1)
 
     def test_blocked_progress_dialog_stops_before_cultivation_search(self):
+        """Verify blocked progress dialog stops before cultivation search."""
         task = Mock()
         task._ensure_activity_panel.return_value = True
         task._dismiss_activity_progress_dialog.return_value = False
