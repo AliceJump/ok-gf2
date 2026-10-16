@@ -57,10 +57,14 @@ class ActivityNavigationTest(unittest.TestCase):
                 task.is_free_layer.return_value = True
                 outcomes = iter(entries)
                 events = []
-                task._enter_free_time_layer.side_effect = lambda: events.append("enter") or next(outcomes)
-                task.ensure_main.side_effect = lambda **kw: events.append("home")
-                task.do_food_flow.side_effect = lambda **kw: events.append(kw["entry_match"].pattern) or True
-                task.water_flowers.side_effect = lambda: events.append("water") or True
+                task._enter_free_time_layer.side_effect = lambda events=events, outcomes=outcomes: (
+                    events.append("enter") or next(outcomes)
+                )
+                task.ensure_main.side_effect = lambda events=events, **kw: events.append("home")
+                task.do_food_flow.side_effect = lambda events=events, **kw: (
+                    events.append(kw["entry_match"].pattern) or True
+                )
+                task.water_flowers.side_effect = lambda events=events: events.append("water") or True
 
                 self.assertIs(False, run(task))
                 self.assertEqual(expected, events)
