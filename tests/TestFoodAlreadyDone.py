@@ -5,6 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from ok import Box
+from ok.feature.Box import relative_box
+
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
 
 def method(name):
@@ -15,6 +18,82 @@ def method(name):
     return ns[name]
 
 class FoodAlreadyDoneTest(unittest.TestCase):
+    def drink_scene(self, boxes, width=1920, height=1080):
+        """保留真实 Box 与裁剪坐标，只替换设备 OCR 和点击边界。"""
+        task = Mock()
+        task.width, task.height = width, height
+        task.box_of_screen.side_effect = lambda *bounds: relative_box(width, height, *bounds)
+
+        def read(*, match=None, box=None, **kwargs):
+            """模拟标题筛选和局部 OCR，不将无关计数送入结果。"""
+            return [item for item in boxes if (
+                (match is None or re.search(match, item.name))
+                and (box is None or (
+                    box.x <= item.x and item.x + item.width <= box.x + box.width
+                    and box.y <= item.y and item.y + item.height <= box.y + box.height
+                ))
+            )]
+
+        task.wait_ocr.side_effect = read
+        task.ocr.side_effect = read
+        task.wait_click_ocr.return_value = False
+        return task
+
+    def run_drink(self, task):
+        """执行真实饮品流程，制作按钮不可用时必须靠完成证据跳过。"""
+        return method("do_food_flow")(
+            task, enter_func=Mock(), entry_match=re.compile("茶歇一刻"),
+            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+        )
+
+    def test_split_completed_counter_skips_unavailable_make_button(self):
+        """标题和次数分框时，正常返回完成且不再尝试制作。"""
+        for counter in [Box(930, 400, 40, 24, name="1/1"),
+                        Box(840, 430, 48, 24, name="1 ／ 1")]:
+            with self.subTest(counter=counter.name, y=counter.y):
+                task = self.drink_scene([Box(800, 400, 120, 24, name="茶歇一刻"), counter])
+                self.assertIs(True, self.run_drink(task))
+                task.click_with_key.assert_not_called()
+                task.wait_click_ocr.assert_not_called()
+
+    def test_unrelated_completed_counter_does_not_skip_unfinished_drink(self):
+        """旁边其他入口的 1/1 不能使未完成或无计数的饮品误报完成。"""
+        for count in ["0/1", "2/2", ""]:
+            with self.subTest(count=count):
+                task = self.drink_scene([
+                    Box(800, 400, 120, 24, name="茶歇一刻"),
+                    Box(930, 400, 40, 24, name=count),
+                    Box(1400, 400, 40, 24, name="1/1"),
+                    Box(930, 650, 40, 24, name="1/1"),
+                ])
+                self.assertEqual("button", self.run_drink(task))
+                task.click_with_key.assert_called_once()
+
+    def test_combined_counter_must_be_exactly_one_of_one(self):
+        """同框 1/10 和显式未完成状态不能误用附近的完成计数。"""
+        for count in ["0/1", "1/10", "11/11"]:
+            with self.subTest(count=count):
+                task = self.drink_scene([
+                    Box(800, 400, 170, 24, name="茶歇一刻" + count),
+                    Box(980, 400, 40, 24, name="1/1"),
+                ])
+                self.assertEqual("button", self.run_drink(task))
+                task.click_with_key.assert_called_once()
+
+    def test_split_counter_near_screen_edge_uses_clamped_region(self):
+        """不同分辨率及靠边入口使用合法局部区域读取计数。"""
+        task = self.drink_scene([
+            Box(1130, 670, 96, 16, name="茶歇一刻"),
+            Box(1230, 690, 32, 16, name="1/1"),
+        ], width=1280, height=720)
+        self.assertIs(True, self.run_drink(task))
+        region = task.ocr.call_args.kwargs["box"]
+        self.assertGreaterEqual(region.x, 0)
+        self.assertGreaterEqual(region.y, 0)
+        self.assertLessEqual(region.x + region.width, 1280)
+        self.assertLessEqual(region.y + region.height, 720)
+        task.click_with_key.assert_not_called()
+
     def test_completed_drink_entry_does_not_click_or_wait_for_make(self):
         """Verify completed drink entry does not click or wait for make."""
         task = Mock()

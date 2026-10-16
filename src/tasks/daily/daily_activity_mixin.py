@@ -365,10 +365,31 @@ class DailyActivityMixin:
             times = 2
         for attempt in range(times):
             if result := self.wait_ocr(match=entry_match, time_out=3):
-                if main_btn == "制作" and any(
-                    re.search(r"茶\s*歇\s*一\s*刻\s*1\s*/\s*1", getattr(item, "name", ""))
-                    for item in result
-                ):
+                drink_done = False
+                if main_btn == "制作":
+                    for entry in result:
+                        name = getattr(entry, "name", "")
+                        title = re.search(r"茶\s*歇\s*一\s*刻", name)
+                        if not title:
+                            continue
+                        count = re.search(r"(\d+)\s*[/／]\s*(\d+)\s*$", name[title.end():])
+                        if count:
+                            drink_done = count.groups() == ("1", "1")
+                        else:
+                            # 计数可能被 OCR 分成独立框，只读取入口旁及下方的局部区域。
+                            h = entry.height
+                            count_box = self.box_of_screen(
+                                max(0, (entry.x - h) / self.width),
+                                max(0, (entry.y - h / 2) / self.height),
+                                min(1, (entry.x + entry.width + 4 * h) / self.width),
+                                min(1, (entry.y + 3 * h) / self.height),
+                            )
+                            drink_done = bool(self.ocr(
+                                match=re.compile(r"^\s*1\s*[/／]\s*1\s*$"), box=count_box, log=True,
+                            ))
+                        if drink_done:
+                            break
+                if drink_done:
                     self.log_info("茶歇一刻 1/1：今日喝水已完成，跳过重复制作")
                     return True
                 self.click_with_key("alt", result)
