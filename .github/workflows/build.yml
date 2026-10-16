@@ -114,7 +114,7 @@ jobs:
     outputs:
       start_tag: ${{ steps.sync.outputs.start_tag }}
       end_tag: ${{ steps.sync.outputs.end_tag }}
-      changes_with_asterisk: ${{ steps.sync.outputs.changes_with_asterisk }}
+      changes_with_asterisk: ${{ steps.notes.outputs.changes_with_asterisk }}
 
     env:
       PYTHONIOENCODING: 'UTF-8'
@@ -187,7 +187,15 @@ jobs:
           sync_list: 'deploy.txt'
           tag: ${{ steps.tag.outputs.tag }}
           gitignore_file: '.update_repo_gitignore'
-          show_author: true
+          show_author: false
+
+      - name: Generate changelog with GitHub usernames
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          START_TAG: ${{ steps.sync.outputs.start_tag }}
+          END_TAG: ${{ steps.sync.outputs.end_tag }}
+        run: python scripts/release/github_changelog.py
 
   build:
     needs: [test, sync]
