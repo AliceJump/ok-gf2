@@ -216,6 +216,7 @@ class DailyBattleMixin:
             return True
 
         def failed(reason):
+            """记录失败原因并保留现场，向调用者返回明确失败。"""
             self.log_warning(f"尘烟未完成：{reason}")
             self.info_set("尘烟前线", f"待核查：{reason}")
             self.screenshot("Chenyan_EntryOrTicketsFailed")

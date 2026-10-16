@@ -181,6 +181,7 @@ class AssistDevice:
 
 class ChenyanAssistTest(unittest.TestCase):
     def test_ots14_precedes_available_weimaxi_na_across_attributes(self):
+        """Verify ots14 precedes available weimaxi na across attributes."""
         task = AssistDevice(candidates=["威玛西娜", "OTs-14"])
         original_visible = task.visible
         task.visible = lambda: (original_visible() + ["威玛西娜"]
@@ -190,6 +191,7 @@ class ChenyanAssistTest(unittest.TestCase):
         self.assertNotIn("威玛西娜", task.clicked)
 
     def test_missing_ots14_returns_to_original_first_choice(self):
+        """Verify missing ots14 returns to original first choice."""
         task = AssistDevice(candidates=["威玛西娜"])
         original_visible = task.visible
         task.visible = lambda: (original_visible() + ["威玛西娜"]
@@ -198,11 +200,13 @@ class ChenyanAssistTest(unittest.TestCase):
         self.assertEqual("威玛西娜", task.chosen)
 
     def test_ots14_search_accepts_uppercase_ocr(self):
+        """Verify ots14 search accepts uppercase ocr."""
         task = AssistDevice(candidates=["OTS-14"])
         self.assertTrue(task.choose_chenyan(1))
         self.assertEqual("OTS-14", task.chosen)
 
     def test_unreadable_attributes_restore_list_after_failed_join(self):
+        """Verify unreadable attributes restore list after failed join."""
         task = AssistDevice(filter_readable=False)
         task.page = "card"
         task.attr = "酸蚀"
@@ -225,6 +229,7 @@ class ChenyanAssistTest(unittest.TestCase):
         original_wait_click = task.wait_click_ocr
 
         def visible():
+            """Model visible."""
             if task.page != "list":
                 return original_visible()
             names = ["班组助战", "NMU", "庆", "😂"]
@@ -235,11 +240,13 @@ class ChenyanAssistTest(unittest.TestCase):
             return names
 
         def click(target, **kwargs):
+            """Model click."""
             original_click(target, **kwargs)
             if task.clicked[-1] == "入队" and task.chosen == "可露凯":
                 task.page = "duplicate"
 
         def wait_click(*args, match=None, **kwargs):
+            """Model wait click."""
             if match == "取消" and task.page == "duplicate":
                 cancelled.append(True)
                 task.page = "list"
