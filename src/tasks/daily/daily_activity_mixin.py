@@ -103,6 +103,7 @@ class DailyActivityMixin:
 
     def _enter_free_time_layer(self):
         # 点击命中不代表切页成功；只有活动层 HUD 才能开始移动和交互。
+        """有限重试进入活动层，避免主页漏读导致长时间等待。"""
         for attempt in range(3):
             self.log_info(f"尝试进入活动层：第 {attempt + 1}/3 次")
             self.wait_click_ocr(

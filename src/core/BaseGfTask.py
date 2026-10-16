@@ -684,7 +684,9 @@ class BaseGfTask(RuntimeMixin, BaseTask):
 
     def is_free_layer(self, time_out=20, every_time=1):
         # wait_ocr(time_out=0) 使用框架默认超时，不能用于单次探测。
+        """按限定超时识别活动层 HUD，避免嵌套默认等待。"""
         def detected():
+            """仅用当前帧检查活动层快捷键标识是否齐全。"""
             result = self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)
             return bool(result and len(result) >= 5)
 

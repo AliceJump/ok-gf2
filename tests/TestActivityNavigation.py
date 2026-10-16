@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 
 def method(path, name):
+    """Model method."""
     tree = ast.parse(Path(path).read_text(encoding="utf-8"))
     node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
     ns = {}
@@ -14,6 +15,7 @@ def method(path, name):
 
 class ActivityNavigationTest(unittest.TestCase):
     def test_layer_check_has_one_explicit_timeout_and_checks_full_hud(self):
+        """Verify layer check has one explicit timeout and checks full hud."""
         check = method("src/core/BaseGfTask.py", "is_free_layer")
         task = Mock()
         task.box.top = "top"
@@ -27,6 +29,7 @@ class ActivityNavigationTest(unittest.TestCase):
         self.assertTrue(check(task, time_out=1))
 
     def test_failed_layer_entry_finishes_without_running_food_or_rewards(self):
+        """Verify failed layer entry finishes without running food or rewards."""
         run = method("src/tasks/daily/daily_activity_mixin.py", "free_time_layer")
         task = Mock()
         task._enter_free_time_layer.return_value = False
@@ -38,6 +41,7 @@ class ActivityNavigationTest(unittest.TestCase):
         task.ensure_main.assert_called_once()
 
     def test_entry_retries_click_only_until_hud_is_confirmed(self):
+        """Verify entry retries click only until hud is confirmed."""
         enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
         task = Mock()
         task.is_free_layer.side_effect = [False, True]
@@ -46,6 +50,7 @@ class ActivityNavigationTest(unittest.TestCase):
         self.assertEqual(2, task.wait_click_ocr.call_count)
 
     def test_entry_failure_is_bounded_and_screenshotted(self):
+        """Verify entry failure is bounded and screenshotted."""
         enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
         task = Mock()
         task.is_free_layer.return_value = False
@@ -55,6 +60,7 @@ class ActivityNavigationTest(unittest.TestCase):
         task.screenshot.assert_called_once()
 
     def test_entry_retries_when_only_activity_and_public_home_markers_are_readable(self):
+        """Verify entry retries when only activity and public home markers are readable."""
         enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
         task = Mock()
         task.is_free_layer.side_effect = [False, False, True]
@@ -65,6 +71,7 @@ class ActivityNavigationTest(unittest.TestCase):
         task.screenshot.assert_not_called()
 
     def test_failed_activity_entry_does_not_prevent_guild_task(self):
+        """Verify failed activity entry does not prevent guild task."""
         from src.tasks.DailyTaskRunner import DailyTaskRunner
         from tests.TestDailyTaskRunner import StubTask
 
