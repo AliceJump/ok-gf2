@@ -80,7 +80,6 @@ class DailyCommonMixin:
 
         return filtered
 
-
     def wait_click_ocr_with_pop_up(self, match, box=None):
         if self.wait_until(lambda: self.do_wait_pop_up_and_click(match, box), time_out=10, raise_if_not_found=True):
             self.sleep(0.5)

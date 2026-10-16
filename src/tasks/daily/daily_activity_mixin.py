@@ -358,60 +358,64 @@ class DailyActivityMixin:
 
     def _activity_chapter_pattern(self, name, chapter):
         # 名称按用户输入匹配，不把初篇/转篇映射为上篇/下篇。
-        name_pattern = r'\s*'.join(re.escape(c) for c in name if not c.isspace())
-        chapter_pattern = r'\s*'.join(re.escape(c) for c in chapter if not c.isspace())
-        return re.compile(rf'^\s*{name_pattern}\s*[·・：:]\s*{chapter_pattern}\s*$')
+        name_pattern = r"\s*".join(re.escape(c) for c in name if not c.isspace())
+        chapter_pattern = r"\s*".join(re.escape(c) for c in chapter if not c.isspace())
+        return re.compile(rf"^\s*{name_pattern}\s*[·・：:]\s*{chapter_pattern}\s*$")
 
     def activity(self):
-        activity_wuzi_names = [name.strip() for name in str(self.config.get('当前物资关卡名称')).split("-")]
-        chapter_names = [name.strip() for name in str(self.config.get('物资篇章名称') or '').split('-')]
+        activity_wuzi_names = [name.strip() for name in str(self.config.get("当前物资关卡名称")).split("-")]
+        chapter_names = [name.strip() for name in str(self.config.get("物资篇章名称") or "").split("-")]
         if len(activity_wuzi_names) != len(chapter_names):
-            self.log_info('请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律')
+            self.log_info("请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律")
             return
-        patterns = [self._activity_chapter_pattern(name, chapter).pattern
-                    for name, chapter in zip(activity_wuzi_names, chapter_names) if name and chapter]
+        patterns = [
+            self._activity_chapter_pattern(name, chapter).pattern
+            for name, chapter in zip(activity_wuzi_names, chapter_names)
+            if name and chapter
+        ]
         if not patterns:
-            self.log_info('未配置完整的活动名称和物资篇章名称，跳过活动自律')
+            self.log_info("未配置完整的活动名称和物资篇章名称，跳过活动自律")
             return
-        chapter_re = re.compile('|'.join(patterns))
-        self.info_set('current_task', 'activity')
-        if to_activity_page := self.wait_click_ocr(match=['限时开启'], box=self.box.top_right, after_sleep=2,
-                                                   raise_if_not_found=False,
-                                                   time_out=4):
-            if activities := self.wait_ocr(match=['开启中'], box=self.box.bottom_left, time_out=4):
+        chapter_re = re.compile("|".join(patterns))
+        self.info_set("current_task", "activity")
+        if to_activity_page := self.wait_click_ocr(
+            match=["限时开启"], box=self.box.top_right, after_sleep=2, raise_if_not_found=False, time_out=4
+        ):
+            if activities := self.wait_ocr(match=["开启中"], box=self.box.bottom_left, time_out=4):
                 for activity in activities:
                     self.ensure_main()
                     self.click(to_activity_page, after_sleep=2)
                     self.click(activity)
                     to_clicks = self.wait_ocr_until_count(
-                        match=[chapter_re],
-                        box=None,
-                        min_count=1,
-                        timeout=5,
-                        settle_time=2,
-                        log=True
+                        match=[chapter_re], box=None, min_count=1, timeout=5, settle_time=2, log=True
                     )
                     if to_clicks:
                         chapter_boxes = to_clicks
                         wuzi_boxes = self.wait_ocr(
-                            match=re.compile('物资'), box=None, time_out=4, settle_time=2, log=True,
-                            raise_if_not_found=False
+                            match=re.compile("物资"),
+                            box=None,
+                            time_out=4,
+                            settle_time=2,
+                            log=True,
+                            raise_if_not_found=False,
                         )
-                        click_boxes = self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
-                        locked_boxes = self.ocr(match=re.compile('未开启|未开放|未解锁'), box=None)
+                        click_boxes = (
+                            self._filter_boxes_near_candidates(chapter_boxes, wuzi_boxes) if wuzi_boxes else []
+                        )
+                        locked_boxes = self.ocr(match=re.compile("未开启|未开放|未解锁"), box=None)
                         locked_chapters = self._filter_boxes_near_candidates(chapter_boxes, locked_boxes or [])
                         click_boxes = [box for box in click_boxes if box not in locked_chapters]
                         if not click_boxes:
-                            self.log_info('未找到指定章节已开放的物资入口，跳过活动自律')
+                            self.log_info("未找到指定章节已开放的物资入口，跳过活动自律")
                             continue
                         # 只点击选中的章节，避免沿用旧画面的坐标再次点击上篇。
                         self.click(click_boxes[0], after_sleep=2)
                     else:
-                        self.log_info('未找到指定章节，跳过活动自律')
+                        self.log_info("未找到指定章节，跳过活动自律")
                         continue
                     if to_clicks:
                         self.sleep(2)
-                        if wu_zi := self.ocr(match=re.compile('物资'), box=self.box.bottom_right):
+                        if wu_zi := self.ocr(match=re.compile("物资"), box=self.box.bottom_right):
                             self.click(wu_zi, after_sleep=0.5)
                         battles = self.wait_ocr(match=map_re, time_out=4)
                         if battles:
