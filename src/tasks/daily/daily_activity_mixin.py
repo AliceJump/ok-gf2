@@ -377,6 +377,7 @@ class DailyActivityMixin:
                     if activity_count >= len(activity_wuzi_names):
                         activity_count -= 1
                     name_re = activity_wuzi_names[activity_count]
+                    activity_count += 1
                     chapter_re = re.compile(rf"{re.escape(name_re)}[·・：]{chapter_suffix_re}")
                     to_clicks = self.wait_ocr_until_count(
                         match=[chapter_re], box=None, min_count=2, timeout=5, settle_time=2, log=True
