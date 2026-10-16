@@ -1,5 +1,5 @@
 import unittest
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
 from src.tasks.daily.daily_reward_mixin import DailyRewardMixin
@@ -100,6 +100,27 @@ class XunluOutcomeTest(unittest.TestCase):
             task.box_of_screen.side_effect = lambda *bounds: bounds
             self.assertEqual("待核查", namespace["_xunlu_no_reward_status"](task, "action"))
 
+    def test_popup_with_completion_notice_records_uncertain_and_saves_evidence(self):
+        """奖励弹窗与已领完提示重叠时保留两类页面的待核查现场。"""
+        for expected_page, name in (("action", "每日行动"), ("reward", "巡录奖励")):
+            with self.subTest(expected_page=expected_page):
+                task = self.task()
+                action_page = ["每日行动", "沿途行动", "5/5", "已全部领取"]
+                reward_page = ["大奖预览", "通行证", "70/100", "已全部领取", "获得道具"]
+                if expected_page == "action":
+                    task.ocr.side_effect = [[SimpleNamespace(name=n) for n in [*action_page, "获得道具"]]] * 2
+                else:
+                    task.wait_click_ocr.side_effect = [False, True, False, False]
+                    task.ocr.side_effect = [
+                        [SimpleNamespace(name=n) for n in page]
+                        for page in (action_page, action_page, reward_page, reward_page)
+                    ]
+                task._xunlu_no_reward_status.side_effect = MethodType(namespace["_xunlu_no_reward_status"], task)
+
+                self.assertEqual("待核查", namespace["xunlu"](task))
+                task.info_set.assert_any_call(name, "待核查：缺少领取结果证据")
+                task.screenshot.assert_called_once_with(f"Xunlu_Uncertain_{name}")
+
 
 class RewardEvidenceTest(unittest.TestCase):
     def task(self, names):
@@ -174,14 +195,50 @@ class NoClaimableRewardTest(unittest.TestCase):
     def test_expected_page_rejects_other_page_with_progress(self):
         """Verify expected page rejects other page with progress."""
         reward_page = ["大奖预览", "通行证", "70/100"]
-        self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([reward_page, reward_page]), "action"))
+        self.assertEqual(
+            "待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([reward_page, reward_page]), "action")
+        )
 
     def test_visible_claim_or_loading_transition_is_not_no_rewards(self):
         """Verify visible claim or loading transition is not no rewards."""
         page = ["每日行动", "沿途行动", "5/5"]
         for second in ([], page + ["领取"], page + ["键领取"]):
             with self.subTest(second=second):
-                self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([page, second]), "action"))
+                self.assertEqual(
+                    "待核查", DailyRewardMixin._xunlu_no_reward_status(self.task([page, second]), "action")
+                )
+
+    def test_reward_popup_overrides_completion_notice_in_either_ocr_pass(self):
+        """任一轮存在奖励覆盖层时，背景的已领完提示不能确认成功。"""
+        for expected_page, markers in (
+            ("action", ["每日行动", "沿途行动", "5/5"]),
+            ("reward", ["大奖预览", "通行证", "70/100"]),
+        ):
+            for notice in ("已全部领取", "全部已领取", "暂无可领取奖励", "无可领取奖励"):
+                for popup in ("获得道具", "领取奖励", "拂晓之光补给包"):
+                    for popup_pass in (0, 1):
+                        with self.subTest(page=expected_page, notice=notice, popup=popup, popup_pass=popup_pass):
+                            page = [*markers, notice]
+                            pages = [page, page]
+                            pages[popup_pass] = [*page, popup]
+                            self.assertEqual(
+                                "待核查",
+                                DailyRewardMixin._xunlu_no_reward_status(self.task(pages), expected_page),
+                            )
+
+    def test_explicit_no_reward_without_popup_is_confirmed(self):
+        """完整无奖励提示中的领取奖励字样不是弹窗证据。"""
+        for expected_page, markers in (
+            ("action", ["每日行动", "沿途行动"]),
+            ("reward", ["大奖预览", "通行证"]),
+        ):
+            for notice in ("已全部领取", "全部已领取", "暂无可领取奖励", "无可领取奖励"):
+                with self.subTest(page=expected_page, notice=notice):
+                    page = [*markers, notice]
+                    self.assertIs(
+                        True,
+                        DailyRewardMixin._xunlu_no_reward_status(self.task([page, page]), expected_page),
+                    )
 
     def test_no_claimable_label_does_not_claim_all_rewards_were_received(self):
         """Verify no claimable label does not claim all rewards were received."""

@@ -154,8 +154,9 @@ class DailyRewardMixin:
             labels = [re.sub(r"\s+", "", box.name) for box in boxes]
             if any(re.fullmatch(r"(?:一)?键领取|领取|领取全部", label) for label in labels):
                 return "待核查"
-            if any(re.search(r"获得道具|领取奖励|补给包", label) for label in labels) and not any(
-                no_reward.fullmatch(label) for label in labels
+            # 奖励覆盖层优先于背景的已领完提示，未关闭弹窗时保留待核查现场。
+            if any(
+                not no_reward.fullmatch(label) and re.search(r"获得道具|领取奖励|补给包", label) for label in labels
             ):
                 return "待核查"
             if not page_markers.issubset(labels):
