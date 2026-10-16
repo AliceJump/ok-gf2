@@ -99,6 +99,7 @@ class SupplyScreen:
         self.popup_ok = True
         self.stuck_button = False
         self.known_empty = True
+        self.empty_text = "已领取"
         self.button_label = "领取"
         self.claims = []
         self.menu_checks = 0
@@ -149,7 +150,7 @@ class SupplyScreen:
             return self.popup
         if self.page_ok and match.search(self.selected or ""):
             return True
-        return self.known_empty and not self.remaining.get(self.selected, 0) and bool(match.search("已领取"))
+        return self.known_empty and not self.remaining.get(self.selected, 0) and bool(match.search(self.empty_text))
 
     def wait_pop_up(self, **kwargs):
         self.popup = False
@@ -245,6 +246,14 @@ class ActivitySupplyTest(unittest.TestCase):
         task.known_empty = False
         self.assertEqual("待核查", task.activities())
         self.assertIn("未识别", task.status["情报补给"])
+
+    def test_countdown_state_is_known_empty(self):
+        """领取冷却倒计时应视为已确认的不可领取状态。"""
+        task = SupplyScreen(entries={2: "情报补给"}, remaining={"情报补给": 0})
+        task.empty_text = "02:54:28后可领取"
+        self.assertIs(True, task.activities())
+        self.assertEqual([], task.claims)
+        self.assertEqual("已领取或未到领取时间", task.status["情报补给"])
 
     def test_lost_page_after_popup_is_uncertain(self):
         task = SupplyScreen(entries={2: "情报补给"})
