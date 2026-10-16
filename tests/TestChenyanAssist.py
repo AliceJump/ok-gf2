@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 def load_methods(path, class_name):
@@ -371,7 +371,9 @@ class ChenyanAssistTest(unittest.TestCase):
         task = AssistDevice()
         task.is_adb = lambda: False
         events = []
-        task.scroll_relative = lambda x, y, count: events.append(count)
+        post = SimpleNamespace(move=Mock(), scroll=lambda x, y, count: events.append(count), deactivate=Mock())
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         task.width = 3840
         task.height = 2160
         task.hwnd = SimpleNamespace(hwnd=123)
@@ -394,6 +396,7 @@ class ChenyanAssistTest(unittest.TestCase):
             self.assertTrue(battle["_scroll_chenyan_list"](task, 120))
         self.assertEqual([-3], events)
         self.assertEqual([], calls)
+        post.deactivate.assert_called_once()
 
     def test_search_reads_one_frame_per_step(self):
         """Verify search reads one frame per step."""
@@ -412,7 +415,9 @@ class ChenyanAssistTest(unittest.TestCase):
         task.hwnd = SimpleNamespace(hwnd=123)
         task.move_relative = lambda *args: None
         events = []
-        task.scroll_relative = lambda *args: events.append(args)
+        post = SimpleNamespace(move=Mock(), scroll=lambda *args: events.append(args), deactivate=Mock())
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         restored = []
 
         def sleep(seconds):
@@ -439,6 +444,41 @@ class ChenyanAssistTest(unittest.TestCase):
             battle["_scroll_chenyan_list"](task, 1)
         self.assertEqual([], events)
         self.assertEqual([], restored)
+        post.deactivate.assert_called_once()
+
+    def test_real_post_backend_does_not_require_global_input_patch(self):
+        """直接调用依赖的窗口消息后端，独立于 #97 的全局补丁。"""
+        import win32con
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        task = AssistDevice()
+        task.is_adb = lambda: False
+        task.width, task.height = 3840, 2160
+        task.move_relative = Mock(side_effect=AssertionError("物理鼠标路径"))
+        task.scroll_relative = Mock(side_effect=AssertionError("物理滚轮路径"))
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.post = Mock()
+        post.update_mouse_pos = Mock(return_value=123)
+        post.try_activate = Mock()
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+        self.assertEqual(
+            [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
+            [call.args[0] for call in post.post.call_args_list],
+        )
+        self.assertEqual((2496, 1296), post.update_mouse_pos.call_args.args)
+
+    def test_pause_during_hover_deactivates_without_scrolling(self):
+        """悬停期间暂停时不滚动，仍清理窗口消息激活状态。"""
+        task = AssistDevice()
+        task.is_adb = lambda: False
+        task.width, task.height = 3840, 2160
+        post = SimpleNamespace(move=Mock(), scroll=Mock(), deactivate=Mock())
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post))
+        task.sleep = lambda seconds: setattr(task.executor, "paused", True) if seconds == 0.1 else None
+        self.assertFalse(battle["_scroll_chenyan_list"](task, 1))
+        post.scroll.assert_not_called()
+        post.deactivate.assert_called_once()
 
     def test_stop_exception_propagates_before_mouse_input(self):
         """Verify stop exception propagates before mouse input."""
@@ -454,6 +494,26 @@ class ChenyanAssistTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "task stopped"):
             battle["_scroll_chenyan_list"](task, 1)
         self.assertEqual([], events)
+
+    def test_adb_scroll_keeps_swipe_without_message_backend(self):
+        """移动端继续使用滑动手势，不依赖桌面窗口消息。"""
+        task = AssistDevice()
+        task.is_adb = lambda: True
+        task.swipe_relative = Mock()
+        self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+        task.swipe_relative.assert_called_once_with(0.65, 0.72, 0.65, 0.40, duration=0.3)
+
+    def test_missing_post_backend_fails_without_physical_input(self):
+        """缺少消息接口时明确失败，不能退回占用物理鼠标。"""
+        task = AssistDevice()
+        task.is_adb = lambda: False
+        task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace())
+        task.move_relative = Mock()
+        task.scroll_relative = Mock()
+        with self.assertRaisesRegex(RuntimeError, "窗口消息"):
+            battle["_scroll_chenyan_list"](task, 1)
+        task.move_relative.assert_not_called()
+        task.scroll_relative.assert_not_called()
 
     def test_missing_join_on_list_does_not_back_out_of_list(self):
         """Verify missing join on list does not back out of list."""

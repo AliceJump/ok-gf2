@@ -273,11 +273,18 @@ class DailyBattleMixin:
             self.swipe_relative(0.65, 0.72 if count > 0 else 0.40, 0.65, 0.40 if count > 0 else 0.72, duration=0.3)
         else:
             # 只向游戏发送窗口消息，不占用前台或物理鼠标。
-            self.move_relative(0.65, 0.60)
-            self.sleep(0.1)
-            if executor is not None and executor.paused:
-                return False
-            self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
+            post = getattr(getattr(executor, "interaction", None), "post_interaction", None)
+            if post is None:
+                raise RuntimeError("当前输入后端不支持助战列表窗口消息滚动")
+            x, y = int(self.width * 0.65), int(self.height * 0.60)
+            try:
+                post.move(x, y)
+                self.sleep(0.1)
+                if executor.paused:
+                    return False
+                post.scroll(x, y, -3 if count > 0 else 3)
+            finally:
+                post.deactivate()
             self.sleep(0.15)
         self.sleep(0.05)
         return True
