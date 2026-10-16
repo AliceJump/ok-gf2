@@ -46,9 +46,13 @@ class DailyActivityMixin:
 
         def opened():
             """仅在侧栏可识别且不再是主页时确认菜单。"""
-            menu = self.ocr(box=menu_box, match=re.compile(r"[一-鿿]{2,}"))
+            menu = self.ocr(
+                box=menu_box,
+                match=re.compile(r"^\s*(?:情\s*报\s*补\s*给|战\s*前\s*补\s*给|新\s*手|活\s*动)\s*$"),
+            )
             home = self.ocr(box=self.box.right, match=["整备室", "活动层", "招募"])
-            return bool(menu) and len(home) < 2
+            names = {re.sub(r"\s+", "", box.name) for box in menu}
+            return not home and bool(names & {"情报补给", "战前补给"} or {"新手", "活动"} <= names)
 
         if self.wait_until(opened, time_out=4, settle_time=0):
             self.log_info("已确认活动列表打开")
@@ -79,11 +83,13 @@ class DailyActivityMixin:
             raise RuntimeError("当前输入后端不支持补给列表窗口消息滚动")
         x, y = int(self.width * 0.12), int(self.height * 0.60)
         self.sleep(0.01)
+        was_foreground = self.executor.interaction.hwnd_window.is_foreground()
         try:
             post.move(x, y)
             post.scroll(x, y, count)
         finally:
-            post.deactivate()
+            if not was_foreground:
+                post.deactivate()
         self.sleep(0.6)
 
 

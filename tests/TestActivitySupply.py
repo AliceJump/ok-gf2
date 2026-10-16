@@ -35,6 +35,7 @@ screens = {}
 
 
 def run_in_window(hwnd, func, *args, **kwargs):
+    """模拟后台滚动前后的窗口状态恢复。"""
     screen = screens[hwnd]
     previous = screen.foreground
     active_and_send_mouse_delta(hwnd)
@@ -47,6 +48,7 @@ def run_in_window(hwnd, func, *args, **kwargs):
 
 
 def active_and_send_mouse_delta(hwnd, **kwargs):
+    """记录模拟窗口激活，不发送系统输入。"""
     screen = screens[hwnd]
     if not screen.foreground:
         screen.activations += 1
@@ -54,6 +56,7 @@ def active_and_send_mouse_delta(hwnd, **kwargs):
 
 
 def run_at_window_pos(hwnd, func, x, y, sleep_time=0.5):
+    """临时移动模拟鼠标并保证恢复原位置。"""
     screen = screens[hwnd]
     previous = screen.physical_mouse
     screen.physical_mouse = (x, y)
@@ -111,6 +114,7 @@ class SupplyScreen:
         self.ensure_main = Mock()
         self.executor = SimpleNamespace(
             interaction=SimpleNamespace(
+                hwnd_window=SimpleNamespace(is_foreground=lambda: self.foreground),
                 post_interaction=SimpleNamespace(
                     move=lambda x, y: self.move_relative(x / self.width, y / self.height),
                     scroll=lambda x, y, count: self.scroll_relative(x / self.width, y / self.height, count),
@@ -120,12 +124,15 @@ class SupplyScreen:
         )
 
     def box_of_screen(self, *bounds):
+        """用归一化边界标识侧栏识别区域。"""
         return bounds
 
     def tr(self, message):
+        """保持测试状态文案不变。"""
         return message
 
     def move_relative(self, x, y):
+        """记录虚拟悬停点以验证滚轮的目标区域。"""
         self.hover_mouse = (int(self.width * x), int(self.height * y))
 
     def scroll_relative(self, x, y, count):
@@ -138,6 +145,7 @@ class SupplyScreen:
         self.menu_page = 0 if count > 0 else self.menu_page + 1
 
     def wait_click_ocr(self, *, match, box, **kwargs):
+        """仅在当前页面匹配入口或领取按钮时推进状态。"""
         if box == "entry":
             return True
         if isinstance(box, tuple):
@@ -156,6 +164,7 @@ class SupplyScreen:
         return False
 
     def wait_ocr(self, *, match, box, **kwargs):
+        """按当前补给页面、弹窗和领取状态提供证据。"""
         if isinstance(match, list):
             return self.popup
         if self.page_ok and match.search(self.selected or ""):
@@ -163,6 +172,7 @@ class SupplyScreen:
         return self.known_empty and not self.remaining.get(self.selected, 0) and bool(match.search("已领取"))
 
     def wait_pop_up(self, **kwargs):
+        """关闭奖励弹窗并模拟返回补给页。"""
         self.popup = False
         self.page_ok = self.restore_page
 
@@ -214,6 +224,7 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.ineffective_scrolls)
 
     def test_already_foreground_does_not_switch_windows(self):
+        """前台游戏领取补给时不切换系统窗口。"""
         task = SupplyScreen()
         task.foreground = True
         self.assertIs(True, task.activities())
@@ -222,6 +233,7 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertTrue(task.foreground)
 
     def test_optional_prewar_event_can_be_absent(self):
+        """战前补给缺席不影响已确认的情报补给领取。"""
         task = SupplyScreen(entries={2: "情报补给"})
         self.assertIs(True, task.activities())
         self.assertEqual(["情报补给", "情报补给"], task.claims)
@@ -243,12 +255,14 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.claims)
 
     def test_wrong_page_never_clicks_a_claim_button(self):
+        """页面无法确认时不点击疑似领取按钮。"""
         task = SupplyScreen()
         task.page_ok = False
         self.assertEqual("待核查", task.activities())
         self.assertEqual([], task.claims)
 
     def test_missing_popup_stops_without_repeating_uncertain_click(self):
+        """领取后弹窗缺失时停止重复操作并保留待核查。"""
         task = SupplyScreen(entries={2: "情报补给"})
         task.popup_ok = False
         self.assertEqual("待核查", task.activities())
@@ -256,6 +270,7 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertIn("未确认奖励弹窗", task.status["情报补给"])
 
     def test_already_claimed_is_never_clicked_as_claim(self):
+        """完整匹配领取按钮，排除已领取文字。"""
         task = SupplyScreen(entries={2: "情报补给"}, remaining={"情报补给": 2})
         task.button_label = "已领取"
         task.wait_ocr = lambda *, match, **kwargs: (
@@ -265,24 +280,28 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.claims)
 
     def test_unrecognized_state_is_uncertain(self):
+        """无法识别按钮或领取状态时保留待核查。"""
         task = SupplyScreen(entries={2: "情报补给"}, remaining={})
         task.known_empty = False
         self.assertEqual("待核查", task.activities())
         self.assertIn("未识别", task.status["情报补给"])
 
     def test_lost_page_after_popup_is_uncertain(self):
+        """奖励弹窗后页面丢失时停止后续领取。"""
         task = SupplyScreen(entries={2: "情报补给"})
         task.restore_page = False
         self.assertEqual("待核查", task.activities())
         self.assertEqual(["情报补给"], task.claims)
 
     def test_persistent_button_does_not_loop_forever(self):
+        """领取按钮不消失时限制重复次数。"""
         task = SupplyScreen(entries={2: "情报补给"})
         task.stuck_button = True
         self.assertEqual("待核查", task.activities())
         self.assertEqual(10, len(task.claims))
 
     def test_navigation_exception_still_restores_main(self):
+        """导航异常仍返回主页并传播原异常。"""
         task = SupplyScreen()
         task.scroll_relative = Mock(side_effect=RuntimeError("menu unavailable"))
         with self.assertRaisesRegex(RuntimeError, "menu unavailable"):
@@ -303,14 +322,51 @@ class ActivitySupplyTest(unittest.TestCase):
 
 
 class SupplyMenuVerificationTest(unittest.TestCase):
-    def test_menu_content_is_required_and_home_labels_must_disappear(self):
-        """Verify menu content is required and home labels must disappear."""
+    def check_menu(self, menu, home=()):
+        """用实际匹配词过滤 OCR，避免桩忽略正则掩盖识别错误。"""
         task = Mock()
+        task.box.right = "right"
         task.box_of_screen.side_effect = lambda *args: args
         task.wait_until.side_effect = lambda predicate, **kw: predicate()
-        for menu, home, expected in [([object()], [], True), ([], [], False), ([object()], [1, 2, 3], False)]:
-            task.ocr.side_effect = [menu, home]
-            self.assertEqual(expected, namespace["_ensure_supply_menu"](task))
+
+        def ocr(*, box, match):
+            """返回经过生产正则或主页匹配词筛选的识别框。"""
+            texts = home if box == "right" else menu
+            return [SimpleNamespace(name=text) for text in texts if (
+                any(word in text for word in match) if isinstance(match, list) else match.search(text)
+            )]
+
+        task.ocr.side_effect = ocr
+        return namespace["_ensure_supply_menu"](task), task
+
+    def test_spaced_supply_names_confirm_open_menu(self):
+        """入口名称带字间空格时仍能识别已打开的列表。"""
+        for name in ("情 报 补 给", "战 前 补 给"):
+            with self.subTest(name=name):
+                self.assertTrue(self.check_menu([name])[0])
+
+    def test_sidebar_headers_confirm_menu_without_optional_supplies(self):
+        """两个固定侧栏页签足以确认列表，不要求可选补给仍存在。"""
+        self.assertTrue(self.check_menu(["新手", "活动", "琥珀月光"])[0])
+        self.assertTrue(self.check_menu(["新 手", "活 动"])[0])
+
+    def test_arbitrary_chinese_text_does_not_confirm_menu(self):
+        """主页文字漏读时任意中文也不能充当列表证据。"""
+        self.assertFalse(self.check_menu(["任意文字"])[0])
+
+    def test_one_home_label_rejects_even_specific_menu_evidence(self):
+        """一个主页标签仍是反证，不能把点击失败报告成活动缺席。"""
+        for menu in (["任意文字"], ["情报补给"], ["新手", "活动"]):
+            with self.subTest(menu=menu):
+                result, task = self.check_menu(menu, ["整备室"])
+                self.assertFalse(result)
+                task.screenshot.assert_called_once_with("supply_menu_not_open")
+
+    def test_empty_or_single_generic_header_remains_uncertain(self):
+        """空白、单个活动按钮和多个主页标签均不能确认列表。"""
+        for menu, home in (([], []), (["活动"], []), (["新手"], []), (["情报补给"], ["招募", "活动层"])):
+            with self.subTest(menu=menu, home=home):
+                self.assertFalse(self.check_menu(menu, home)[0])
 
 
 class BackgroundSupplyScrollTest(unittest.TestCase):
@@ -328,11 +384,50 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
             width=2560,
             height=1600,
             sleep=Mock(),
-            executor=SimpleNamespace(interaction=SimpleNamespace(post_interaction=post)),
+            executor=SimpleNamespace(interaction=SimpleNamespace(
+                post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)
+            )),
             move_relative=Mock(side_effect=AssertionError("不应进入Genshin物理鼠标路径")),
             scroll_relative=Mock(side_effect=AssertionError("不应依赖全局滚轮补丁")),
         )
         return task, post
+
+    def test_foreground_scroll_preserves_activation_for_real_next_click(self):
+        """真实消息停用会使前台 Genshin 点击缺少激活，滚动必须保留激活。"""
+        import win32con
+        from ok.device.interaction_methods.genshin import GenshinInteraction
+
+        task, post = self.make_task()
+        state = {"active": True}
+
+        def send(message, wparam=0, *args, **kwargs):
+            """只模拟 Win32 消息接收窗口的激活状态。"""
+            if message == win32con.WM_ACTIVATE:
+                state["active"] = wparam == win32con.WA_ACTIVE
+
+        post.post.side_effect = send
+        post.try_activate.side_effect = post.activate
+        interaction = GenshinInteraction.__new__(GenshinInteraction)
+        interaction.hwnd_window = SimpleNamespace(is_foreground=lambda: True)
+        interaction.post_interaction = post
+        task.executor.interaction = interaction
+        namespace["_scroll_supply_menu"](task, -3)
+        # 依赖 operate 的真实前台分支不补发 activate；以接收窗口状态验证后续点击可用。
+        self.assertTrue(interaction.operate(lambda: state["active"]))
+        self.assertNotIn(
+            (win32con.WM_ACTIVATE, win32con.WA_INACTIVE),
+            [call.args[:2] for call in post.post.call_args_list],
+        )
+
+    def test_foreground_scroll_failure_does_not_deactivate(self):
+        """前台滚动失败也不得向原本激活的窗口发送停用消息。"""
+        task, post = self.make_task()
+        task.executor.interaction.hwnd_window.is_foreground = lambda: True
+        post.scroll = Mock(side_effect=RuntimeError("wheel failed"))
+        post.deactivate = Mock()
+        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
+            namespace["_scroll_supply_menu"](task, -3)
+        post.deactivate.assert_not_called()
 
     def test_real_message_backend_scrolls_without_pr97_patch(self):
         """未安装 #97 时也只发送悬停和滚轮消息。"""
@@ -382,6 +477,7 @@ class NativeHoverTest(unittest.TestCase):
         gui.ClientToScreen.side_effect = lambda hwnd, point: (point[0] + 50, point[1] + 80)
 
         def cursor(pointer):
+            """读取模拟鼠标位置到 Win32 指针边界。"""
             pointer._obj.x, pointer._obj.y = state["mouse"]
 
         user32.GetCursorPos.side_effect = cursor
@@ -397,10 +493,12 @@ class NativeHoverTest(unittest.TestCase):
         return bridge, state
 
     def test_game_is_foreground_and_physical_cursor_is_in_list_during_scroll(self):
+        """验证旧窗口桥接在作用域内移动并恢复鼠标。"""
         bridge, state = self.bridge()
         observed = []
 
         def scroll():
+            """模拟滚动回调或滚动异常。"""
             observed.append(state.copy())
 
         bridge["run_in_window"](77, bridge["run_at_window_pos"], 77, scroll, 307, 960)
@@ -408,9 +506,11 @@ class NativeHoverTest(unittest.TestCase):
         self.assertEqual({"foreground": 99, "mouse": (1500, 800)}, state)
 
     def test_scroll_exception_restores_physical_cursor_and_previous_window(self):
+        """验证旧窗口桥接遇到滚轮异常仍恢复状态。"""
         bridge, state = self.bridge()
 
         def scroll():
+            """模拟滚动回调或滚动异常。"""
             raise RuntimeError("wheel failed")
 
         with self.assertRaisesRegex(RuntimeError, "wheel failed"):
