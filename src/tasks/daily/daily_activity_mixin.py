@@ -327,9 +327,12 @@ class DailyActivityMixin:
     def _confirm_drink_result(self):
         """确认饮品结果页已关闭并回到活动层，丢失点击最多重试三次。"""
         def returned_to_layer():
-            return not self.wait_ocr(
-                match="饮品加成", time_out=0, raise_if_not_found=False
-            ) and self.is_free_layer(time_out=1)
+            # time_out=0 在 ok-script 中使用默认超时，不能用于外层轮询。
+            # HUD 同样直接读取当前帧，避免 is_free_layer 内部再次等待。
+            """单帧确认结果页消失且活动层 HUD 出现，避免嵌套默认超时。"""
+            return not self.ocr(match="饮品加成") and len(
+                self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)
+            ) >= 5
 
         for attempt in range(3):
             if not self.wait_click_ocr(
@@ -338,7 +341,7 @@ class DailyActivityMixin:
             ):
                 if returned_to_layer():
                     return True
-            elif self.wait_until(returned_to_layer, time_out=4):
+            elif self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
                 return True
             self.log_warning(f"饮品加成确认后未返回活动层，重试 {attempt + 1}/3")
         self.screenshot("drink_result_blocked")
