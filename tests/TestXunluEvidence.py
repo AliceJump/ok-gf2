@@ -161,17 +161,31 @@ class NoClaimableRewardTest(unittest.TestCase):
         task.ocr.side_effect = [[SimpleNamespace(name=n) for n in page] for page in pages]
         return task
 
-    def test_action_page_with_progress_and_no_claim_is_normal(self):
-        """Verify action page with progress and no claim is normal."""
+    def test_unrelated_full_screen_ratio_does_not_confirm_no_rewards(self):
+        """页面标记与无关体力或数量比值不能证明奖励已经领完。"""
+        for expected_page, markers in (
+            ("action", ["每日行动", "沿途行动"]),
+            ("reward", ["大奖预览", "通行证"]),
+        ):
+            for ratio in ("161/240", "5/5", "70/100"):
+                with self.subTest(page=expected_page, ratio=ratio):
+                    page = [*markers, ratio]
+                    self.assertEqual(
+                        "待核查",
+                        DailyRewardMixin._xunlu_no_reward_status(self.task([page, page]), expected_page),
+                    )
+
+    def test_action_page_progress_without_explicit_notice_stays_uncertain(self):
+        """行动任务数量与单项已领取标签不能证明整个页面没有奖励。"""
         page = ["每日行动", "沿途行动", "完成日常委托", "5/5", "已领取"]
         task = self.task([page, page])
-        self.assertEqual("当前无可领取项", DailyRewardMixin._xunlu_no_reward_status(task, "action"))
+        self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(task, "action"))
 
-    def test_reward_page_with_level_and_no_claim_is_normal(self):
-        """Verify reward page with level and no claim is normal."""
+    def test_reward_page_level_without_explicit_notice_stays_uncertain(self):
+        """等级和里程比值不能证明奖励已经领完。"""
         page = ["大奖预览", "通行证", "等级Lv.48", "70/100"]
         task = self.task([page, page])
-        self.assertEqual("当前无可领取项", DailyRewardMixin._xunlu_no_reward_status(task, "reward"))
+        self.assertEqual("待核查", DailyRewardMixin._xunlu_no_reward_status(task, "reward"))
 
     def test_missing_or_wrong_page_stays_uncertain(self):
         """Verify missing or wrong page stays uncertain."""

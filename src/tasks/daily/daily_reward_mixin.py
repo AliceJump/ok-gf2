@@ -137,10 +137,10 @@ class DailyRewardMixin:
         return True
 
     def _xunlu_no_reward_status(self, expected_page):
-        """仅在预期页面连续确认无领取项时记录空奖励状态。"""
+        """两轮核验预期页面后，仅凭明确的无奖励提示确认状态。"""
         if expected_page not in {"action", "reward"}:
             raise ValueError(f"未知的巡录页面类型：{expected_page}")
-        # 领完后按钮会直接消失，并不总有“已全部领取”文字。
+        # 按钮缺失可能是 OCR 漏检；整屏的任意数字比值也不能证明奖励已领完。
         # 两次 OCR 都必须确认同一个预期页面，避免把另一页的无按钮状态误判为当前页已领取。
         page_markers = {
             "action": {"每日行动", "沿途行动"},
@@ -148,7 +148,6 @@ class DailyRewardMixin:
         }[expected_page]
         no_reward = re.compile(r"^\s*(?:已全部领取|全部已领取|暂无可领取奖励|无可领取奖励)\s*$")
         saw_explicit_no_reward = False
-        progress_seen = []
         for attempt in range(2):
             boxes = self.ocr(box=self.box_of_screen(0, 0, 1, 1), log=True)
             labels = [re.sub(r"\s+", "", box.name) for box in boxes]
@@ -162,13 +161,10 @@ class DailyRewardMixin:
             if not page_markers.issubset(labels):
                 return "待核查"
             saw_explicit_no_reward |= any(no_reward.fullmatch(label) for label in labels)
-            progress_seen.append(any(re.fullmatch(r"\d+/\d+", label) for label in labels))
             if attempt == 0:
                 self.sleep(0.8)
         if saw_explicit_no_reward:
             return True
-        if all(progress_seen):
-            return "当前无可领取项"
         return "待核查"
 
     def _record_xunlu_result(self, name, result):
