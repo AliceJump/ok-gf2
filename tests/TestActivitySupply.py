@@ -380,6 +380,8 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
         post.post = Mock()
         post.update_mouse_pos = Mock(return_value=123)
         post.try_activate = Mock()
+        post._dynamic_target_hwnd = 0
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=None)
         task = SimpleNamespace(
             width=2560,
             height=1600,
@@ -451,6 +453,20 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)
         post.deactivate.assert_called_once()
+
+    def test_background_scroll_deactivates_base_and_child_windows(self):
+        """坐标命中子窗口时悬停会激活两个句柄，清理必须对称停用。"""
+        import win32con
+
+        task, post = self.make_task()
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
+        namespace["_scroll_supply_menu"](task, -3)
+        deactivated = [
+            call.kwargs["hwnd"]
+            for call in post.post.call_args_list
+            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
+        ]
+        self.assertEqual([200, 100], deactivated)
 
     def test_missing_message_backend_is_explicit_failure(self):
         """缺少后台消息接口时明确失败，不能回落到物理滚轮。"""

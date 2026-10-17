@@ -89,7 +89,11 @@ class DailyActivityMixin:
             post.scroll(x, y, count)
         finally:
             if not was_foreground:
-                post.deactivate()
+                base_hwnd = post.hwnd_window.hwnd
+                current_hwnd = post.hwnd
+                if current_hwnd != base_hwnd:
+                    post.deactivate(hwnd=current_hwnd)
+                post.deactivate(hwnd=base_hwnd)
         self.sleep(0.6)
 
 
