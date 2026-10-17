@@ -83,3 +83,8 @@ config = {
 from src.patches.ocr_text_fix_patch import install_ocr_text_fix_patch  # noqa: E402
 
 install_ocr_text_fix_patch()
+
+# 退出时不激活已关闭的游戏窗口，并确认启动器身份后终止。
+from src.patches.shutdown_patch import install_shutdown_patch  # noqa: E402
+
+install_shutdown_patch()
