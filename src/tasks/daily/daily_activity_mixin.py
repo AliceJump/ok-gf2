@@ -303,19 +303,27 @@ class DailyActivityMixin:
         self.back(after_sleep=2)
         return completed
 
-    def _skip_active_food_buff(self):
+    def _skip_active_food_buff(self, next_match=None):
         """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。"""
-        duplicate = re.compile(r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)")
-        if not self.wait_ocr(match=duplicate, box=self.box.center, time_out=1, raise_if_not_found=False, log=True):
+        duplicate = re.compile(r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)|当前已有.+?生效中.*确认更换")
+
+        def page_state():
+            """页面状态判定：无重复弹窗且出现预期界面"""
+            if self.ocr(match=duplicate, box=self.box.center):
+                return False
+            return next_match is None or bool(self.ocr(match=next_match, box=self.box.center))
+
+        if not self.wait_until(
+            lambda: self.ocr(match=duplicate, box=self.box.center),
+            time_out=3, raise_if_not_found=False,
+        ):
             return None
         if not self.wait_click_ocr(
             match="取消", box=self.box.center, time_out=2, raise_if_not_found=False, after_sleep=0.5,
         ):
             self.screenshot("food_duplicate_cancel_failed")
             return False
-        if not self.wait_until(
-            lambda: not self.ocr(match=duplicate, box=self.box.center), time_out=3, settle_time=0,
-        ):
+        if not self.wait_until(page_state, time_out=3, settle_time=0):
             self.screenshot("food_duplicate_dialog_blocked")
             return False
         self.log_info("已确认同名饮食增益生效，取消重复制作，继续日常")
@@ -393,7 +401,9 @@ class DailyActivityMixin:
             else:
                 return "entry"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                duplicate_result = self._skip_active_food_buff()
+                duplicate_result = self._skip_active_food_buff(
+                    next_match=second_btn if main_btn == "下一步" else None
+                )
                 if duplicate_result is True:
                     return True
                 if duplicate_result is False:
