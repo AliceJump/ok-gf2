@@ -116,6 +116,8 @@ class SupplyScreen:
             interaction=SimpleNamespace(
                 hwnd_window=SimpleNamespace(is_foreground=lambda: self.foreground),
                 post_interaction=SimpleNamespace(
+                    hwnd_window=self.hwnd,
+                    hwnd=self.hwnd.hwnd,
                     move=lambda x, y: self.move_relative(x / self.width, y / self.height),
                     scroll=lambda x, y, count: self.scroll_relative(x / self.width, y / self.height, count),
                     deactivate=Mock(),
@@ -452,7 +454,7 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
         post.deactivate = Mock()
         with self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)
-        post.deactivate.assert_called_once()
+        post.deactivate.assert_called_once_with(hwnd=100)
 
     def test_background_scroll_deactivates_base_and_child_windows(self):
         """坐标命中子窗口时悬停会激活两个句柄，清理必须对称停用。"""
