@@ -75,7 +75,7 @@ class DailyActivityMixin:
         claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
         empty_match = re.compile(r"已\s*领\s*取|暂无可领取|未到领取时间|未到开放时间")
         claimed = 0
-        for _ in range(10):
+        for claimed, _ in enumerate(range(10)):
             self._ensure_supply_foreground()
             if not self.wait_ocr(match=page_match, box=self.box.right, time_out=3, raise_if_not_found=False):
                 self.info_set(reward_activity, "待核查：未确认补给页面")
@@ -97,7 +97,7 @@ class DailyActivityMixin:
                 self.info_set(reward_activity, "待核查：点击后未确认奖励弹窗")
                 return "待核查"
             self.wait_pop_up(time_out=6, count=1)
-            claimed += 1
+            # (claimed is now from enumerate)
         self.info_set(reward_activity, "待核查：领取按钮持续出现")
         return "待核查"
 
@@ -194,10 +194,9 @@ class DailyActivityMixin:
             raise_if_not_found=False,
             after_sleep=1,
             log=True,
-        ):
-            if is_open(4):
-                self.log_info("点击入口后已确认活动层面板打开")
-                return True
+        ) and is_open(4):
+            self.log_info("点击入口后已确认活动层面板打开")
+            return True
         self.log_error("活动层 F2 面板未打开：按键重试及入口点击未成功，跳过领奖和浇花")
         return False
 
@@ -245,32 +244,30 @@ class DailyActivityMixin:
             )
         if on_overview:
             self.log_info("F2 已打开栽培概览，直接前往浇灌")
-        if not on_watering_page and not on_overview:
+        if (not on_watering_page and not on_overview) and not self.wait_click_ocr(
             # 未进入栽培页时才切换页签，允许文字前带图标。
-            if not self.wait_click_ocr(
-                match=re.compile(r"栽\s*培"),
-                box=self.box_of_screen(0.30, 0.15, 0.42, 0.25),
-                time_out=10,
-                raise_if_not_found=False,
-                after_sleep=2,
-                log=True,
-            ):
-                self.info_set("浇灌", "已跳过：未识别到栽培入口")
-                self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
-                return "待核查"
-        if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3, raise_if_not_found=False):
-            # 部分界面先显示栽培概览，需点击“前往”才进入花盆页面。
-            if not self.wait_click_ocr(
-                match=re.compile("前往"),
-                box=self.box.bottom_right,
-                time_out=5,
-                raise_if_not_found=False,
-                after_sleep=3,
-                log=True,
-            ):
-                self.info_set("浇灌", "已跳过：未识别到浇灌入口")
-                self.log_info("未识别到浇灌入口，跳过浇灌并继续后续任务")
-                return "待核查"
+            match=re.compile(r"栽\s*培"),
+            box=self.box_of_screen(0.30, 0.15, 0.42, 0.25),
+            time_out=10,
+            raise_if_not_found=False,
+            after_sleep=2,
+            log=True,
+        ):
+            self.info_set("浇灌", "已跳过:未识别到栽培入口")
+            self.log_info("未识别到栽培入口,跳过浇灌并继续后续任务")
+            return "待核查"
+        if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3, raise_if_not_found=False) and not self.wait_click_ocr(
+            match=re.compile("前往"),
+            box=self.box.bottom_right,
+            time_out=5,
+            raise_if_not_found=False,
+            after_sleep=3,
+            log=True,
+        ):
+            # 部分界面先显示栽培概览，需点击"前往"才进入花盆页面。
+            self.info_set("浇灌", "已跳过：未识别到浇灌入口")
+            self.log_info("未识别到浇灌入口，跳过浇灌并继续后续任务")
+            return "待核查"
         watering_buttons = self.wait_ocr(
             match=watering_match, box=self.box.right, time_out=10, raise_if_not_found=False
         )
@@ -449,7 +446,7 @@ class DailyActivityMixin:
             self.log_info('请填写活动名称和物资篇章名称；多个活动与篇章需一一对应，跳过活动自律')
             return
         patterns = [self._activity_chapter_pattern(name, chapter).pattern
-                    for name, chapter in zip(activity_wuzi_names, chapter_names) if name and chapter]
+                    for name, chapter in zip(activity_wuzi_names, chapter_names, strict=True) if name and chapter]
         if not patterns:
             self.log_info('未配置完整的活动名称和物资篇章名称，跳过活动自律')
             return
