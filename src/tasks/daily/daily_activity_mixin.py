@@ -259,8 +259,8 @@ class DailyActivityMixin:
             after_sleep=2,
             log=True,
         ):
-            self.info_set("浇灌", "已跳过:未识别到栽培入口")
-            self.log_info("未识别到栽培入口,跳过浇灌并继续后续任务")
+            self.info_set("浇灌", "已跳过：未识别到栽培入口")
+            self.log_info("未识别到栽培入口，跳过浇灌并继续后续任务")
             return "待核查"
         if not self.wait_ocr(match=watering_match, box=self.box.right, time_out=3, raise_if_not_found=False) and not self.wait_click_ocr(
             match=re.compile("前往"),
