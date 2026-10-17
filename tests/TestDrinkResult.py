@@ -11,9 +11,72 @@ source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_m
 tree = ast.parse(source.read_text(encoding="utf-8"))
 namespace = {"re": re}
 methods = [
-    n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name in {"_confirm_drink_result", "do_food_flow"}
+    n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
+    and n.name in {"_confirm_drink_result", "_skip_active_food_buff", "do_food_flow"}
 ]
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
+
+
+class DuplicateDrinkReturnTest(unittest.TestCase):
+    def run_cancel(self, hud_count=7, result_visible=False, dialog_stuck=False):
+        """执行真实制作和取消逻辑，只替换 OCR、点击及帧等待边界。"""
+        state = {"duplicate": True, "buttons": [], "screenshots": []}
+
+        def read(*, match, **kwargs):
+            if isinstance(match, re.Pattern):
+                return ["同名饮品已生效"] if state["duplicate"] else []
+            if match == "饮品加成":
+                return ["饮品加成"] if result_visible else []
+            return ["Esc", "P", "M", "F1", "F2", "F3", "F4"][:hud_count]
+
+        def click(*, match, **kwargs):
+            state["buttons"].append(match)
+            if match == "取消":
+                state["duplicate"] = dialog_stuck
+            return True
+
+        task = SimpleNamespace(
+            box=SimpleNamespace(center="center", top="top", bottom_right="bottom_right"),
+            wait_ocr=lambda **kwargs: [SimpleNamespace(name="茶歇一刻0/1")],
+            click_with_key=lambda *args: None,
+            wait_click_ocr=click,
+            ocr=read,
+            wait_until=lambda predicate, **kwargs: bool(predicate()),
+            screenshot=state["screenshots"].append,
+            log_info=lambda message: None,
+        )
+        task._skip_active_food_buff = namespace["_skip_active_food_buff"].__get__(task)
+        result = namespace["do_food_flow"](
+            task, enter_func=lambda **kwargs: None, entry_match="茶歇一刻",
+            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+        )
+        return result, state
+
+    def test_cancelled_drink_requires_activity_hud(self):
+        """提示消失但缺少完整 HUD 时不能把饮品标记为完成。"""
+        for count in (0, 4):
+            with self.subTest(hud_count=count):
+                result, state = self.run_cancel(hud_count=count)
+                self.assertEqual("confirm", result)
+                self.assertEqual(["制作", "取消"], state["buttons"])
+                self.assertEqual(["food_duplicate_dialog_blocked"], state["screenshots"])
+
+    def test_visible_drink_result_is_not_activity_layer(self):
+        """即使背景 HUD 可见，饮品结果页未关闭也不能报告完成。"""
+        result, _ = self.run_cancel(result_visible=True)
+        self.assertEqual("confirm", result)
+
+    def test_cancelled_drink_returns_success_only_after_activity_hud(self):
+        """结果页关闭且活动层 HUD 出现后才结束重复制作。"""
+        result, state = self.run_cancel(hud_count=5)
+        self.assertIs(True, result)
+        self.assertEqual(["制作", "取消"], state["buttons"])
+        self.assertEqual([], state["screenshots"])
+
+    def test_persistent_duplicate_dialog_is_not_success(self):
+        """重复提示仍在时，即使背景 HUD 可见也不能成功。"""
+        result, _ = self.run_cancel(dialog_stuck=True)
+        self.assertEqual("confirm", result)
 
 
 class DrinkResultTest(unittest.TestCase):
