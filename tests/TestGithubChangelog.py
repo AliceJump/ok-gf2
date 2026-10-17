@@ -9,17 +9,23 @@ from scripts.release.github_changelog import changelog
 class GithubChangelogTest(unittest.TestCase):
     @patch("scripts.release.github_changelog.run")
     def test_linked_author_uses_login_not_display_name(self, run):
-        run.side_effect = ["end\n", "start\n", "abc\0fix: 修复\n", json.dumps({
-            "author": {"login": "Dewcat"}, "commit": {"author": {"name": "Private Name"}}
-        })]
+        run.side_effect = [
+            "end\n",
+            "start\n",
+            "abc\0fix: 修复\n",
+            json.dumps({"author": {"login": "Dewcat"}, "commit": {"author": {"name": "Private Name"}}}),
+        ]
         self.assertEqual(changelog("owner/repo", "v1", "v2"), "* fix: 修复 (@Dewcat)")
         self.assertEqual(run.call_args_list[2].args, ("git", "log", "--format=%H%x00%s", "start..end", "--"))
 
     @patch("scripts.release.github_changelog.run")
     def test_unlinked_author_never_falls_back_to_real_name(self, run):
-        run.side_effect = ["end", "start", "abc\0fix: old account", json.dumps({
-            "author": None, "commit": {"author": {"name": "Private Name"}}
-        })]
+        run.side_effect = [
+            "end",
+            "start",
+            "abc\0fix: old account",
+            json.dumps({"author": None, "commit": {"author": {"name": "Private Name"}}}),
+        ]
         self.assertEqual(changelog("owner/repo", "v1", "v2"), "* fix: old account")
 
     @patch("scripts.release.github_changelog.run")
