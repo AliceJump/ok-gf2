@@ -127,6 +127,56 @@ class ActivityNavigationTest(unittest.TestCase):
         self.assertEqual(3, task.wait_click_ocr.call_count)
         task.screenshot.assert_not_called()
 
+    def test_entry_retries_after_home_markers_reappear_during_extra_wait(self):
+        """主页标识暂时漏读后恢复时，应继续点击入口并确认 HUD。"""
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        task = Mock()
+        task.is_free_layer.side_effect = [False, False, True]
+        frames = iter([["活动层"], ["活动层", "公共区"]])
+        task.ocr.side_effect = lambda **kw: [label for label in next(frames) if label in kw["match"]]
+
+        self.assertIs(True, enter(task))
+        self.assertEqual(2, task.wait_click_ocr.call_count)
+        task.screenshot.assert_not_called()
+
+    def test_entry_rechecks_still_obey_three_click_limit(self):
+        """每次漏读后都恢复主页标识，也不能无限重试入口。"""
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        task = Mock()
+        task.is_free_layer.return_value = False
+        frames = iter([["活动层"], ["活动层", "公共区"]] * 3)
+        task.ocr.side_effect = lambda **kw: [label for label in next(frames) if label in kw["match"]]
+
+        self.assertIs(False, enter(task))
+        self.assertEqual(3, task.wait_click_ocr.call_count)
+        task.screenshot.assert_called_once_with("activity_layer_entry_failed")
+
+    def test_entry_stops_when_home_remains_uncertain_after_extra_wait(self):
+        """再次识别仍无法确认主页时，禁止在未知页面继续点击。"""
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        for labels in ([], ["活动层"], ["公共区"]):
+            with self.subTest(labels=labels):
+                task = Mock()
+                task.is_free_layer.return_value = False
+                task.ocr.side_effect = lambda labels=labels, **kw: [
+                    label for label in labels if label in kw["match"]
+                ]
+
+                self.assertIs(False, enter(task))
+                task.wait_click_ocr.assert_called_once()
+                task.screenshot.assert_called_once_with("activity_layer_entry_failed")
+
+    def test_entry_accepts_delayed_hud_without_clicking_again(self):
+        """额外等待期间 HUD 出现后立即成功，不再点击入口。"""
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        task = Mock()
+        task.is_free_layer.side_effect = [False, True]
+        task.ocr.return_value = ["活动层"]
+
+        self.assertIs(True, enter(task))
+        task.wait_click_ocr.assert_called_once()
+        task.screenshot.assert_not_called()
+
     def test_failed_activity_entry_does_not_prevent_guild_task(self):
         """Verify failed activity entry does not prevent guild task."""
         from src.tasks.DailyTaskRunner import DailyTaskRunner
