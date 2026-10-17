@@ -117,7 +117,10 @@ class DailyActivityMixin:
             if len(home) < 2:
                 if self.is_free_layer(time_out=12):
                     return True
-                break
+                # 额外等待后重新确认主页，避免单次 OCR 漏读提前结束重试。
+                home = self.ocr(box=self.box.right, match=["整备室", "公共区", "活动层", "招募"])
+                if len(home) < 2:
+                    break
         self.log_warning("活动层入口未成功打开，恢复主页后继续后续步骤")
         self.screenshot("activity_layer_entry_failed")
         return False
