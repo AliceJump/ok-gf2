@@ -120,8 +120,22 @@ class FoodAlreadyDoneTest(unittest.TestCase):
         for text, expected in [("同名菜品已生效，番茄鱼汤可能覆盖已生效菜品，是否确认继续", True), ("是否离开活动层？", None), ("购买是否确认继续", None)]:
             task = Mock()
             task.box.center = "center"
-            task.wait_ocr.side_effect = lambda **kw: [object()] if kw["match"].search(text) else []
-            task.wait_until.return_value = True
+            state = {"dialog": text}
+
+            def read(*, match, **kwargs):
+                if isinstance(match, re.Pattern):
+                    return [object()] if match.search(state["dialog"]) else []
+                if isinstance(match, list):
+                    return ["Esc", "P", "M", "F1", "F2"]
+                return []
+
+            def cancel(**kwargs):
+                state["dialog"] = ""
+                return True
+
+            task.ocr.side_effect = read
+            task.wait_until.side_effect = lambda predicate, **kwargs: bool(predicate())
+            task.wait_click_ocr.side_effect = cancel
             self.assertIs(expected, run(task))
             if expected:
                 self.assertEqual("取消", task.wait_click_ocr.call_args.kwargs["match"])
@@ -148,6 +162,6 @@ class FoodAlreadyDoneTest(unittest.TestCase):
     def test_dialog_that_remains_after_cancel_is_failure(self):
         """Verify dialog that remains after cancel is failure."""
         task = Mock()
-        task.wait_ocr.return_value = [object()]
-        task.wait_until.return_value = False
+        task.ocr.return_value = [object()]
+        task.wait_until.side_effect = lambda predicate, **kwargs: bool(predicate())
         self.assertIs(False, method("_skip_active_food_buff")(task))
