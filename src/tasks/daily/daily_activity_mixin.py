@@ -77,6 +77,7 @@ class DailyActivityMixin:
         active_and_send_mouse_delta(self.hwnd.hwnd, only_activate=True)
 
     def _claim_supply_activity(self, reward_activity):
+        """领取指定补给并在页面证据不足时返回待核查。"""
         page_match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
         claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
         empty_match = re.compile(r"已\s*领\s*取|暂无可领取|未到领取时间|未到开放时间")
@@ -172,6 +173,7 @@ class DailyActivityMixin:
         return "待核查" if uncertain and completed else completed
 
     def _ensure_activity_panel(self):
+        """确认活动层面板已打开，必要时按键或点击入口重试。"""
         panel_match = re.compile(
             r"逸\s*趣(?:\s*导\s*算|\s*事\s*件)?|宜\s*居\s*值|栽\s*培|生\s*长\s*阶\s*段|浇\s*灌|一\s*键\s*领\s*取"
         )

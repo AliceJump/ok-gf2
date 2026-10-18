@@ -23,6 +23,7 @@ class DuplicateDrinkReturnTest(unittest.TestCase):
         state = {"duplicate": True, "buttons": [], "screenshots": []}
 
         def read(*, match, **kwargs):
+            """按测试状态返回重复提示、结果页或活动层 HUD。"""
             if isinstance(match, re.Pattern):
                 return ["同名饮品已生效"] if state["duplicate"] else []
             if match == "饮品加成":
@@ -30,6 +31,7 @@ class DuplicateDrinkReturnTest(unittest.TestCase):
             return ["Esc", "P", "M", "F1", "F2", "F3", "F4"][:hud_count]
 
         def click(*, match, **kwargs):
+            """记录点击并模拟取消重复提示后的页面状态。"""
             state["buttons"].append(match)
             if match == "取消":
                 state["duplicate"] = dialog_stuck
@@ -90,6 +92,7 @@ class DrinkResultTest(unittest.TestCase):
         state = {"page": "selection", "makes": 0}
 
         def click(*, match, **kwargs):
+            """模拟制作点击后页面从选择页推进到确认页。"""
             if match == "制作":
                 state["makes"] += 1
                 if state["makes"] == 2:
@@ -98,6 +101,7 @@ class DrinkResultTest(unittest.TestCase):
             return state["page"] == "confirm"
 
         def read(*, match, **kwargs):
+            """根据模拟页面状态返回制作或确认按钮。"""
             if match == "制作":
                 return [object()] if state["page"] == "selection" else []
             return [object()] if state["page"] == "confirm" else []
@@ -138,6 +142,7 @@ class DrinkResultTest(unittest.TestCase):
         state = {"page": "selection", "makes": 0}
 
         def click(*, match, **kwargs):
+            """模拟重试点击未命中但页面已推进的竞态。"""
             if match == "制作":
                 state["makes"] += 1
                 if state["makes"] == 2:
@@ -147,6 +152,7 @@ class DrinkResultTest(unittest.TestCase):
             return state["page"] == "confirm"
 
         def read(*, match, **kwargs):
+            """根据竞态后的页面状态返回制作或确认按钮。"""
             if match == "制作":
                 return [object()] if state["page"] == "selection" else []
             return [object()] if state["page"] == "confirm" else []

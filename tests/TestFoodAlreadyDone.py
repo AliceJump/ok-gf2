@@ -123,6 +123,7 @@ class FoodAlreadyDoneTest(unittest.TestCase):
             state = {"dialog": text}
 
             def read(*, match, **kwargs):
+                """仅返回当前重复提示或活动层 HUD 的模拟 OCR。"""
                 if isinstance(match, re.Pattern):
                     return [object()] if match.search(state["dialog"]) else []
                 if isinstance(match, list):
@@ -130,6 +131,7 @@ class FoodAlreadyDoneTest(unittest.TestCase):
                 return []
 
             def cancel(**kwargs):
+                """模拟点击取消并关闭重复提示。"""
                 state["dialog"] = ""
                 return True
 
