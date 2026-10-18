@@ -2,6 +2,7 @@
 
 import re
 
+import cv2
 import win32api
 import win32con
 import win32gui
@@ -307,9 +308,21 @@ class DailyBattleMixin:
         self.sleep(0.05)
         return True
 
+    def _chenyan_list_snapshot(self):
+        """按比例裁取卡片区域，缩小副本用于判断页面是否实际变化。"""
+        frame = self.frame
+        if frame is None or frame.size == 0:
+            return None
+        height, width = frame.shape[:2]
+        cards = frame[int(height * 0.31):int(height * 0.79), int(width * 0.18):int(width * 0.82), :3]
+        if cards.size == 0:
+            return None
+        return cv2.resize(cards, (256, 144), interpolation=cv2.INTER_AREA)
+
     def _find_chenyan_assist(self, name):
-        """逐页查找指定助战，找到目标或连续相同页面时立即停止。"""
+        """逐页查找指定助战，仅在文字和卡片画面都未变化时提前停止。"""
         previous = None
+        previous_image = None
         for page in range(100):
             self.sleep(0.01)
             executor = getattr(self, "executor", None)
@@ -322,10 +335,18 @@ class DailyBattleMixin:
             visible = chars
             self.log_info(f"助战翻页搜索 {name} 第{page + 1}页: {[box.name for box in visible]}")
             signature = tuple((box.name, round(box.x / 10), round(box.y / 10)) for box in visible)
-            if previous is not None and signature == previous:
+            image = self._chenyan_list_snapshot()
+            # 同名角色可以来自不同玩家；必须同时确认卡片画面基本不变。
+            # 缩图降低分辨率与采集噪声影响，忽略不超过 0.5% 的轻微变化。
+            same_image = (
+                previous_image is not None and image is not None
+                and (cv2.absdiff(previous_image, image).max(axis=2) > 12).mean() <= 0.005
+            )
+            if previous is not None and signature == previous and same_image:
                 self.log_info(f"助战列表未移动，结束搜索: {name}")
                 break
             previous = signature
+            previous_image = image
             if page < 99 and self._scroll_chenyan_list(1) is False:
                 return None
         return None

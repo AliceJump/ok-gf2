@@ -4,6 +4,8 @@ import ast
 import re
 import sys
 import unittest
+import cv2
+import numpy as np
 import win32api
 import win32con
 from pathlib import Path
@@ -17,6 +19,7 @@ def load_methods(path, class_name):
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name)
     namespace = {
         "re": re,
+        "cv2": cv2,
         "win32api": win32api,
         "win32con": win32con,
         "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
@@ -59,6 +62,7 @@ class AssistDevice:
         self.errors = []
         self.candidates = candidates
         self.chosen = None
+        self.frame = np.zeros((720, 1280, 3), dtype=np.uint8)
 
     def __getattr__(self, name):
         """Bind production methods to the isolated device."""
@@ -286,6 +290,66 @@ class ChenyanAssistTest(unittest.TestCase):
         task._scroll_chenyan_list = scrolls.append
         self.assertIsNone(battle["_find_chenyan_assist"](task, "妮基塔"))
         self.assertEqual([1], scrolls)
+
+    def test_same_role_and_slot_on_different_cards_keeps_searching(self):
+        """Repeated role labels must not hide a target on a later page."""
+        for empty_ocr in (False, True):
+            with self.subTest(empty_ocr=empty_ocr):
+                task = AssistDevice()
+                page = [0]
+                target = SimpleNamespace(name="妮基塔")
+
+                def scroll(count):
+                    """Change card pixels while preserving OCR names and slots."""
+                    page[0] += 1
+                    task.frame[300:450, 300:450] = 100 * page[0]
+
+                task._scroll_chenyan_list = scroll
+                task.ocr = lambda *args, **kwargs: (
+                    [target] if page[0] == 2 else
+                    ([] if empty_ocr else [SimpleNamespace(name="春田", x=700, y=400)])
+                )
+                self.assertIs(target, task._find_chenyan_assist("妮基塔"))
+                self.assertEqual(2, page[0])
+
+    def test_unavailable_frame_does_not_prove_list_stopped(self):
+        """Keep the bounded search running when page images cannot be read."""
+        task = AssistDevice()
+        task.frame = None
+        task.ocr = lambda *args, **kwargs: []
+        scrolls = []
+        task._scroll_chenyan_list = scrolls.append
+        self.assertIsNone(task._find_chenyan_assist("妮基塔"))
+        self.assertEqual(99, len(scrolls))
+
+    def test_small_capture_noise_still_stops_at_bottom(self):
+        """Small pixel noise must not turn a stationary list into 100 scrolls."""
+        task = AssistDevice()
+        scrolls = []
+        task.ocr = lambda *args, **kwargs: [SimpleNamespace(name="春田", x=700, y=400)]
+
+        def scroll(count):
+            """Model minor capture noise on the same cards."""
+            scrolls.append(count)
+            task.frame[:] = 2
+
+        task._scroll_chenyan_list = scroll
+        self.assertIsNone(task._find_chenyan_assist("妮基塔"))
+        self.assertEqual([1], scrolls)
+
+    def test_card_snapshot_scales_and_ignores_area_outside_list(self):
+        """Use the same card crop at 1080p, 1440p and 2160p."""
+        for width, height in ((1920, 1080), (2560, 1440), (3840, 2160)):
+            with self.subTest(size=(width, height)):
+                task = AssistDevice()
+                task.frame = np.zeros((height, width, 3), dtype=np.uint8)
+                task.frame[int(height * 0.4):int(height * 0.6), int(width * 0.3):int(width * 0.5)] = 180
+                before = task._chenyan_list_snapshot()
+                self.assertEqual((144, 256, 3), before.shape)
+                task.frame[:int(height * 0.2)] = 255
+                np.testing.assert_array_equal(before, task._chenyan_list_snapshot())
+                task.frame[int(height * 0.4):int(height * 0.6), int(width * 0.3):int(width * 0.5)] = 50
+                self.assertGreater((cv2.absdiff(before, task._chenyan_list_snapshot()).max(axis=2) > 12).mean(), 0.005)
 
     def test_unreadable_attribute_keeps_burning_and_corrosion_distinct(self):
         """Verify unreadable attribute keeps burning and corrosion distinct."""
