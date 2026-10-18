@@ -2,6 +2,10 @@
 
 import re
 
+import win32api
+import win32con
+import win32gui
+
 from src.core.BaseGfTask import stamina_re
 
 
@@ -279,14 +283,26 @@ class DailyBattleMixin:
             x, y = int(self.width * 0.65), int(self.height * 0.60)
             was_foreground = executor.interaction.hwnd_window.is_foreground()
             try:
-                post.move(x, y)
+                local_pos = post.move(x, y)
                 self.sleep(0.1)
                 if executor.paused:
                     return False
-                post.scroll(x, y, -3 if count > 0 else 3)
+                screen_pos = win32gui.ClientToScreen(
+                    post.hwnd, (win32api.LOWORD(local_pos), win32api.HIWORD(local_pos))
+                )
+                wheel = -3 if count > 0 else 3
+                post.post(
+                    win32con.WM_MOUSEWHEEL,
+                    win32api.MAKELONG(0, win32con.WHEEL_DELTA * wheel),
+                    win32api.MAKELONG(*screen_pos),
+                )
             finally:
                 if not was_foreground:
-                    post.deactivate()
+                    base_hwnd = post.hwnd_window.hwnd
+                    current_hwnd = post.hwnd
+                    if current_hwnd != base_hwnd:
+                        post.deactivate(hwnd=current_hwnd)
+                    post.deactivate(hwnd=base_hwnd)
             self.sleep(0.15)
         self.sleep(0.05)
         return True

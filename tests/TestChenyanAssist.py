@@ -4,6 +4,8 @@ import ast
 import re
 import sys
 import unittest
+import win32api
+import win32con
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,7 +15,12 @@ def load_methods(path, class_name):
     """Load production methods without initializing the game runtime."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name)
-    namespace = {"re": re}
+    namespace = {
+        "re": re,
+        "win32api": win32api,
+        "win32con": win32con,
+        "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
+    }
     methods = [
         n
         for n in cls.body
@@ -371,7 +378,13 @@ class ChenyanAssistTest(unittest.TestCase):
         task = AssistDevice()
         task.is_adb = lambda: False
         events = []
-        post = SimpleNamespace(move=Mock(), scroll=lambda x, y, count: events.append(count), deactivate=Mock())
+        post = SimpleNamespace(
+            move=Mock(return_value=win32api.MAKELONG(2496, 1296)),
+            hwnd=123,
+            hwnd_window=SimpleNamespace(hwnd=123),
+            post=lambda message, wparam, lparam: events.append(-3) if message == win32con.WM_MOUSEWHEEL else None,
+            deactivate=Mock(),
+        )
         task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         task.width = 3840
@@ -415,7 +428,10 @@ class ChenyanAssistTest(unittest.TestCase):
         task.hwnd = SimpleNamespace(hwnd=123)
         task.move_relative = lambda *args: None
         events = []
-        post = SimpleNamespace(move=Mock(), scroll=lambda *args: events.append(args), deactivate=Mock())
+        post = SimpleNamespace(
+            move=Mock(), scroll=lambda *args: events.append(args), deactivate=Mock(),
+            hwnd=123, hwnd_window=SimpleNamespace(hwnd=123),
+        )
         task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.scroll_relative = Mock(side_effect=AssertionError("不应操作物理滚轮"))
         restored = []
@@ -457,6 +473,8 @@ class ChenyanAssistTest(unittest.TestCase):
         task.move_relative = Mock(side_effect=AssertionError("物理鼠标路径"))
         task.scroll_relative = Mock(side_effect=AssertionError("物理滚轮路径"))
         post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=123, top_hwnd=0)
+        post._dynamic_target_hwnd = 0
         post.post = Mock()
         post.update_mouse_pos = Mock(return_value=123)
         post.try_activate = Mock()
@@ -466,14 +484,75 @@ class ChenyanAssistTest(unittest.TestCase):
             [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
             [call.args[0] for call in post.post.call_args_list],
         )
-        self.assertEqual((2496, 1296), post.update_mouse_pos.call_args.args)
+        self.assertEqual((2496, 1296, True), post.update_mouse_pos.call_args.args)
+
+    def test_wheel_uses_screen_coordinates_at_multiple_16_by_9_sizes(self):
+        """WM_MOUSEWHEEL lParam uses screen coordinates even in an offset window."""
+        import win32api
+        import win32con
+        import win32gui
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        for width, height in ((1920, 1080), (2560, 1440), (3840, 2160)):
+            with self.subTest(size=(width, height)):
+                task = AssistDevice()
+                task.is_adb = lambda: False
+                task.width, task.height = width, height
+                post = PostMessageInteraction.__new__(PostMessageInteraction)
+                post.hwnd_window = SimpleNamespace(hwnd=123, top_hwnd=0)
+                post._dynamic_target_hwnd = 0
+                local = (int(width * 0.65), int(height * 0.60))
+                post.update_mouse_pos = Mock(return_value=win32api.MAKELONG(*local))
+                post.try_activate = Mock()
+                post.post = Mock()
+                task.executor = SimpleNamespace(
+                    paused=False,
+                    interaction=SimpleNamespace(
+                        post_interaction=post,
+                        hwnd_window=SimpleNamespace(is_foreground=lambda: False),
+                    ),
+                )
+                with patch.object(battle["win32gui"], "ClientToScreen", side_effect=lambda hwnd, point: (point[0] + 50, point[1] + 80)):
+                    self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+                wheel = next(call for call in post.post.call_args_list if call.args[0] == win32con.WM_MOUSEWHEEL)
+                self.assertEqual(win32api.MAKELONG(local[0] + 50, local[1] + 80), wheel.args[2])
+
+    def test_background_scroll_deactivates_child_and_base_windows(self):
+        """A child message target must not leave its parent activated."""
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        task = AssistDevice()
+        task.is_adb = lambda: False
+        task.width, task.height = 3840, 2160
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=123, top_hwnd=456)
+        post._dynamic_target_hwnd = 0
+        post.update_mouse_pos = Mock(return_value=win32api.MAKELONG(2496, 1296))
+        post.post = Mock()
+        task.executor = SimpleNamespace(
+            paused=False,
+            interaction=SimpleNamespace(
+                post_interaction=post,
+                hwnd_window=SimpleNamespace(is_foreground=lambda: False),
+            ),
+        )
+
+        self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+        deactivations = [
+            call.kwargs["hwnd"] for call in post.post.call_args_list
+            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
+        ]
+        self.assertEqual([456, 123], deactivations)
 
     def test_pause_during_hover_deactivates_without_scrolling(self):
         """悬停期间暂停时不滚动，仍清理窗口消息激活状态。"""
         task = AssistDevice()
         task.is_adb = lambda: False
         task.width, task.height = 3840, 2160
-        post = SimpleNamespace(move=Mock(), scroll=Mock(), deactivate=Mock())
+        post = SimpleNamespace(
+            move=Mock(), scroll=Mock(), deactivate=Mock(),
+            hwnd=123, hwnd_window=SimpleNamespace(hwnd=123),
+        )
         task.executor = SimpleNamespace(paused=False, interaction=SimpleNamespace(post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)))
         task.sleep = lambda seconds: setattr(task.executor, "paused", True) if seconds == 0.1 else None
         self.assertFalse(battle["_scroll_chenyan_list"](task, 1))
@@ -492,6 +571,8 @@ class ChenyanAssistTest(unittest.TestCase):
                 task.is_adb = lambda: False
                 task.width, task.height = 3840, 2160
                 post = PostMessageInteraction.__new__(PostMessageInteraction)
+                post.hwnd_window = SimpleNamespace(hwnd=123, top_hwnd=0)
+                post._dynamic_target_hwnd = 0
                 post.update_mouse_pos = Mock(return_value=123)
                 state = {"active": True}
 
