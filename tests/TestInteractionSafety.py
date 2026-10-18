@@ -116,6 +116,33 @@ class InteractionSafetyTest(unittest.TestCase):
         ]
         self.assertEqual([200, 100], deactivations)
 
+    def test_background_scroll_cleans_up_changed_dynamic_target(self):
+        """The old child target stays activated when the wheel retargets another child."""
+        import win32con
+        import win32gui
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
+        post._dynamic_target_hwnd = 0
+        def retarget(*args):
+            post._dynamic_target_hwnd = 300
+            return 123
+        post.update_mouse_pos = Mock(side_effect=retarget)
+        post.post = Mock()
+        obj = SimpleNamespace(
+            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
+            post_interaction=post,
+        )
+
+        with patch.object(win32gui, "IsWindow", return_value=True):
+            GenshinInteraction.scroll(obj, 100, 200, -3)
+        deactivations = [
+            call.kwargs["hwnd"] for call in post.post.call_args_list
+            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
+        ]
+        self.assertEqual([300, 200, 100], deactivations)
+
     def test_key_release_error_survives_cleanup_failure(self):
         """Keep the original release error when window cleanup also fails."""
         obj = self.make_interaction()

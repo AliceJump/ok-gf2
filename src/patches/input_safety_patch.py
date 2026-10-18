@@ -55,13 +55,15 @@ def install_input_safety_patch():
         """Send wheel input through the background window interaction."""
         post = self.post_interaction
         was_foreground = self.hwnd_window.is_foreground()
+        initial_hwnd = post.hwnd
         try:
             return post.scroll(x, y, scroll_amount)
         finally:
             if not was_foreground:
                 base_hwnd = post.hwnd_window.hwnd
                 current_hwnd = post.hwnd
-                for hwnd in (current_hwnd, base_hwnd) if current_hwnd != base_hwnd else (base_hwnd,):
+                cleanup_hwnds = dict.fromkeys((current_hwnd, initial_hwnd, base_hwnd))
+                for hwnd in cleanup_hwnds:
                     try:
                         post.deactivate(hwnd=hwnd)
                     except Exception:
