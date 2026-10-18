@@ -53,7 +53,19 @@ def install_input_safety_patch():
 
     def scroll(self, x, y, scroll_amount):
         """Send wheel input through the background window interaction."""
-        return self.post_interaction.scroll(x, y, scroll_amount)
+        post = self.post_interaction
+        was_foreground = self.hwnd_window.is_foreground()
+        try:
+            return post.scroll(x, y, scroll_amount)
+        finally:
+            if not was_foreground:
+                base_hwnd = post.hwnd_window.hwnd
+                current_hwnd = post.hwnd
+                for hwnd in (current_hwnd, base_hwnd) if current_hwnd != base_hwnd else (base_hwnd,):
+                    try:
+                        post.deactivate(hwnd=hwnd)
+                    except Exception:
+                        logger.warning("滚轮输入后停用游戏窗口失败", exc_info=True)
 
     def move_mouse_relative(self, dx, dy):
         """Move the real mouse only after confirming that the game is foreground."""

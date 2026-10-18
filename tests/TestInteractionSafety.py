@@ -40,6 +40,82 @@ class InteractionSafetyTest(unittest.TestCase):
         GenshinInteraction.scroll(obj, 100, 200, -3)
         obj.post_interaction.scroll.assert_called_once_with(100, 200, -3)
 
+    def test_background_scroll_cleans_up_real_post_message_activation(self):
+        """The real post backend activates base and child windows while scrolling."""
+        import win32con
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
+        post._dynamic_target_hwnd = 0
+        post.update_mouse_pos = Mock(return_value=123)
+        post.post = Mock()
+        obj = SimpleNamespace(
+            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
+            post_interaction=post,
+        )
+
+        GenshinInteraction.scroll(obj, 100, 200, -3)
+
+        activations = [
+            (call.args[1], call.kwargs.get("hwnd"))
+            for call in post.post.call_args_list
+            if call.args[0] == win32con.WM_ACTIVATE
+        ]
+        self.assertEqual(
+            [(win32con.WA_ACTIVE, 100), (win32con.WA_ACTIVE, 200),
+             (win32con.WA_INACTIVE, 200), (win32con.WA_INACTIVE, 100)],
+            activations,
+        )
+
+    def test_foreground_scroll_preserves_activation(self):
+        """Do not deactivate a game window that was already foreground."""
+        import win32con
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=0)
+        post._dynamic_target_hwnd = 0
+        post.update_mouse_pos = Mock(return_value=123)
+        post.post = Mock()
+        obj = SimpleNamespace(
+            hwnd_window=SimpleNamespace(is_foreground=lambda: True),
+            post_interaction=post,
+        )
+
+        GenshinInteraction.scroll(obj, 100, 200, -3)
+
+        self.assertFalse(any(
+            call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
+            for call in post.post.call_args_list
+        ))
+
+    def test_background_scroll_failure_still_cleans_up_activation(self):
+        """A failed wheel send must release both activated window handles."""
+        import win32con
+        from ok.device.interaction_methods.post_message import PostMessageInteraction
+
+        post = PostMessageInteraction.__new__(PostMessageInteraction)
+        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
+        post._dynamic_target_hwnd = 0
+        post.update_mouse_pos = Mock(return_value=123)
+        post.post = Mock(side_effect=lambda message, *args, **kwargs: (
+            (_ for _ in ()).throw(RuntimeError("wheel failed"))
+            if message == win32con.WM_MOUSEWHEEL else None
+        ))
+        obj = SimpleNamespace(
+            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
+            post_interaction=post,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
+            GenshinInteraction.scroll(obj, 100, 200, -3)
+        deactivations = [
+            call.kwargs["hwnd"] for call in post.post.call_args_list
+            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
+        ]
+        self.assertEqual([200, 100], deactivations)
+
     def test_key_release_error_survives_cleanup_failure(self):
         """Keep the original release error when window cleanup also fails."""
         obj = self.make_interaction()
