@@ -427,8 +427,12 @@ class DailyActivityMixin:
                             self.screenshot("food_make_unknown_page")
                             return "confirm"
                         if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
-                            self.screenshot("food_make_retry_failed")
-                            return "confirm"
+                            # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
+                            if not self.wait_until(
+                                lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
+                            ):
+                                self.screenshot("food_make_retry_failed")
+                                return "confirm"
                         duplicate_result = self._skip_active_food_buff()
                         if duplicate_result is True:
                             return True

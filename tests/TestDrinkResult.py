@@ -129,6 +129,39 @@ class DrinkResultTest(unittest.TestCase):
         self.assertEqual(2, sum(call.kwargs.get("match") == "制作" for call in task.wait_click_ocr.call_args_list))
         task.screenshot.assert_called_with("food_make_not_advanced")
 
+    def test_retry_miss_rechecks_confirm_page_before_failing(self):
+        """A retry miss can mean the page advanced between the last OCR and click."""
+        task = Mock()
+        task.box = SimpleNamespace(bottom_right="bottom_right")
+        task.wait_ocr.return_value = [SimpleNamespace(name="茶歇一刻0/1")]
+        task._skip_active_food_buff.return_value = None
+        state = {"page": "selection", "makes": 0}
+
+        def click(*, match, **kwargs):
+            if match == "制作":
+                state["makes"] += 1
+                if state["makes"] == 2:
+                    state["page"] = "confirm"
+                    return False
+                return True
+            return state["page"] == "confirm"
+
+        def read(*, match, **kwargs):
+            if match == "制作":
+                return [object()] if state["page"] == "selection" else []
+            return [object()] if state["page"] == "confirm" else []
+
+        task.wait_click_ocr.side_effect = click
+        task.ocr.side_effect = read
+        task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
+        result = namespace["do_food_flow"](
+            task, enter_func=Mock(), entry_match="茶歇一刻",
+            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+        )
+        self.assertIs(True, result)
+        self.assertEqual(2, state["makes"])
+        task.screenshot.assert_not_called()
+
     def make_task(self, dropped=0):
         """Model make task."""
         task = Mock()
