@@ -3,9 +3,11 @@ import ctypes
 import ctypes.wintypes
 import re
 import unittest
+import win32api
+import win32con
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
 task_class = next(
@@ -27,7 +29,13 @@ methods = [
         "_claim_supply_activity",
     )
 ]
-namespace = {"re": re, "pop_ups": ["点击空白处关闭"]}
+namespace = {
+    "re": re,
+    "pop_ups": ["点击空白处关闭"],
+    "win32api": win32api,
+    "win32con": win32con,
+    "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
+}
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
 
@@ -118,8 +126,13 @@ class SupplyScreen:
                 post_interaction=SimpleNamespace(
                     hwnd_window=self.hwnd,
                     hwnd=self.hwnd.hwnd,
-                    move=lambda x, y: self.move_relative(x / self.width, y / self.height),
+                    move=lambda x, y: (self.move_relative(x / self.width, y / self.height), win32api.MAKELONG(x, y))[1],
                     scroll=lambda x, y, count: self.scroll_relative(x / self.width, y / self.height, count),
+                    post=lambda message, wparam, lparam: self.scroll_relative(
+                        win32api.LOWORD(lparam) / self.width,
+                        win32api.HIWORD(lparam) / self.height,
+                        30 if wparam > 0 else -3,
+                    ) if message == win32con.WM_MOUSEWHEEL else None,
                     deactivate=Mock(),
                 )
             )
@@ -427,7 +440,7 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
         """前台滚动失败也不得向原本激活的窗口发送停用消息。"""
         task, post = self.make_task()
         task.executor.interaction.hwnd_window.is_foreground = lambda: True
-        post.scroll = Mock(side_effect=RuntimeError("wheel failed"))
+        post.post.side_effect = lambda message, *args: (_ for _ in ()).throw(RuntimeError("wheel failed")) if message == win32con.WM_MOUSEWHEEL else None
         post.deactivate = Mock()
         with self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)
@@ -443,14 +456,31 @@ class BackgroundSupplyScrollTest(unittest.TestCase):
             [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
             [call.args[0] for call in post.post.call_args_list],
         )
-        self.assertEqual((307, 960), post.update_mouse_pos.call_args.args)
+        self.assertEqual((307, 960, True), post.update_mouse_pos.call_args.args)
         task.move_relative.assert_not_called()
         task.scroll_relative.assert_not_called()
+
+    def test_supply_wheel_uses_screen_coordinates_at_multiple_16_by_9_sizes(self):
+        """WM_MOUSEWHEEL must target the menu using screen coordinates."""
+        import win32api
+        import win32con
+        import win32gui
+
+        for width, height in ((1920, 1080), (2560, 1440), (3840, 2160)):
+            with self.subTest(size=(width, height)):
+                task, post = self.make_task()
+                task.width, task.height = width, height
+                local = (int(width * 0.12), int(height * 0.60))
+                post.update_mouse_pos.return_value = win32api.MAKELONG(*local)
+                with patch.object(namespace["win32gui"], "ClientToScreen", side_effect=lambda hwnd, point: (point[0] + 50, point[1] + 80)):
+                    namespace["_scroll_supply_menu"](task, -3)
+                wheel = next(call for call in post.post.call_args_list if call.args[0] == win32con.WM_MOUSEWHEEL)
+                self.assertEqual(win32api.MAKELONG(local[0] + 50, local[1] + 80), wheel.args[2])
 
     def test_scroll_failure_still_deactivates_message_target(self):
         """滚动异常时清理消息激活状态，并保留原异常。"""
         task, post = self.make_task()
-        post.scroll = Mock(side_effect=RuntimeError("wheel failed"))
+        post.post.side_effect = lambda message, *args: (_ for _ in ()).throw(RuntimeError("wheel failed")) if message == win32con.WM_MOUSEWHEEL else None
         post.deactivate = Mock()
         with self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)

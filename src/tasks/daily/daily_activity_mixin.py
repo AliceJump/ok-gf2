@@ -2,6 +2,10 @@
 
 import re
 
+import win32api
+import win32con
+import win32gui
+
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
 from src.tasks.daily.daily_common_mixin import (
     chapter_suffix_re,
@@ -85,8 +89,15 @@ class DailyActivityMixin:
         self.sleep(0.01)
         was_foreground = self.executor.interaction.hwnd_window.is_foreground()
         try:
-            post.move(x, y)
-            post.scroll(x, y, count)
+            local_pos = post.move(x, y)
+            screen_pos = win32gui.ClientToScreen(
+                post.hwnd, (win32api.LOWORD(local_pos), win32api.HIWORD(local_pos))
+            )
+            post.post(
+                win32con.WM_MOUSEWHEEL,
+                win32api.MAKELONG(0, win32con.WHEEL_DELTA * count),
+                win32api.MAKELONG(*screen_pos),
+            )
         finally:
             if not was_foreground:
                 base_hwnd = post.hwnd_window.hwnd
