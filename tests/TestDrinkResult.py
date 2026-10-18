@@ -80,6 +80,55 @@ class DuplicateDrinkReturnTest(unittest.TestCase):
 
 
 class DrinkResultTest(unittest.TestCase):
+    def test_make_click_retries_only_while_selection_page_remains(self):
+        """A reported make click can be dropped while the selection page stays open."""
+        task = Mock()
+        task.box = SimpleNamespace(bottom_right="bottom_right")
+        task.wait_ocr.return_value = [SimpleNamespace(name="茶歇一刻0/1")]
+        task._skip_active_food_buff.return_value = None
+        task._confirm_drink_result.return_value = True
+        state = {"page": "selection", "makes": 0}
+
+        def click(*, match, **kwargs):
+            if match == "制作":
+                state["makes"] += 1
+                if state["makes"] == 2:
+                    state["page"] = "confirm"
+                return True
+            return state["page"] == "confirm"
+
+        def read(*, match, **kwargs):
+            if match == "制作":
+                return [object()] if state["page"] == "selection" else []
+            return [object()] if state["page"] == "confirm" else []
+
+        task.wait_click_ocr.side_effect = click
+        task.ocr.side_effect = read
+        task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
+        result = namespace["do_food_flow"](
+            task, enter_func=Mock(), entry_match="茶歇一刻",
+            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+        )
+        self.assertIs(True, result)
+        self.assertEqual(2, state["makes"])
+
+    def test_make_click_stops_after_two_unchanged_selection_pages(self):
+        """Do not keep clicking make when both attempts fail to change the page."""
+        task = Mock()
+        task.box = SimpleNamespace(bottom_right="bottom_right")
+        task.wait_ocr.return_value = [SimpleNamespace(name="茶歇一刻0/1")]
+        task._skip_active_food_buff.return_value = None
+        task.wait_click_ocr.side_effect = lambda *, match, **kwargs: match == "制作"
+        task.ocr.side_effect = lambda *, match, **kwargs: [object()] if match == "制作" else []
+        task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
+        result = namespace["do_food_flow"](
+            task, enter_func=Mock(), entry_match="茶歇一刻",
+            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+        )
+        self.assertEqual("confirm", result)
+        self.assertEqual(2, sum(call.kwargs.get("match") == "制作" for call in task.wait_click_ocr.call_args_list))
+        task.screenshot.assert_called_with("food_make_not_advanced")
+
     def make_task(self, dropped=0):
         """Model make task."""
         task = Mock()
