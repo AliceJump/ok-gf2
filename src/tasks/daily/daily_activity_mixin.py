@@ -113,8 +113,11 @@ class DailyActivityMixin:
         for attempt in range(3):
             self.log_info(f"尝试进入活动层：第 {attempt + 1}/3 次")
             self.wait_click_ocr(
-                match="活动层", box=self.box.right, time_out=2,
-                raise_if_not_found=False, after_sleep=0.5,
+                match="活动层",
+                box=self.box.right,
+                time_out=2,
+                raise_if_not_found=False,
+                after_sleep=0.5,
             )
             if self.is_free_layer(time_out=8):
                 return True
@@ -130,7 +133,6 @@ class DailyActivityMixin:
         self.log_warning("活动层入口未成功打开，恢复主页后继续后续步骤")
         self.screenshot("activity_layer_entry_failed")
         return False
-
 
     def free_time_layer(self):
         """执行活动层日常，区分失败和跳过结果并返回主页。"""

@@ -158,9 +158,7 @@ class ActivityNavigationTest(unittest.TestCase):
             with self.subTest(labels=labels):
                 task = Mock()
                 task.is_free_layer.return_value = False
-                task.ocr.side_effect = lambda labels=labels, **kw: [
-                    label for label in labels if label in kw["match"]
-                ]
+                task.ocr.side_effect = lambda labels=labels, **kw: [label for label in labels if label in kw["match"]]
 
                 self.assertIs(False, enter(task))
                 task.wait_click_ocr.assert_called_once()
