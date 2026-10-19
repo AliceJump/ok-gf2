@@ -82,6 +82,9 @@ class DailyActivityMixin:
     def _scroll_supply_menu(self, count):
         """在游戏前台用真实滚轮滚动补给侧栏。"""
         self.sleep(0.01)
+        interaction = getattr(self.executor, "interaction", None)
+        if not callable(getattr(interaction, "do_scroll", None)):
+            raise RuntimeError("当前输入后端不支持补给列表真实滚轮")
         hwnd = self.hwnd.hwnd
         if not win32gui.IsWindow(hwnd):
             raise RuntimeError("补给列表滚动失败：游戏窗口无效")
@@ -98,7 +101,7 @@ class DailyActivityMixin:
             self.sleep(0.1)
             if win32gui.GetForegroundWindow() != hwnd:
                 raise RuntimeError("补给列表滚动失败：游戏失去前台焦点")
-            self.scroll_relative(0.12, 0.60, count)
+            interaction.do_scroll(x, y, count)
             self.sleep(0.6)
         finally:
             try:

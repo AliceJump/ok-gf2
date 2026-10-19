@@ -146,6 +146,10 @@ class SupplyScreen:
         self._ensure_supply_menu = Mock(return_value=True)
         self.sleep = Mock()
         self.ensure_main = Mock()
+        self.executor = SimpleNamespace(interaction=SimpleNamespace(do_scroll=self.do_scroll))
+
+    def do_scroll(self, x, y, count):
+        self.scroll_relative(x / self.width, y / self.height, count)
 
     def move_to(self, point):
         self.physical_mouse = point
@@ -402,6 +406,7 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
         task = SimpleNamespace(
             width=width, height=height, hwnd=SimpleNamespace(hwnd=123),
             sleep=Mock(), scroll_relative=Mock(), log_warning=Mock(),
+            executor=SimpleNamespace(interaction=SimpleNamespace(do_scroll=Mock())),
         )
         state = {"foreground": foreground, "cursor": (1500, 800)}
         gui, api = Mock(), Mock()
@@ -419,12 +424,12 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
                 task, state, gui, api = self.make_task(width, height)
                 expected = (int(width * 0.12) + 50, int(height * 0.60) + 80)
                 observed = []
-                task.scroll_relative.side_effect = lambda x, y, count: observed.append(
+                task.executor.interaction.do_scroll.side_effect = lambda x, y, count: observed.append(
                     (x, y, count, state["foreground"], state["cursor"])
                 )
                 with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
                     namespace["_scroll_supply_menu"](task, -3)
-                self.assertEqual([(0.12, 0.60, -3, 123, expected)], observed)
+                self.assertEqual([(int(width * 0.12), int(height * 0.60), -3, 123, expected)], observed)
                 self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
     def test_failed_foreground_activation_does_not_send_wheel(self):
@@ -432,12 +437,12 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
         gui.SetForegroundWindow.side_effect = lambda hwnd: None
         with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "前台"):
             namespace["_scroll_supply_menu"](task, -3)
-        task.scroll_relative.assert_not_called()
+        task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
     def test_wheel_failure_restores_window_and_cursor(self):
         task, state, gui, api = self.make_task()
-        task.scroll_relative.side_effect = RuntimeError("wheel failed")
+        task.executor.interaction.do_scroll.side_effect = RuntimeError("wheel failed")
         with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
@@ -446,9 +451,17 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
         task, state, gui, api = self.make_task(foreground=123)
         with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
             namespace["_scroll_supply_menu"](task, 30)
-        task.scroll_relative.assert_called_once_with(0.12, 0.60, 30)
+        task.executor.interaction.do_scroll.assert_called_once_with(int(task.width * 0.12), int(task.height * 0.60), 30)
         gui.SetForegroundWindow.assert_not_called()
         self.assertEqual({"foreground": 123, "cursor": (1500, 800)}, state)
+
+    def test_missing_real_wheel_backend_fails_before_activation(self):
+        task, state, gui, api = self.make_task()
+        task.executor.interaction = SimpleNamespace()
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "真实滚轮"):
+            namespace["_scroll_supply_menu"](task, -3)
+        gui.SetForegroundWindow.assert_not_called()
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 class NativeHoverTest(unittest.TestCase):
     def bridge(self):
         """Model bridge."""
