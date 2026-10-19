@@ -14,6 +14,11 @@ def run(*args):
 
 
 def changelog(repository, start, end):
+    """Return release bullets with GitHub logins, excluding maintenance subjects.
+
+    Use commits after start through end, or all history through end if start is empty.
+    Git and GitHub command failures propagate to prevent publishing partial notes.
+    """
     # Resolve refs before constructing a range, and fail instead of publishing a partial log.
     end_sha = run("git", "rev-parse", "--verify", "--end-of-options", f"{end}^{{commit}}").strip()
     if start:

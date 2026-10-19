@@ -41,6 +41,7 @@ class GithubChangelogTest(unittest.TestCase):
 
     @patch("scripts.release.github_changelog.run")
     def test_maintenance_filtered_without_hiding_other_changes(self, run):
+        """Filter exact maintenance subjects while retaining other bot and human changes."""
         run.side_effect = [
             "end",
             "start",
@@ -60,6 +61,7 @@ class GithubChangelogTest(unittest.TestCase):
 
     @patch("scripts.release.github_changelog.run")
     def test_maintenance_only_range(self, run):
+        """Return empty notes without GitHub API calls for a range containing only maintenance."""
         run.side_effect = ["end", "start", "aaa\0chore: ruff format\nbbb\0update download stats"]
         self.assertEqual(changelog("owner/repo", "v1", "v2"), "")
         self.assertEqual(run.call_count, 3)
