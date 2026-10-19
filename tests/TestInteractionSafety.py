@@ -33,115 +33,54 @@ class InteractionSafetyTest(unittest.TestCase):
         GenshinInteraction.send_key_up(obj, "alt")
         obj.post_interaction.send_key_up.assert_called_once_with("alt")
 
-    def test_background_scroll_never_uses_global_wheel(self):
-        """Keep wheel input on the window message path."""
+    def test_background_scroll_uses_real_wheel_and_restores_cursor(self):
+        """Unity list wheel input needs the game in the real foreground."""
+        import win32api
+
         obj = self.make_interaction()
-        obj.operate = Mock(side_effect=AssertionError("global wheel path"))
-        GenshinInteraction.scroll(obj, 100, 200, -3)
-        obj.post_interaction.scroll.assert_called_once_with(100, 200, -3)
+        obj.hwnd_window.hwnd = 77
+        obj.do_scroll = Mock()
+        events = []
 
-    def test_background_scroll_cleans_up_real_post_message_activation(self):
-        """The real post backend activates base and child windows while scrolling."""
-        import win32con
-        from ok.device.interaction_methods.post_message import PostMessageInteraction
+        def in_window(hwnd, callback, *args):
+            events.append(("foreground", hwnd))
+            callback(*args)
+            events.append("restore_focus")
 
-        post = PostMessageInteraction.__new__(PostMessageInteraction)
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
-        post._dynamic_target_hwnd = 0
-        post.update_mouse_pos = Mock(return_value=123)
-        post.post = Mock()
-        obj = SimpleNamespace(
-            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
-            post_interaction=post,
-        )
-
-        GenshinInteraction.scroll(obj, 100, 200, -3)
-
-        activations = [
-            (call.args[1], call.kwargs.get("hwnd"))
-            for call in post.post.call_args_list
-            if call.args[0] == win32con.WM_ACTIVATE
-        ]
-        self.assertEqual(
-            [(win32con.WA_ACTIVE, 100), (win32con.WA_ACTIVE, 200),
-             (win32con.WA_INACTIVE, 200), (win32con.WA_INACTIVE, 100)],
-            activations,
-        )
-
-    def test_foreground_scroll_preserves_activation(self):
-        """Do not deactivate a game window that was already foreground."""
-        import win32con
-        from ok.device.interaction_methods.post_message import PostMessageInteraction
-
-        post = PostMessageInteraction.__new__(PostMessageInteraction)
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=0)
-        post._dynamic_target_hwnd = 0
-        post.update_mouse_pos = Mock(return_value=123)
-        post.post = Mock()
-        obj = SimpleNamespace(
-            hwnd_window=SimpleNamespace(is_foreground=lambda: True),
-            post_interaction=post,
-        )
-
-        GenshinInteraction.scroll(obj, 100, 200, -3)
-
-        self.assertFalse(any(
-            call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
-            for call in post.post.call_args_list
-        ))
-
-    def test_background_scroll_failure_still_cleans_up_activation(self):
-        """A failed wheel send must release both activated window handles."""
-        import win32con
-        from ok.device.interaction_methods.post_message import PostMessageInteraction
-
-        post = PostMessageInteraction.__new__(PostMessageInteraction)
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
-        post._dynamic_target_hwnd = 0
-        post.update_mouse_pos = Mock(return_value=123)
-        post.post = Mock(side_effect=lambda message, *args, **kwargs: (
-            (_ for _ in ()).throw(RuntimeError("wheel failed"))
-            if message == win32con.WM_MOUSEWHEEL else None
-        ))
-        obj = SimpleNamespace(
-            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
-            post_interaction=post,
-        )
-
-        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
+        with (
+            patch("src.interaction.Mouse.run_in_window", side_effect=in_window),
+            patch.object(win32api, "GetCursorPos", return_value=(800, 400)),
+            patch.object(win32api, "SetCursorPos", side_effect=lambda pos: events.append(("cursor", pos))),
+        ):
             GenshinInteraction.scroll(obj, 100, 200, -3)
-        deactivations = [
-            call.kwargs["hwnd"] for call in post.post.call_args_list
-            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
-        ]
-        self.assertEqual([200, 100], deactivations)
+        obj.do_scroll.assert_called_once_with(100, 200, -3)
+        obj.post_interaction.scroll.assert_not_called()
+        self.assertEqual(("foreground", 77), events[0])
+        self.assertEqual(("cursor", (800, 400)), events[-1])
 
-    def test_background_scroll_cleans_up_changed_dynamic_target(self):
-        """The old child target stays activated when the wheel retargets another child."""
-        import win32con
-        import win32gui
-        from ok.device.interaction_methods.post_message import PostMessageInteraction
+    def test_failed_foreground_activation_never_sends_wheel(self):
+        obj = self.make_interaction()
+        obj.hwnd_window.hwnd = 77
+        obj.do_scroll = Mock()
+        with patch("src.interaction.Mouse.run_in_window", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "前台"):
+                GenshinInteraction.scroll(obj, 100, 200, -3)
+        obj.do_scroll.assert_not_called()
 
-        post = PostMessageInteraction.__new__(PostMessageInteraction)
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
-        post._dynamic_target_hwnd = 0
-        def retarget(*args):
-            post._dynamic_target_hwnd = 300
-            return 123
-        post.update_mouse_pos = Mock(side_effect=retarget)
-        post.post = Mock()
-        obj = SimpleNamespace(
-            hwnd_window=SimpleNamespace(is_foreground=lambda: False),
-            post_interaction=post,
-        )
+    def test_wheel_failure_restores_cursor_and_propagates(self):
+        import win32api
 
-        with patch.object(win32gui, "IsWindow", return_value=True):
+        obj = self.make_interaction()
+        obj.hwnd_window.hwnd = 77
+        obj.do_scroll = Mock(side_effect=RuntimeError("wheel failed"))
+        with (
+            patch("src.interaction.Mouse.run_in_window", side_effect=lambda hwnd, callback, *args: callback(*args)),
+            patch.object(win32api, "GetCursorPos", return_value=(800, 400)),
+            patch.object(win32api, "SetCursorPos") as cursor,
+            self.assertRaisesRegex(RuntimeError, "wheel failed"),
+        ):
             GenshinInteraction.scroll(obj, 100, 200, -3)
-        deactivations = [
-            call.kwargs["hwnd"] for call in post.post.call_args_list
-            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
-        ]
-        self.assertEqual([300, 200, 100], deactivations)
+        cursor.assert_called_once_with((800, 400))
 
     def test_key_release_error_survives_cleanup_failure(self):
         """Keep the original release error when window cleanup also fails."""

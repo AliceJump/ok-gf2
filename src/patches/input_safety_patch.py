@@ -1,4 +1,4 @@
-"""桌面输入保护：不锁定全局输入，窗口消息释放按键和滚轮。"""
+"""桌面输入保护：不锁定全局输入，并可靠释放按键。"""
 
 import logging
 import time
@@ -52,22 +52,20 @@ def install_input_safety_patch():
                 logger.warning("松开按键后停用游戏窗口失败", exc_info=True)
 
     def scroll(self, x, y, scroll_amount):
-        """Send wheel input through the background window interaction."""
-        post = self.post_interaction
-        was_foreground = self.hwnd_window.is_foreground()
-        initial_hwnd = post.hwnd
+        """Send a real wheel event while the game owns the foreground."""
+        from src.interaction.Mouse import run_in_window
+
+        position = win32api.GetCursorPos()
         try:
-            return post.scroll(x, y, scroll_amount)
+            result = run_in_window(self.hwnd_window.hwnd, self.do_scroll, x, y, scroll_amount)
+            if result is False:
+                raise RuntimeError("游戏窗口未能进入前台，未发送滚轮输入")
+            return result
         finally:
-            if not was_foreground:
-                base_hwnd = post.hwnd_window.hwnd
-                current_hwnd = post.hwnd
-                cleanup_hwnds = dict.fromkeys((current_hwnd, initial_hwnd, base_hwnd))
-                for hwnd in cleanup_hwnds:
-                    try:
-                        post.deactivate(hwnd=hwnd)
-                    except Exception:
-                        logger.warning("滚轮输入后停用游戏窗口失败", exc_info=True)
+            try:
+                win32api.SetCursorPos(position)
+            except Exception:
+                logger.warning("滚轮输入后恢复鼠标位置失败", exc_info=True)
 
     def move_mouse_relative(self, dx, dy):
         """Move the real mouse only after confirming that the game is foreground."""
