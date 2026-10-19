@@ -275,6 +275,9 @@ class DailyBattleMixin:
         if self.is_adb():
             self.swipe_relative(0.65, 0.72 if count > 0 else 0.40, 0.65, 0.40 if count > 0 else 0.72, duration=0.3)
         else:
+            interaction = getattr(executor, "interaction", None)
+            if not callable(getattr(interaction, "do_scroll", None)):
+                raise RuntimeError("当前输入后端不支持助战列表真实滚轮")
             hwnd = self.hwnd.hwnd
             if not win32gui.IsWindow(hwnd):
                 raise RuntimeError("助战列表滚动失败：游戏窗口无效")
@@ -293,7 +296,7 @@ class DailyBattleMixin:
                     return False
                 if win32gui.GetForegroundWindow() != hwnd:
                     raise RuntimeError("助战列表滚动失败：游戏失去前台焦点")
-                self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
+                interaction.do_scroll(x, y, -3 if count > 0 else 3)
                 self.sleep(0.15)
             finally:
                 try:
