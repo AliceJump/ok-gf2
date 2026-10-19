@@ -92,7 +92,10 @@ class DailyActivityMixin:
         previous_cursor = win32api.GetCursorPos()
         try:
             if previous_window != hwnd:
-                win32gui.SetForegroundWindow(hwnd)
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                except win32gui.error as error:
+                    raise RuntimeError("补给列表滚动失败：游戏未进入前台") from error
                 self.sleep(0.05)
             if win32gui.GetForegroundWindow() != hwnd:
                 raise RuntimeError("补给列表滚动失败：游戏未进入前台")

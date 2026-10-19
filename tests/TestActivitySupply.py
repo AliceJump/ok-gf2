@@ -239,6 +239,7 @@ class ActivitySupplyTest(unittest.TestCase):
         task = SupplyScreen()
         original = task.wait_click_ocr
         interrupted = False
+        task.foreground = True
 
         def click(**kwargs):
             """Model click."""
@@ -436,6 +437,21 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
         task, state, gui, api = self.make_task()
         gui.SetForegroundWindow.side_effect = lambda hwnd: None
         with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "前台"):
+            namespace["_scroll_supply_menu"](task, -3)
+        task.executor.interaction.do_scroll.assert_not_called()
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
+    def test_foreground_activation_error_reports_focus_failure_and_restores_cursor(self):
+        task, state, gui, api = self.make_task()
+
+        class Win32Error(Exception):
+            pass
+
+        gui.error = Win32Error
+        gui.SetForegroundWindow.side_effect = Win32Error("foreground locked")
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(
+            RuntimeError, "游戏未进入前台"
+        ):
             namespace["_scroll_supply_menu"](task, -3)
         task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
