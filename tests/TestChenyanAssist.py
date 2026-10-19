@@ -492,6 +492,28 @@ class ChenyanAssistTest(unittest.TestCase):
         task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
+    def test_foreground_activation_exception_reports_failure_without_wheel(self):
+        task, state, gui, api = self.make_scroll_task()
+        activation_error = OSError("foreground locked")
+        gui.SetForegroundWindow.side_effect = activation_error
+        with patch.dict(battle, {"win32gui": gui, "win32api": api}):
+            with self.assertRaisesRegex(RuntimeError, "助战列表滚动失败：游戏未进入前台") as raised:
+                battle["_scroll_chenyan_list"](task, 1)
+        self.assertIs(activation_error, raised.exception.__cause__)
+        task.executor.interaction.do_scroll.assert_not_called()
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
+    def test_scroll_falls_back_to_public_wheel_with_client_coordinates(self):
+        task, state, gui, api = self.make_scroll_task()
+        observed = []
+        task.executor.interaction = SimpleNamespace(
+            scroll=lambda x, y, count: observed.append((x, y, count, state["foreground"], state["cursor"]))
+        )
+        with patch.dict(battle, {"win32gui": gui, "win32api": api}):
+            self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+        self.assertEqual([(1248, 648, -3, 123, (1298, 728))], observed)
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
     def test_pause_during_hover_restores_focus_without_scrolling(self):
         task, state, gui, api = self.make_scroll_task()
         task.executor.interaction.do_scroll = Mock()
