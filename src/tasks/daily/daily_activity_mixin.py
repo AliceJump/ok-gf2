@@ -3,7 +3,6 @@
 import re
 
 import win32api
-import win32con
 import win32gui
 
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
@@ -81,31 +80,36 @@ class DailyActivityMixin:
         return False
 
     def _scroll_supply_menu(self, count):
-        """直接使用窗口消息悬停与滚动，不依赖全局输入补丁。"""
-        post = getattr(self.executor.interaction, "post_interaction", None)
-        if post is None:
-            raise RuntimeError("当前输入后端不支持补给列表窗口消息滚动")
-        x, y = int(self.width * 0.12), int(self.height * 0.60)
+        """在游戏前台用真实滚轮滚动补给侧栏。"""
         self.sleep(0.01)
-        was_foreground = self.executor.interaction.hwnd_window.is_foreground()
+        hwnd = self.hwnd.hwnd
+        if not win32gui.IsWindow(hwnd):
+            raise RuntimeError("补给列表滚动失败：游戏窗口无效")
+        previous_window = win32gui.GetForegroundWindow()
+        previous_cursor = win32api.GetCursorPos()
         try:
-            local_pos = post.move(x, y)
-            screen_pos = win32gui.ClientToScreen(
-                post.hwnd, (win32api.LOWORD(local_pos), win32api.HIWORD(local_pos))
-            )
-            post.post(
-                win32con.WM_MOUSEWHEEL,
-                win32api.MAKELONG(0, win32con.WHEEL_DELTA * count),
-                win32api.MAKELONG(*screen_pos),
-            )
+            if previous_window != hwnd:
+                win32gui.SetForegroundWindow(hwnd)
+                self.sleep(0.05)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError("补给列表滚动失败：游戏未进入前台")
+            x, y = int(self.width * 0.12), int(self.height * 0.60)
+            win32api.SetCursorPos(win32gui.ClientToScreen(hwnd, (x, y)))
+            self.sleep(0.1)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError("补给列表滚动失败：游戏失去前台焦点")
+            self.scroll_relative(0.12, 0.60, count)
+            self.sleep(0.6)
         finally:
-            if not was_foreground:
-                base_hwnd = post.hwnd_window.hwnd
-                current_hwnd = post.hwnd
-                if current_hwnd != base_hwnd:
-                    post.deactivate(hwnd=current_hwnd)
-                post.deactivate(hwnd=base_hwnd)
-        self.sleep(0.6)
+            try:
+                win32api.SetCursorPos(previous_cursor)
+            except Exception:
+                self.log_warning("补给滚动后恢复鼠标位置失败")
+            if previous_window != hwnd and win32gui.IsWindow(previous_window) and win32gui.GetForegroundWindow() == hwnd:
+                try:
+                    win32gui.SetForegroundWindow(previous_window)
+                except Exception:
+                    self.log_warning("补给滚动后恢复原窗口失败")
 
 
     def _claim_supply_activity(self, reward_activity):

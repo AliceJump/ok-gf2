@@ -3,8 +3,6 @@ import ctypes
 import ctypes.wintypes
 import re
 import unittest
-import win32api
-import win32con
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -32,10 +30,37 @@ methods = [
 namespace = {
     "re": re,
     "pop_ups": ["点击空白处关闭"],
-    "win32api": win32api,
-    "win32con": win32con,
-    "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
 }
+current_screen = [None]
+
+
+def foreground_window():
+    screen = current_screen[0]
+    return screen.hwnd.hwnd if screen.foreground else 99
+
+
+def set_foreground_window(hwnd):
+    screen = current_screen[0]
+    if hwnd == screen.hwnd.hwnd:
+        if not screen.foreground:
+            screen.activations += 1
+        screen.foreground = True
+    else:
+        if screen.foreground:
+            screen.restores += 1
+        screen.foreground = False
+
+
+namespace["win32gui"] = SimpleNamespace(
+    ClientToScreen=lambda hwnd, point: point,
+    GetForegroundWindow=foreground_window,
+    SetForegroundWindow=set_foreground_window,
+    IsWindow=lambda hwnd: True,
+)
+namespace["win32api"] = SimpleNamespace(
+    GetCursorPos=lambda: current_screen[0].physical_mouse,
+    SetCursorPos=lambda point: current_screen[0].move_to(point),
+)
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
 
@@ -97,6 +122,7 @@ class SupplyScreen:
         self.width, self.height = 2560, 1600
         self.hwnd = SimpleNamespace(hwnd=id(self))
         screens[self.hwnd.hwnd] = self
+        current_screen[0] = self
         self.foreground = False
         self.activations = 0
         self.restores = 0
@@ -120,23 +146,10 @@ class SupplyScreen:
         self._ensure_supply_menu = Mock(return_value=True)
         self.sleep = Mock()
         self.ensure_main = Mock()
-        self.executor = SimpleNamespace(
-            interaction=SimpleNamespace(
-                hwnd_window=SimpleNamespace(is_foreground=lambda: self.foreground),
-                post_interaction=SimpleNamespace(
-                    hwnd_window=self.hwnd,
-                    hwnd=self.hwnd.hwnd,
-                    move=lambda x, y: (self.move_relative(x / self.width, y / self.height), win32api.MAKELONG(x, y))[1],
-                    scroll=lambda x, y, count: self.scroll_relative(x / self.width, y / self.height, count),
-                    post=lambda message, wparam, lparam: self.scroll_relative(
-                        win32api.LOWORD(lparam) / self.width,
-                        win32api.HIWORD(lparam) / self.height,
-                        30 if wparam > 0 else -3,
-                    ) if message == win32con.WM_MOUSEWHEEL else None,
-                    deactivate=Mock(),
-                )
-            )
-        )
+
+    def move_to(self, point):
+        self.physical_mouse = point
+        self.hover_mouse = point
 
     def box_of_screen(self, *bounds):
         """用归一化边界标识侧栏识别区域。"""
@@ -154,7 +167,7 @@ class SupplyScreen:
         """Model scroll relative."""
         self.scrolls.append((x, y, count))
         target = (int(self.width * x), int(self.height * y))
-        if self.hover_mouse != target:
+        if not self.foreground or self.physical_mouse != target or self.hover_mouse != target:
             self.ineffective_scrolls.append(count)
             return
         self.menu_page = 0 if count > 0 else self.menu_page + 1
@@ -204,8 +217,8 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.ineffective_scrolls)
         self.assertFalse(task.foreground)
         self.assertEqual((1500, 800), task.physical_mouse)
-        self.assertEqual(0, task.activations)
-        self.assertEqual(0, task.restores)
+        self.assertGreater(task.activations, 0)
+        self.assertEqual(task.activations, task.restores)
         task.ensure_main.assert_called_once()
 
     def test_absent_supply_events_are_bounded_and_skipped(self):
@@ -217,8 +230,8 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertIn("未找到入口", task.status["情报补给"])
         task.ensure_main.assert_called_once()
 
-    def test_focus_interruption_does_not_reactivate_game(self):
-        """Verify focus interruption does not reactivate game."""
+    def test_focus_interruption_reactivates_for_wheel(self):
+        """A lost foreground must be reacquired before the next wheel event."""
         task = SupplyScreen()
         original = task.wait_click_ocr
         interrupted = False
@@ -234,8 +247,8 @@ class ActivitySupplyTest(unittest.TestCase):
 
         task.wait_click_ocr = click
         self.assertIs(True, task.activities())
-        self.assertEqual(0, task.activations)
-        self.assertEqual(0, task.restores)
+        self.assertGreater(task.activations, 0)
+        self.assertEqual(task.activations, task.restores)
         self.assertEqual([], task.ineffective_scrolls)
 
     def test_already_foreground_does_not_switch_windows(self):
@@ -384,130 +397,58 @@ class SupplyMenuVerificationTest(unittest.TestCase):
                 self.assertFalse(self.check_menu(menu, home)[0])
 
 
-class BackgroundSupplyScrollTest(unittest.TestCase):
-    """真实窗口消息方法通过桩边界验证，不对游戏发送输入。"""
-
-    def make_task(self):
-        """保留真实 move/scroll 方法，只替换 Win32 消息发送边界。"""
-        from ok.device.interaction_methods.post_message import PostMessageInteraction
-
-        post = PostMessageInteraction.__new__(PostMessageInteraction)
-        post.post = Mock()
-        post.update_mouse_pos = Mock(return_value=123)
-        post.try_activate = Mock()
-        post._dynamic_target_hwnd = 0
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=None)
+class ForegroundSupplyScrollTest(unittest.TestCase):
+    def make_task(self, width=1920, height=1080, foreground=99):
         task = SimpleNamespace(
-            width=2560,
-            height=1600,
-            sleep=Mock(),
-            executor=SimpleNamespace(interaction=SimpleNamespace(
-                post_interaction=post, hwnd_window=SimpleNamespace(is_foreground=lambda: False)
-            )),
-            move_relative=Mock(side_effect=AssertionError("不应进入Genshin物理鼠标路径")),
-            scroll_relative=Mock(side_effect=AssertionError("不应依赖全局滚轮补丁")),
+            width=width, height=height, hwnd=SimpleNamespace(hwnd=123),
+            sleep=Mock(), scroll_relative=Mock(), log_warning=Mock(),
         )
-        return task, post
+        state = {"foreground": foreground, "cursor": (1500, 800)}
+        gui, api = Mock(), Mock()
+        gui.GetForegroundWindow.side_effect = lambda: state["foreground"]
+        gui.SetForegroundWindow.side_effect = lambda hwnd: state.update(foreground=hwnd)
+        gui.ClientToScreen.side_effect = lambda hwnd, point: (point[0] + 50, point[1] + 80)
+        gui.IsWindow.return_value = True
+        api.GetCursorPos.side_effect = lambda: state["cursor"]
+        api.SetCursorPos.side_effect = lambda point: state.update(cursor=point)
+        return task, state, gui, api
 
-    def test_foreground_scroll_preserves_activation_for_real_next_click(self):
-        """真实消息停用会使前台 Genshin 点击缺少激活，滚动必须保留激活。"""
-        import win32con
-        from ok.device.interaction_methods.genshin import GenshinInteraction
-
-        task, post = self.make_task()
-        state = {"active": True}
-
-        def send(message, wparam=0, *args, **kwargs):
-            """只模拟 Win32 消息接收窗口的激活状态。"""
-            if message == win32con.WM_ACTIVATE:
-                state["active"] = wparam == win32con.WA_ACTIVE
-
-        post.post.side_effect = send
-        post.try_activate.side_effect = post.activate
-        interaction = GenshinInteraction.__new__(GenshinInteraction)
-        interaction.hwnd_window = SimpleNamespace(is_foreground=lambda: True)
-        interaction.post_interaction = post
-        task.executor.interaction = interaction
-        namespace["_scroll_supply_menu"](task, -3)
-        # 依赖 operate 的真实前台分支不补发 activate；以接收窗口状态验证后续点击可用。
-        self.assertTrue(interaction.operate(lambda: state["active"]))
-        self.assertNotIn(
-            (win32con.WM_ACTIVATE, win32con.WA_INACTIVE),
-            [call.args[:2] for call in post.post.call_args_list],
-        )
-
-    def test_foreground_scroll_failure_does_not_deactivate(self):
-        """前台滚动失败也不得向原本激活的窗口发送停用消息。"""
-        task, post = self.make_task()
-        task.executor.interaction.hwnd_window.is_foreground = lambda: True
-        post.post.side_effect = lambda message, *args: (_ for _ in ()).throw(RuntimeError("wheel failed")) if message == win32con.WM_MOUSEWHEEL else None
-        post.deactivate = Mock()
-        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
-            namespace["_scroll_supply_menu"](task, -3)
-        post.deactivate.assert_not_called()
-
-    def test_real_message_backend_scrolls_without_pr97_patch(self):
-        """未安装 #97 时也只发送悬停和滚轮消息。"""
-        import win32con
-
-        task, post = self.make_task()
-        namespace["_scroll_supply_menu"](task, -3)
-        self.assertEqual(
-            [win32con.WM_MOUSEMOVE, win32con.WM_MOUSEWHEEL, win32con.WM_ACTIVATE],
-            [call.args[0] for call in post.post.call_args_list],
-        )
-        self.assertEqual((307, 960, True), post.update_mouse_pos.call_args.args)
-        task.move_relative.assert_not_called()
-        task.scroll_relative.assert_not_called()
-
-    def test_supply_wheel_uses_screen_coordinates_at_multiple_16_by_9_sizes(self):
-        """WM_MOUSEWHEEL must target the menu using screen coordinates."""
-        import win32api
-        import win32con
-        import win32gui
-
+    def test_real_wheel_targets_supply_sidebar_at_16_by_9_sizes(self):
         for width, height in ((1920, 1080), (2560, 1440), (3840, 2160)):
             with self.subTest(size=(width, height)):
-                task, post = self.make_task()
-                task.width, task.height = width, height
-                local = (int(width * 0.12), int(height * 0.60))
-                post.update_mouse_pos.return_value = win32api.MAKELONG(*local)
-                with patch.object(namespace["win32gui"], "ClientToScreen", side_effect=lambda hwnd, point: (point[0] + 50, point[1] + 80)):
+                task, state, gui, api = self.make_task(width, height)
+                expected = (int(width * 0.12) + 50, int(height * 0.60) + 80)
+                observed = []
+                task.scroll_relative.side_effect = lambda x, y, count: observed.append(
+                    (x, y, count, state["foreground"], state["cursor"])
+                )
+                with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
                     namespace["_scroll_supply_menu"](task, -3)
-                wheel = next(call for call in post.post.call_args_list if call.args[0] == win32con.WM_MOUSEWHEEL)
-                self.assertEqual(win32api.MAKELONG(local[0] + 50, local[1] + 80), wheel.args[2])
+                self.assertEqual([(0.12, 0.60, -3, 123, expected)], observed)
+                self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
-    def test_scroll_failure_still_deactivates_message_target(self):
-        """滚动异常时清理消息激活状态，并保留原异常。"""
-        task, post = self.make_task()
-        post.post.side_effect = lambda message, *args: (_ for _ in ()).throw(RuntimeError("wheel failed")) if message == win32con.WM_MOUSEWHEEL else None
-        post.deactivate = Mock()
-        with self.assertRaisesRegex(RuntimeError, "wheel failed"):
+    def test_failed_foreground_activation_does_not_send_wheel(self):
+        task, state, gui, api = self.make_task()
+        gui.SetForegroundWindow.side_effect = lambda hwnd: None
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "前台"):
             namespace["_scroll_supply_menu"](task, -3)
-        post.deactivate.assert_called_once_with(hwnd=100)
+        task.scroll_relative.assert_not_called()
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
-    def test_background_scroll_deactivates_base_and_child_windows(self):
-        """坐标命中子窗口时悬停会激活两个句柄，清理必须对称停用。"""
-        import win32con
-
-        task, post = self.make_task()
-        post.hwnd_window = SimpleNamespace(hwnd=100, top_hwnd=200)
-        namespace["_scroll_supply_menu"](task, -3)
-        deactivated = [
-            call.kwargs["hwnd"]
-            for call in post.post.call_args_list
-            if call.args[:2] == (win32con.WM_ACTIVATE, win32con.WA_INACTIVE)
-        ]
-        self.assertEqual([200, 100], deactivated)
-
-    def test_missing_message_backend_is_explicit_failure(self):
-        """缺少后台消息接口时明确失败，不能回落到物理滚轮。"""
-        task, _ = self.make_task()
-        task.executor.interaction = SimpleNamespace()
-        with self.assertRaisesRegex(RuntimeError, "窗口消息"):
+    def test_wheel_failure_restores_window_and_cursor(self):
+        task, state, gui, api = self.make_task()
+        task.scroll_relative.side_effect = RuntimeError("wheel failed")
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "wheel failed"):
             namespace["_scroll_supply_menu"](task, -3)
+        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
-
+    def test_already_foreground_keeps_game_active(self):
+        task, state, gui, api = self.make_task(foreground=123)
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
+            namespace["_scroll_supply_menu"](task, 30)
+        task.scroll_relative.assert_called_once_with(0.12, 0.60, 30)
+        gui.SetForegroundWindow.assert_not_called()
+        self.assertEqual({"foreground": 123, "cursor": (1500, 800)}, state)
 class NativeHoverTest(unittest.TestCase):
     def bridge(self):
         """Model bridge."""
