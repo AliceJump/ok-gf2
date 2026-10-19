@@ -4,7 +4,6 @@ import re
 
 import cv2
 import win32api
-import win32con
 import win32gui
 
 from src.core.BaseGfTask import stamina_re
@@ -268,8 +267,7 @@ class DailyBattleMixin:
         return True
 
     def _scroll_chenyan_list(self, count):
-        # 在输入之外检查停止状态，避免设备层吞掉任务取消异常。
-        """可取消地滚动一页，桌面端不占用前台。"""
+        """可取消地滚动一页；Unity 列表需要前台的真实滚轮。"""
         self.sleep(0.01)
         executor = getattr(self, "executor", None)
         if executor is not None and executor.paused:
@@ -277,34 +275,36 @@ class DailyBattleMixin:
         if self.is_adb():
             self.swipe_relative(0.65, 0.72 if count > 0 else 0.40, 0.65, 0.40 if count > 0 else 0.72, duration=0.3)
         else:
-            # 只向游戏发送窗口消息，不占用前台或物理鼠标。
-            post = getattr(getattr(executor, "interaction", None), "post_interaction", None)
-            if post is None:
-                raise RuntimeError("当前输入后端不支持助战列表窗口消息滚动")
-            x, y = int(self.width * 0.65), int(self.height * 0.60)
-            was_foreground = executor.interaction.hwnd_window.is_foreground()
+            hwnd = self.hwnd.hwnd
+            if not win32gui.IsWindow(hwnd):
+                raise RuntimeError("助战列表滚动失败：游戏窗口无效")
+            previous_window = win32gui.GetForegroundWindow()
+            previous_cursor = win32api.GetCursorPos()
             try:
-                local_pos = post.move(x, y)
+                if previous_window != hwnd:
+                    win32gui.SetForegroundWindow(hwnd)
+                    self.sleep(0.05)
+                if win32gui.GetForegroundWindow() != hwnd:
+                    raise RuntimeError("助战列表滚动失败：游戏未进入前台")
+                x, y = int(self.width * 0.65), int(self.height * 0.60)
+                win32api.SetCursorPos(win32gui.ClientToScreen(hwnd, (x, y)))
                 self.sleep(0.1)
                 if executor.paused:
                     return False
-                screen_pos = win32gui.ClientToScreen(
-                    post.hwnd, (win32api.LOWORD(local_pos), win32api.HIWORD(local_pos))
-                )
-                wheel = -3 if count > 0 else 3
-                post.post(
-                    win32con.WM_MOUSEWHEEL,
-                    win32api.MAKELONG(0, win32con.WHEEL_DELTA * wheel),
-                    win32api.MAKELONG(*screen_pos),
-                )
+                if win32gui.GetForegroundWindow() != hwnd:
+                    raise RuntimeError("助战列表滚动失败：游戏失去前台焦点")
+                self.scroll_relative(0.65, 0.60, -3 if count > 0 else 3)
+                self.sleep(0.15)
             finally:
-                if not was_foreground:
-                    base_hwnd = post.hwnd_window.hwnd
-                    current_hwnd = post.hwnd
-                    if current_hwnd != base_hwnd:
-                        post.deactivate(hwnd=current_hwnd)
-                    post.deactivate(hwnd=base_hwnd)
-            self.sleep(0.15)
+                try:
+                    win32api.SetCursorPos(previous_cursor)
+                except Exception:
+                    self.log_warning("助战滚动后恢复鼠标位置失败")
+                if previous_window != hwnd and win32gui.IsWindow(previous_window) and win32gui.GetForegroundWindow() == hwnd:
+                    try:
+                        win32gui.SetForegroundWindow(previous_window)
+                    except Exception:
+                        self.log_warning("助战滚动后恢复原窗口失败")
         self.sleep(0.05)
         return True
 
