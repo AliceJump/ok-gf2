@@ -6,6 +6,8 @@ import subprocess
 import uuid
 from pathlib import Path
 
+MAINTENANCE_SUBJECTS = {"chore: ruff format", "update download stats"}
+
 
 def run(*args):
     return subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8").stdout
@@ -23,6 +25,8 @@ def changelog(repository, start, end):
     lines = []
     for line in commits.splitlines():
         sha, subject = line.split("\0", 1)
+        if subject in MAINTENANCE_SUBJECTS:
+            continue
         commit = json.loads(run("gh", "api", f"repos/{repository}/commits/{sha}"))
         # The nested commit.author.name is a Git display name and may be a real name.
         # Unlinked authors receive no attribution rather than a display-name fallback.
