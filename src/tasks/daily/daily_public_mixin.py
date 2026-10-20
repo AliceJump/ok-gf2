@@ -39,10 +39,10 @@ class DailyPublicMixin:
                 self.auto_loop()
 
     def _auto_loop_step_with_retry(
-        self, step_num, match, need_confirm=False, box=None, time_out=5, after_sleep=2, **kwargs
+        self, step_num, match, need_confirm=False, box=None, time_out=5, after_sleep=2, success_match=None, **kwargs
     ):
         """
-        点击OCR匹配元素，等待点击特征在 3s 内消失。
+        点击OCR匹配元素，等待点击特征消失或观察到后续状态。
         若特征未消失则重试，最多尝试 3 次。
         Args:
             step_num (int): 步骤编号
@@ -50,20 +50,29 @@ class DailyPublicMixin:
             box (Box): OCR匹配范围
             time_out (int): OCR匹配超时时间
             after_sleep (int): 点击后等待时间
+            success_match: 可确认页面已经切换成功的 OCR 文本
             **kwargs: 其他参数，传递给 wait_click_ocr
         Returns:
             bool: 是否成功点击
         """
         for attempt in range(3):
+            # 页面可能在重试间隙才完成切换，不能再次等待已经消失的启动按钮。
+            if success_match and self.ocr(match=success_match):
+                return True
             result = self.wait_click_ocr(match=match, box=box, time_out=time_out, after_sleep=0, log=True, **kwargs)
             if not result:
+                if success_match and self.ocr(match=success_match):
+                    return True
                 self.log_info(f"自主循环步骤{step_num}未完成，退出循环", notify=True)
                 return False
-            # 等待最多 3s，检测点击特征是否消失
+            # 启动加载可能超过 3 秒，先给页面时间切换，避免重复启动。
             start = time.time()
-            while time.time() - start < 3:
+            transition_timeout = 15 if success_match else 3
+            while time.time() - start < transition_timeout:
                 self.next_frame()
-                if not self.ocr(box=box, match=match):
+                if success_match and self.ocr(match=success_match):
+                    return True
+                if not success_match and not self.ocr(box=box, match=match):
                     self.sleep(after_sleep)
                     return result
                 if need_confirm and self.ocr(box=self.box.center, match="确认"):
@@ -76,6 +85,14 @@ class DailyPublicMixin:
         return False
 
     def auto_loop(self):
+        try:
+            wait_minutes = int(self.config.get("自主循环等待上限（分钟）", 60))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("自主循环等待上限（分钟）必须为 1 到 240 的整数") from exc
+        if not 1 <= wait_minutes <= 240:
+            raise ValueError("自主循环等待上限（分钟）必须为 1 到 240 的整数")
+        started_match = re.compile("循环进行中|循环结束")
+
         # 步骤 1: 点击"自主循环"，带重试
         if not self._auto_loop_step_with_retry(
             step_num=1,
@@ -84,7 +101,7 @@ class DailyPublicMixin:
             time_out=5,
             after_sleep=2,
         ):
-            return
+            raise RuntimeError("自主循环入口未打开，停止后续日常任务")
 
         # 步骤 2: 点击"开始循环"，带重试
         if not self._auto_loop_step_with_retry(
@@ -94,29 +111,38 @@ class DailyPublicMixin:
             need_confirm=True,
             time_out=5,
             after_sleep=2,
+            success_match=started_match,
         ):
-            return
+            raise RuntimeError("自主循环未能启动，停止后续日常任务")
 
-        # 步骤 3: 点击"确认"，带重试
-        self._auto_loop_step_with_retry(
+        # 部分配置无需确认即进入战斗；已经启动时不要再点击战斗中的同名按钮。
+        if not self.ocr(match=started_match) and not self._auto_loop_step_with_retry(
             step_num=3,
             match=["确认"],
             box=self.box.center,
             settle_time=2,
             after_sleep=2,
-        )
+            success_match=started_match,
+        ):
+            raise RuntimeError("自主循环启动确认未完成，停止后续日常任务")
         # 步骤 4: 等待"循环结束"出现并点击（仅作为一次识别完成的角色，不需要重试）
         if not self.wait_click_ocr(
-            match=re.compile("循环结束"), time_out=600, box=self.box.top, after_sleep=2, log=True
+            match=re.compile("循环结束"),
+            time_out=wait_minutes * 60,
+            box=self.box.top,
+            after_sleep=2,
+            log=True,
         ):
-            self.log_info("自主循环步骤4未完成，退出循环", notify=True)
-            return
+            # 保留游戏当前循环与异常现场，不能进入下一任务并用 ESC 反复尝试返回主页。
+            raise TimeoutError(
+                f"自主循环等待 {wait_minutes} 分钟仍未结束，停止后续日常任务；可调大自主循环等待上限（分钟）"
+            )
 
         # 步骤 5: 点击"确认"，带重试
         if not self._auto_loop_step_with_retry(
             step_num=5, match=["确认"], settle_time=2, after_sleep=2, box=self.box.bottom
         ):
-            return
+            raise RuntimeError("自主循环结算确认未完成，停止后续日常任务")
 
     def _shop_category_content(self):
         """用连续两帧稳定的商品文字确认内容，排除页签、价格和倒计时。"""
