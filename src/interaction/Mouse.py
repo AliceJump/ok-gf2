@@ -99,7 +99,7 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
                 # 检查窗口句柄是否有效
                 if not win32gui.IsWindow(hwnd):
                     print(f"窗口激活失败: 无效的窗口句柄 {hwnd}")
-                    return
+                    return False
 
                 # 如果窗口最小化，先恢复
                 if win32gui.IsIconic(hwnd):
@@ -115,36 +115,25 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
                 win32gui.ShowWindow(hwnd, 9)
                 time.sleep(0.05)
 
-                # 尝试设置前台窗口
-                try:
-                    win32gui.SetForegroundWindow(hwnd)
-                except win32gui.error:
-                    # Windows 前台窗口限制：
-                    # 通过模拟 Alt 键绕过限制
-                    import win32api
-                    import win32con
-
-                    win32api.keybd_event(win32con.VK_MENU, 0, 0, 0)
-                    time.sleep(0.01)
-
-                    win32gui.SetForegroundWindow(hwnd)
-
-                    win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+                # 尊重 Windows 前台限制，不注入全局 Alt。
+                win32gui.SetForegroundWindow(hwnd)
 
                 time.sleep(delay)
 
                 # 检查窗口是否真的在前台
                 final_hwnd = win32gui.GetForegroundWindow()
                 if final_hwnd != hwnd:
-                    print(f"窗口激活警告: 窗口未完全置于前台 (目标:{hwnd}, 当前:{final_hwnd})")
+                    return False
 
         except win32gui.error as e:
             # 错误码 0 通常不是严重错误
             if e.winerror != 0:
                 print(f"窗口激活失败 (Win32错误 {e.winerror}): {e}")
+            return False
 
         except Exception as e:
             print(f"窗口激活失败 (未知错误): {type(e).__name__}: {e}")
+            return False
 
     # 只激活窗口不发送鼠标移动
     if not only_activate:
@@ -157,6 +146,8 @@ def active_and_send_mouse_delta(hwnd, dx=1, dy=1, activate=True, only_activate=F
             user32.mouse_event(MOUSEEVENTF_MOVE, step_dx, step_dy, 0, 0)
 
             time.sleep(delay)
+
+    return True
 
 
 # ===== control =====
@@ -249,17 +240,19 @@ def run_at_window_pos(hwnd, func, x, y, sleep_time=0.5, *args, **kwargs):
 
 
 def run_in_window(hwnd, func, *args, **kwargs):
+    """Run after successful activation and restore focus only if still owned."""
     prev = win32gui.GetForegroundWindow()
     need_restore = prev != hwnd
 
     try:
         if need_restore:
-            active_and_send_mouse_delta(hwnd, only_activate=True)
+            if not active_and_send_mouse_delta(hwnd, only_activate=True):
+                return False
 
         return func(*args, **kwargs)
 
     finally:
-        if need_restore and prev and win32gui.IsWindow(prev):
+        if need_restore and prev and win32gui.IsWindow(prev) and win32gui.GetForegroundWindow() == hwnd:
             try:
                 win32gui.SetForegroundWindow(prev)
             except:

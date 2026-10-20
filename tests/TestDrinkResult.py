@@ -219,15 +219,16 @@ class DrinkResultTest(unittest.TestCase):
         task = Mock()
         task._confirm_drink_result.return_value = False
         task.wait_ocr.return_value = [SimpleNamespace(name="entry")]
-        with self.assertRaisesRegex(RuntimeError, "饮品加成"):
-            namespace["do_food_flow"](
-                task,
-                enter_func=Mock(),
-                entry_match="茶歇一刻",
-                main_btn="制作",
-                second_btn="确认",
-                skip_end_match=["饮品加成"],
-            )
+        result = namespace["do_food_flow"](
+            task,
+            enter_func=Mock(),
+            entry_match="茶歇一刻",
+            main_btn="制作",
+            second_btn="确认",
+            skip_end_match=["饮品加成"],
+        )
+        self.assertEqual("confirm", result)
+        task.log_error.assert_called_once_with("饮品加成确认失败：结果页未关闭")
         task.wait_pop_up.assert_not_called()
 
     def test_success_uses_real_executor_without_default_ten_second_wait(self):
