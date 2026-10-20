@@ -2,8 +2,10 @@
 
 import re
 
+import win32api
+import win32gui
+
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
-from src.interaction.Mouse import active_and_send_mouse_delta, run_at_window_pos, run_in_window
 from src.tasks.daily.daily_common_mixin import (
     chapter_suffix_re,
     down_chapter_re,
@@ -16,33 +18,52 @@ activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours
 
 class DailyActivityMixin:
     def activities(self):
+        """检查补给活动入口并返回领取结果。"""
         self.info_set("current_task", "activity_stamina")
-        # 整个补给流程只恢复一次原窗口，避免每次滚动都来回切换。
-        return run_in_window(self.hwnd.hwnd, self._collect_supply_activities)
+        return self._collect_supply_activities()
 
     def _collect_supply_activities(self):
-        checked = False
+        """逐项领取补给，区分活动缺席与页面未确认并恢复主页。"""
         uncertain = False
         try:
-            self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=1, raise_if_not_found=True)
+            self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False)
+            if not self._ensure_supply_menu():
+                self.info_set("情报补给", "待核查：未确认活动列表打开")
+                self.info_set("战前补给", "待核查：未确认活动列表打开")
+                return "待核查"
             for reward_activity in ("情报补给", "战前补给"):
                 self.info_set(reward_activity, "检查中")
                 if not self._open_supply_activity(reward_activity):
-                    if reward_activity == "情报补给":
-                        self.info_set(reward_activity, "待核查：未找到入口")
-                        uncertain = True
-                    else:
-                        self.info_set(reward_activity, "未找到入口，跳过")
-                    self.log_info(f"{reward_activity}：滚动搜索后未找到入口")
+                    self.info_set(reward_activity, "未找到入口，跳过")
+                    self.log_info(f"{reward_activity}：活动列表中未找到入口，跳过")
                     continue
-                checked = True
                 if self._claim_supply_activity(reward_activity) == "待核查":
                     uncertain = True
-            if not checked:
-                self.log_info("情报和战前补给：未找到任何补给入口，结果待核查")
-            return "待核查" if uncertain or not checked else True
+            return "待核查" if uncertain else True
         finally:
             self.ensure_main()
+
+    def _ensure_supply_menu(self):
+        """结合侧边列表与主页标识确认活动菜单打开。"""
+        menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
+
+        def opened():
+            """仅在侧栏可识别且不再是主页时确认菜单。"""
+            menu = self.ocr(
+                box=menu_box,
+                match=re.compile(r"^\s*(?:情\s*报\s*补\s*给|战\s*前\s*补\s*给|新\s*手|活\s*动)\s*$"),
+            )
+            home = self.ocr(box=self.box.right, match=["整备室", "活动层", "招募"])
+            names = {re.sub(r"\s+", "", box.name) for box in menu}
+            return not home and bool(names & {"情报补给", "战前补给"} or {"新手", "活动"} <= names)
+
+        if self.wait_until(opened, time_out=4, settle_time=0):
+            self.log_info("已确认活动列表打开")
+            return True
+        self.log_warning("未确认活动列表打开，跳过补给检查")
+        self.screenshot("supply_menu_not_open")
+        return False
+
 
     def _open_supply_activity(self, reward_activity):
         menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
@@ -59,24 +80,46 @@ class DailyActivityMixin:
         return False
 
     def _scroll_supply_menu(self, count):
-        # Unity 滚动列表需要真实鼠标和悬停事件都在列表内。
-        # Genshin 后台滚轮会恢复鼠标，必须保持前台直到滚动帧更新。
-        x, y = 0.12, 0.60
-
-        def scroll_with_hover():
-            self.move_relative(x, y)
-            self.sleep(0.2)
-            self.scroll_relative(x, y, count)
+        """在游戏前台用真实滚轮滚动补给侧栏。"""
+        self.sleep(0.01)
+        interaction = getattr(self.executor, "interaction", None)
+        if not callable(getattr(interaction, "do_scroll", None)):
+            raise RuntimeError("当前输入后端不支持补给列表真实滚轮")
+        hwnd = self.hwnd.hwnd
+        if not win32gui.IsWindow(hwnd):
+            raise RuntimeError("补给列表滚动失败：游戏窗口无效")
+        previous_window = win32gui.GetForegroundWindow()
+        previous_cursor = win32api.GetCursorPos()
+        try:
+            if previous_window != hwnd:
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                except win32gui.error as error:
+                    raise RuntimeError("补给列表滚动失败：游戏未进入前台") from error
+                self.sleep(0.05)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError("补给列表滚动失败：游戏未进入前台")
+            x, y = int(self.width * 0.12), int(self.height * 0.60)
+            win32api.SetCursorPos(win32gui.ClientToScreen(hwnd, (x, y)))
+            self.sleep(0.1)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError("补给列表滚动失败：游戏失去前台焦点")
+            interaction.do_scroll(x, y, count)
             self.sleep(0.6)
+        finally:
+            try:
+                win32api.SetCursorPos(previous_cursor)
+            except Exception:
+                self.log_warning("补给滚动后恢复鼠标位置失败")
+            if previous_window != hwnd and win32gui.IsWindow(previous_window) and win32gui.GetForegroundWindow() == hwnd:
+                try:
+                    win32gui.SetForegroundWindow(previous_window)
+                except Exception:
+                    self.log_warning("补给滚动后恢复原窗口失败")
 
-        self._ensure_supply_foreground()
-        run_at_window_pos(self.hwnd.hwnd, scroll_with_hover, int(self.width * x), int(self.height * y), sleep_time=0.2)
-
-    def _ensure_supply_foreground(self):
-        # 只有焦点被打断时才重新激活游戏窗口。
-        active_and_send_mouse_delta(self.hwnd.hwnd, only_activate=True)
 
     def _claim_supply_activity(self, reward_activity):
+        """验证补给页与领取结果，无法确认时保留待核查。"""
         page_match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
         claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
         empty_match = re.compile(
@@ -85,7 +128,6 @@ class DailyActivityMixin:
         )
         claimed = 0
         for _ in range(10):
-            self._ensure_supply_foreground()
             if not self.wait_ocr(match=page_match, box=self.box.right, time_out=3, raise_if_not_found=False):
                 self.info_set(reward_activity, "待核查：未确认补给页面")
                 return "待核查"
