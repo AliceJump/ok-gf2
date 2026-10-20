@@ -305,6 +305,18 @@ class DailyActivityMixin:
             self.log_info("活动层逸趣导算进度奖励已领取")
         return claimed
 
+    def _dismiss_activity_progress_dialog(self):
+        """关闭遮住栽培页签的进度窗口，并确认它已消失。"""
+        match = re.compile(r"逸\s*趣\s*导\s*算\s*进\s*度|奖\s*励\s*清\s*单")
+        box = self.box_of_screen(0.13, 0.16, 0.87, 0.82)
+        if not self.wait_ocr(match=match, box=box, time_out=1, raise_if_not_found=False):
+            return True
+        self.back(after_sleep=1)
+        if self.wait_ocr(match=match, box=box, time_out=2, raise_if_not_found=False):
+            self.log_warning("逸趣导算进度窗口未关闭，跳过被遮挡的栽培入口")
+            return False
+        return True
+
     def water_flowers(self):
         """验证浇灌次数，无法识别栽培入口时标记待核查。"""
         self.info_set("current_task", "water_flowers")
@@ -314,6 +326,9 @@ class DailyActivityMixin:
             return "待核查"
         # F2 可能先停在逸趣导算奖励页；先处理奖励，再导航到栽培。
         self._claim_activity_panel_rewards()
+        if self._dismiss_activity_progress_dialog() is False:
+            self.info_set("浇灌", "待核查：进度窗口未关闭")
+            return "待核查"
         watering_match = re.compile(r"浇\s*灌")
         # F2 可能直接选中栽培页；优先识别内容，避免依赖选中页签的黑字。
         on_watering_page = self.wait_ocr(match=watering_match, box=self.box.right, time_out=2, raise_if_not_found=False)
