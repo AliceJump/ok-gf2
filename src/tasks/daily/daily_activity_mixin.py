@@ -546,7 +546,8 @@ class DailyActivityMixin:
                 self.skip_dialogs(end_match=skip_end_match, time_out=60)
                 if skip_end_match == ["饮品加成"]:
                     if self._confirm_drink_result() is False:
-                        raise RuntimeError("饮品加成确认失败：结果页未关闭，停止本轮以免在错误页面继续操作")
+                        self.log_error("饮品加成确认失败：结果页未关闭")
+                        return "confirm"
                     return True
                 self.wait_click_ocr(match="确认", time_out=3, box=self.box.bottom, after_sleep=1)
                 self.wait_pop_up(count=1)
