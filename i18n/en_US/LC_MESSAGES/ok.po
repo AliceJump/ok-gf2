@@ -384,3 +384,15 @@ msgstr "Needs review: reward popup not confirmed after click"
 
 msgid "待核查：领取按钮持续出现"
 msgstr "Needs review: claim button keeps appearing"
+
+msgid "输入"
+msgstr "Input"
+
+msgid "会话鼠标驱动"
+msgstr "Session Mouse Driver"
+
+msgid "鼠标输入方式，对所有任务生效"
+msgstr "How mouse input is sent; applies to all tasks"
+
+msgid "在 RDP 会话里用 Interception 驱动产生真实鼠标点击（能过新手引导、不受窗口激活影响）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
+msgstr "Inside an RDP session, use the Interception driver to send real mouse clicks (works with tutorials and is not affected by window activation); falls back to PostMessage automatically when no device can be bound. When off, PostMessage is always used"

@@ -381,3 +381,15 @@ msgstr "待核查：点击后未确认奖励弹窗"
 
 msgid "待核查：领取按钮持续出现"
 msgstr "待核查：领取按钮持续出现"
+
+msgid "输入"
+msgstr "输入"
+
+msgid "会话鼠标驱动"
+msgstr "会话鼠标驱动"
+
+msgid "鼠标输入方式，对所有任务生效"
+msgstr "鼠标输入方式，对所有任务生效"
+
+msgid "在 RDP 会话里用 Interception 驱动产生真实鼠标点击（能过新手引导、不受窗口激活影响）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
+msgstr "在 RDP 会话里用 Interception 驱动产生真实鼠标点击（能过新手引导、不受窗口激活影响）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
