@@ -1,8 +1,25 @@
-"""战斗与班组：体力本、竞技场、兵棋推演、班组尘烟。"""
+"""战斗与班组：体力本、竞技场、班组尘烟。（国服模拟作战里没有兵棋推演，旧的 bingqi 已删）"""
 
 import re
 
+import cv2
+
 from src.core.BaseGfTask import stamina_re
+from src.core.lineup_config import preset_name_for_kind, support_enabled_for_kind
+
+OUTPOST_KIND = "尘烟前哨战"
+power_re = re.compile(r"^\d{3,6}$")
+# 班组助战弹窗里战力前面有个图标，实录 OCR 成「心25850」
+support_power_re = re.compile(r"^\D?\d{4,6}$")
+
+
+def power_of(box):
+    return int(re.sub(r"\D", "", box.name))
+
+
+# 前哨战编队界面右下「阵容」：我方格子在左，最右一格是班组助战（关掉助战开关时也是我方格子）
+OUTPOST_OWN_SLOTS = (0.61, 0.69, 0.87, 0.83)
+OUTPOST_SUPPORT_SLOT = (0.87, 0.69, 0.97, 0.83)
 
 
 def sort_characters_by_priority(chars, priority):
@@ -39,16 +56,34 @@ def sort_characters_by_priority(chars, priority):
 
 
 class DailyBattleMixin:
+    def _open_campaign_tab(self, tab, expect, fallback_xy):
+        """
+        战役推进页顶部切页签（补给作战/模拟作战）。实录 2560x1440：页面还在过渡时按固定坐标点一下会落空，
+        停在「剧情战役」；现在按文字点，点完确认目标内容出现，没出现再点，最多 3 次。
+        """
+        for attempt in range(3):
+            if not self.wait_click_ocr(
+                match=tab, box=self.box.top, time_out=3, after_sleep=1, raise_if_not_found=False, log=True
+            ):
+                self.click_relative(fallback_xy[0], fallback_xy[1], after_sleep=1)
+            if self.wait_ocr(match=expect, time_out=3, raise_if_not_found=False):
+                return True
+            self.log_info(f"点了「{tab}」页签但还没看到目标内容，再点一次（第 {attempt + 1} 次）", notify=False)
+            self.next_frame()
+        self.screenshot(f"campaign_tab_{tab}")
+        raise Exception(f"战役推进里切不到「{tab}」页签，看 campaign_tab 截图")
+
     def battle(self):
         if self.config.get("自主循环"):
             self.ensure_main()
             return
         self.info_set("current_task", "battle")
+        self.set_lineup_kind("体力本")
         self.wait_click_ocr(
             match=re.compile("战役推进"), box=self.box.top_right, after_sleep=0.5, raise_if_not_found=True
         )
         self.wait_ocr(match=re.compile("补给作战"), box=self.box.top_right, raise_if_not_found=True)
-        self.click_relative(0.78, 0.05)
+        self._open_campaign_tab("补给作战", re.compile("军备解析|深度搜索|决策构象|标准同调"), (0.78, 0.05))
         if self.is_adb():
             self.swipe_relative(0.8, 0.6, 0.5, 0.6, duration=1)
         self.sleep(1)
@@ -83,12 +118,12 @@ class DailyBattleMixin:
             self.ensure_main()
             return
         self.info_set("current_task", "arena")
+        self.set_lineup_kind("竞技场")
         self.wait_click_ocr(
             match=re.compile("战役推进"), box=self.box.top_right, after_sleep=1, raise_if_not_found=True
         )
         self.wait_ocr(match=re.compile("补给作战"), box=self.box.top_right, raise_if_not_found=True)
-        self.sleep(1)
-        self.click_relative(0.89, 0.05)  # 模拟战斗
+        self._open_campaign_tab("模拟作战", "实兵演习", (0.89, 0.05))
         self.wait_click_ocr(match=["实兵演习"], box=self.box.bottom, after_sleep=0.5, raise_if_not_found=True)
         self.wait_pop_up(time_out=15, count=1)
         remaining_count = self.arena_remaining()
@@ -152,33 +187,9 @@ class DailyBattleMixin:
             self.wait_click_ocr(match="刷新", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
         return challenged
 
-    def bingqi(self):
-        if self.config.get("自主循环"):
-            self.ensure_main()
-            return
-        self.info_set("current_task", "bingqi")
-        self.wait_click_ocr(
-            match=re.compile("战役推进"), box=self.box.top_right, after_sleep=1, raise_if_not_found=True
-        )
-        self.wait_ocr(match=re.compile("补给作战"), box=self.box.top_right, raise_if_not_found=True)
-        self.sleep(1)
-        self.click_relative(0.90, 0.05, after_sleep=0.95)  # 补给
-        self.click_relative(0.98, 0.49, after_sleep=0.52)
-        self.wait_ocr(
-            match="防御阵容",
-            box=self.box.right,
-            time_out=30,
-            post_action=lambda: self.click_relative(0.5, 0.5, after_sleep=2),
-        )
-        while self.find_top_right_count():
-            self.info_incr("bingqi")
-            self.wait_click_ocr(match=["匹配"], box=self.box.bottom, after_sleep=0.5, raise_if_not_found=True)
-            self.auto_battle(end_match="匹配")
-            self.sleep(2)
-        self.ensure_main()
-
     def guild(self):
         self.info_set("current_task", "guild")
+        self.set_lineup_kind("班组")
         if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
             self.click_box_by_match_position(result, "班组", after_sleep=2)
             self.wait_click_ocr(match=["要务"], box=self.box.bottom_right, after_sleep=0.5, settle_time=2)
@@ -214,21 +225,239 @@ class DailyBattleMixin:
         if not end:
             return
         self.click(end, after_sleep=1)
-        result = self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re, box=self.box.top_right)
-        if not result:
-            return
-        while True:
+        assault_locked = False
+        bought = False
+        # 每天 2 次（开了「尘烟买第3次」再花晶条买 1 次）；多留一轮余量，防止次数读不准时死循环
+        for _ in range(5):
+            result = self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re, box=self.box.top_right)
+            if not result:
+                break
             tickets = int(result[0].name.split("/")[0])
             self.log_info(f"chenyan tickets {tickets}")
             self.info_set("chenyan tickets", tickets)
             if tickets == 0:
+                if self.config.get("尘烟买第3次") and not bought and self._chenyan_buy_ticket():
+                    bought = True
+                    continue
                 break
-            self.wait_click_ocr(match="攻坚战", box=self.box.top_right, after_sleep=0.5, raise_if_not_found=True)
-            self.wait_click_ocr(match="开始作战", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
-            self.choose_chenyan(tickets)
+            if not assault_locked:
+                self.wait_click_ocr(match="攻坚战", box=self.box.top_right, after_sleep=0.5, raise_if_not_found=True)
+                self.next_frame()
+                if locked := self.ocr(match=re.compile("解锁"), box=self.box.bottom_right):
+                    # 实录：指挥官 41 级时右下角按钮是「指挥官60级后解锁」，攻坚战打不了，改打前哨战
+                    self.log_info(f"尘烟攻坚战还没解锁（{locked[0].name}），改打前哨战", notify=True)
+                    self.info_set("尘烟", f"攻坚战未解锁：{locked[0].name}")
+                    assault_locked = True
+                else:
+                    self.wait_click_ocr(
+                        match="开始作战", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True
+                    )
+                    self.choose_chenyan(tickets)
+                    self.sleep(2)
+                    continue
+            if not self.chenyan_outpost():
+                break
             self.sleep(2)
-            result = self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re, box=self.box.top_right)
         self.back(after_sleep=2)
+
+    def _chenyan_buy_ticket(self):
+        """
+        右上角次数旁的「+」：弹「参战机会补充」，消耗 50 坍塌晶条换 1 次，「本日剩余1」。
+        剩余 0 或晶条不够就取消。返回是否买到。
+        """
+        self.click_relative(0.9715, 0.0444, after_sleep=1.5)
+        if not self.wait_ocr(match=re.compile("参战机会补充"), box=self.box.top, time_out=3):
+            self.log_info("尘烟：点了「+」没弹出参战机会补充")
+            return False
+        self.next_frame()
+        texts = [b.name for b in self.ocr(box=self.box.center)]
+        left = next((m.group(1) for t in texts if (m := re.search(r"本日剩余\s*(\d+)", t))), None)
+        self.log_info(f"尘烟参战机会补充: 本日剩余 {left} {texts[:6]}")
+        if left is None or left == "0" or any("不足" in t for t in texts):
+            self.wait_click_ocr(match=re.compile("^取消$"), box=self.box.bottom, time_out=3, after_sleep=1)
+            return False
+        if not self.wait_click_ocr(match=re.compile("^确认$"), box=self.box.bottom, time_out=3, after_sleep=2):
+            return False
+        # 晶条不够时游戏会再弹提示，点掉就算没买到
+        if self.ocr(match=re.compile("不足"), box=self.box.center):
+            self.log_info("尘烟：坍塌晶条不足，没买到")
+            self.wait_click_ocr(match=re.compile("^(取消|确认)$"), box=self.box.bottom, time_out=3, after_sleep=1)
+            return False
+        self.log_info("尘烟：花 50 坍塌晶条买了第 3 次", notify=True)
+        self.info_set("尘烟买第3次", "已买")
+        return True
+
+    def chenyan_outpost(self):
+        """
+        前哨战打一场：切到前哨战 → 开始作战 → 编队界面选整备室编队、按战力上人、按设置借班组助战 → 确定开打。
+        编队和借不借助战按全局「阵容与助战」的「尘烟前哨战」场景取值。
+        """
+        self.info_set("current_task", "chenyan_outpost")
+        self.wait_click_ocr(match="前哨战", box=self.box.top_right, after_sleep=1, raise_if_not_found=True)
+        start = self.wait_ocr(match="开始作战", box=self.box.bottom_right, time_out=3)
+        if not start:
+            self.log_info("前哨战右下角没有「开始作战」，跳过")
+            self.info_set("尘烟前哨战", "没有开始作战")
+            return False
+        self.click(start, after_sleep=2)
+        if not self.wait_ocr(match="选择人形", box=self.box_of_screen(0.02, 0.26, 0.3, 0.33), time_out=10):
+            self.debug_shot("chenyan_outpost_no_lineup")
+            raise Exception("前哨战点了开始作战，没进编队界面")
+        cfg = self._lineup_cfg()
+        support = support_enabled_for_kind(cfg, OUTPOST_KIND)
+        self._outpost_select_preset(preset_name_for_kind(cfg, OUTPOST_KIND))
+        support = self._outpost_set_support_toggle(support)
+        # 开助战时我方 4 格 + 助战 1 格；关助战时我方 5 格
+        self._outpost_fill_top_power(4 if support else 5)
+        if support:
+            self._outpost_pick_support()
+        self.next_frame()
+        self.debug_shot("chenyan_outpost_ready")
+        self.wait_click_ocr(match="确定", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
+        # 没坐满（比如今天能上的人不够、助战没借上）会弹「仍有可上阵的位置，是否依然开始作战」
+        if self.wait_ocr(match=re.compile("仍有可上阵"), time_out=2):
+            self.log_info("阵容没坐满，确认直接开战")
+            self.wait_click_ocr(match=re.compile("^确认$"), box=self.box.bottom, after_sleep=2, raise_if_not_found=True)
+        # 前哨战的阵容在编队界面已经定好，战斗里不再走部署界面的整理阵容
+        kind = self._lineup_kind
+        self.set_lineup_kind(None)
+        try:
+            self.auto_battle("开始作战", self.box.bottom_right)
+        finally:
+            self.set_lineup_kind(kind)
+        self.info_incr("尘烟前哨战")
+        return True
+
+    @staticmethod
+    def _outpost_name_match(text, name):
+        """编队名比对：容忍 OCR 多读/少读一个字，但多出来或少掉的是数字就不算（「编队1」不能命中「编队10」）。"""
+        t, n = (text or "").replace(" ", ""), name.replace(" ", "")
+        if t == n:
+            return True
+        if n in t and len(t) - len(n) <= 1:
+            return not t.replace(n, "", 1).isdigit()
+        if t and t in n and len(n) - len(t) <= 1:
+            return not n.replace(t, "", 1).isdigit()
+        return False
+
+    def _outpost_select_preset(self, name):
+        """「选择人形」下拉框切到整备室编队 name；留空不切。点当前已选中的项不会收起列表，要点标题收起。"""
+        if not name:
+            return
+        header_box = self.box_of_screen(0.03, 0.32, 0.52, 0.375)
+        if any(self._outpost_name_match(b.name, name) for b in self.ocr(box=header_box)):
+            self.log_info(f"前哨战编队已是「{name}」")
+            return
+        self.click_relative(0.508, 0.349, after_sleep=1)
+        list_box = self.box_of_screen(0.03, 0.38, 0.52, 0.68)
+        chosen = False
+        for _ in range(4):
+            hit = [b for b in self.ocr(box=list_box) if self._outpost_name_match(b.name, name)]
+            if hit:
+                self.click_box(hit[0], after_sleep=1)
+                chosen = True
+                break
+            self.scroll_relative(0.27, 0.55, -3)
+            self.sleep(0.8)
+        self.next_frame()
+        if len([b for b in self.ocr(box=list_box) if re.search(r"编队|整备室", b.name)]) >= 2:
+            self.click_relative(0.508, 0.349, after_sleep=1)
+        if chosen:
+            self.log_info(f"前哨战切到编队「{name}」", notify=True)
+        else:
+            self.log_info(f"前哨战编队列表里没找到「{name}」，沿用当前编队", notify=True)
+
+    def _outpost_slot_count(self, support_slot=False):
+        """阵容格子里有人时格子底下显示战力数字。support_slot=False 时最右格不算（开助战时它是助战格）。"""
+        area = (
+            (OUTPOST_OWN_SLOTS[0], OUTPOST_OWN_SLOTS[1], OUTPOST_SUPPORT_SLOT[2], OUTPOST_SUPPORT_SLOT[3])
+            if support_slot
+            else OUTPOST_OWN_SLOTS
+        )
+        return len(self.ocr(box=self.box_of_screen(*area), match=power_re))
+
+    def _outpost_fill_top_power(self, slots):
+        """先撤掉阵容里已有的人，再按卡片底下的战力从高到低点，点了没上场（如今天已出战）就换下一个。"""
+        # 关助战时 5 格都是我方；开助战时最右格是助战，清空只清我方格
+        slot_box = self.box_of_screen(
+            *(
+                OUTPOST_OWN_SLOTS
+                if slots == 4
+                else (OUTPOST_OWN_SLOTS[0], OUTPOST_OWN_SLOTS[1], OUTPOST_SUPPORT_SLOT[2], OUTPOST_SUPPORT_SLOT[3])
+            )
+        )
+        for _ in range(6):
+            filled = self.ocr(box=slot_box, match=power_re)
+            if not filled:
+                break
+            self.click_box(filled[0], after_sleep=0.5)
+        cards = self.ocr(box=self.box_of_screen(0.02, 0.37, 0.53, 0.9), match=power_re)
+        cards.sort(key=power_of, reverse=True)
+        picked = []
+        for card in cards:
+            if len(picked) >= slots:
+                break
+            before = self._outpost_slot_count(support_slot=slots == 5)
+            self.click_box(card, after_sleep=0.6)
+            if self._outpost_slot_count(support_slot=slots == 5) > before:
+                picked.append(card.name)
+            else:
+                self.log_info(f"战力 {card.name} 的人形点了没上场，换下一个")
+        self.log_info(f"前哨战上场 {len(picked)}/{slots}：战力 {', '.join(picked)}", notify=True)
+
+    def _outpost_support_on(self):
+        """「本次作战使用班组人形助战」开关：开是橙色勾（饱和度高），关是灰底叉。"""
+        self.next_frame()
+        h, w = self.frame.shape[:2]
+        region = self.frame[int(0.625 * h) : int(0.66 * h), int(0.912 * w) : int(0.938 * w)]
+        sat = float(cv2.cvtColor(region, cv2.COLOR_BGR2HSV)[..., 1].mean())
+        return sat > 100
+
+    def _outpost_set_support_toggle(self, want):
+        on = self._outpost_support_on()
+        if on != want:
+            self.click_relative(0.9255, 0.642, after_sleep=1)
+            on = self._outpost_support_on()
+        self.log_info(f"前哨战班组助战：{'开' if on else '关'}（设置：{'借' if want else '不借'}）")
+        return on
+
+    def _outpost_pick_support(self):
+        """
+        助战格空着就点「助战」打开班组助战弹窗，借战力最高的人形：点卡片选中后按钮变「入队」，点了弹窗关掉就算借上。
+        助战格已经有人（游戏会记住上一场）就沿用。借不到就关掉弹窗不借。
+        """
+        if borrowed := self.ocr(box=self.box_of_screen(*OUTPOST_SUPPORT_SLOT), match=power_re):
+            self.log_info(f"助战格已有人形（战力 {borrowed[0].name}），沿用")
+            return True
+        if not self.wait_click_ocr(
+            match=re.compile("^助战$"), box=self.box_of_screen(0.85, 0.79, 0.97, 0.87), time_out=3, after_sleep=1.5
+        ):
+            self.log_info("没找到「助战」按钮，不借助战")
+            return False
+        popup_title = self.box_of_screen(0.4, 0.14, 0.6, 0.22)
+        if not self.wait_ocr(match="班组助战", box=popup_title, time_out=5):
+            self.log_info("班组助战弹窗没打开，不借助战")
+            return False
+        cards = self.ocr(box=self.box_of_screen(0.18, 0.28, 0.83, 0.74), match=support_power_re, log=True)
+        cards.sort(key=power_of, reverse=True)
+        for card in cards[:3]:
+            # 点头像会打开人形详情，点战力数字（卡片正文）才是选中
+            self.click_box(card, after_sleep=1)
+            self.wait_click_ocr(
+                match=re.compile("^(入队|确认)$"),
+                box=self.box_of_screen(0.62, 0.74, 0.83, 0.84),
+                time_out=2,
+                after_sleep=1.5,
+            )
+            self.next_frame()
+            if not self.ocr(match="班组助战", box=popup_title):
+                self.log_info(f"前哨战借班组助战：战力 {power_of(card)}", notify=True)
+                return True
+            self.log_info(f"战力 {power_of(card)} 的助战没借上，换下一个")
+        self.debug_shot("chenyan_outpost_support_fail")
+        self.click_relative(0.813, 0.178, after_sleep=1)
+        self.log_info("班组助战没借上，关掉弹窗不借", notify=True)
+        return False
 
     def choose_chenyan(self, tickets):
         existing = self.ocr(box=self.box_of_screen(0.61, 0.69, 0.88, 0.83), match=re.compile(r"^\d+$"))

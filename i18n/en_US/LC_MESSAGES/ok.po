@@ -534,3 +534,9 @@ msgstr "When \"End Turn\" is detected in battle, click the auto-battle button at
 
 msgid "本章能推的都推完（或剩下的都没解锁）后，回章节选择页进入下一章继续推\n下一章没解锁（带锁、点了没反应）就正常结束"
 msgstr "After everything clearable in this chapter is done (or the rest is locked), go back to the chapter list and continue with the next chapter\nStops normally if the next chapter is locked"
+
+msgid "尘烟买第3次"
+msgstr "Buy 3rd Dust Smoke Run"
+
+msgid "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
+msgstr "After the two free Dust Smoke runs, spend 50 Collapse Crystals on one extra run (once per day)"
