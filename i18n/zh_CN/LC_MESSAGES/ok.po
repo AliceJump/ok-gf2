@@ -537,3 +537,45 @@ msgstr "尘烟买第3次"
 
 msgid "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
 msgstr "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
+
+msgid "调试工具"
+msgstr "调试工具"
+
+msgid "按配置点一个文字 / 按 ESC / 截图，供远程调试用"
+msgstr "按配置点一个文字 / 按 ESC / 截图，供远程调试用"
+
+msgid "先回主页"
+msgstr "先回主页"
+
+msgid "点击文字"
+msgstr "点击文字"
+
+msgid "点击坐标"
+msgstr "点击坐标"
+
+msgid "按ESC次数"
+msgstr "按ESC次数"
+
+msgid "按键"
+msgstr "按键"
+
+msgid "截图并OCR"
+msgstr "截图并OCR"
+
+msgid "先执行 ensure_main 回到游戏主页再做后面的动作"
+msgstr "先执行 ensure_main 回到游戏主页再做后面的动作"
+
+msgid "非空时用 OCR 找到这个文字并点击（支持正则），找不到就报错"
+msgstr "非空时用 OCR 找到这个文字并点击（支持正则），找不到就报错"
+
+msgid "非空时点击这个相对坐标，格式 x,y（0~1），如 0.3,0.5"
+msgstr "非空时点击这个相对坐标，格式 x,y（0~1），如 0.3,0.5"
+
+msgid "点击之后再按几次 ESC"
+msgstr "点击之后再按几次 ESC"
+
+msgid "最后按这些键，逗号分隔，键:秒 表示按住多久，如 f2 或 w:1.5,e"
+msgstr "最后按这些键，逗号分隔，键:秒 表示按住多久，如 f2 或 w:1.5,e"
+
+msgid "把当前画面全部 OCR 一遍，文字写进日志，截图存到 screenshots/调试工具/"
+msgstr "把当前画面全部 OCR 一遍，文字写进日志，截图存到 screenshots/调试工具/"

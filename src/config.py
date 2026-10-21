@@ -76,6 +76,7 @@ config = {
         ["src.tasks.ClearMapTask", "ClearMapTask"],
         ["src.tasks.TestStartGame", "TestStartGame"],
         ["src.tasks.TestTask", "TestTask"],
+        ["src.tasks.DebugTask", "DebugTask"],
         ["ok", "DiagnosisTask"],
     ],
     "trigger_tasks": [  # 循环触发的任务

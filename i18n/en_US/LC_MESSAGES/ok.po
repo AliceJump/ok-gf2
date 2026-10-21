@@ -540,3 +540,45 @@ msgstr "Buy 3rd Dust Smoke Run"
 
 msgid "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
 msgstr "After the two free Dust Smoke runs, spend 50 Collapse Crystals on one extra run (once per day)"
+
+msgid "调试工具"
+msgstr "Debug Tool"
+
+msgid "按配置点一个文字 / 按 ESC / 截图，供远程调试用"
+msgstr "Click a text, press ESC or take a screenshot as configured, for remote debugging"
+
+msgid "先回主页"
+msgstr "Return to Main First"
+
+msgid "点击文字"
+msgstr "Click Text"
+
+msgid "点击坐标"
+msgstr "Click Position"
+
+msgid "按ESC次数"
+msgstr "ESC Presses"
+
+msgid "按键"
+msgstr "Keys"
+
+msgid "截图并OCR"
+msgstr "Screenshot and OCR"
+
+msgid "先执行 ensure_main 回到游戏主页再做后面的动作"
+msgstr "Run ensure_main to return to the main screen before the other actions"
+
+msgid "非空时用 OCR 找到这个文字并点击（支持正则），找不到就报错"
+msgstr "When set, find this text with OCR and click it (regex supported); fails if not found"
+
+msgid "非空时点击这个相对坐标，格式 x,y（0~1），如 0.3,0.5"
+msgstr "When set, click this relative position, format x,y (0~1), e.g. 0.3,0.5"
+
+msgid "点击之后再按几次 ESC"
+msgstr "How many times to press ESC after clicking"
+
+msgid "最后按这些键，逗号分隔，键:秒 表示按住多久，如 f2 或 w:1.5,e"
+msgstr "Finally press these keys, comma separated; key:seconds holds the key, e.g. f2 or w:1.5,e"
+
+msgid "把当前画面全部 OCR 一遍，文字写进日志，截图存到 screenshots/调试工具/"
+msgstr "OCR the whole screen, write the text to the log and save the screenshot under screenshots/调试工具/"
