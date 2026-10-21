@@ -215,6 +215,7 @@ class SupplyScreen:
 
 class ActivitySupplyTest(unittest.TestCase):
     def test_screenshot_title_left_of_midpoint_is_claimed(self):
+        """正文标题在截图左半屏时仍能确认页面并领取。"""
         # 现场 3840×2160 截图的正文标题边界，侧栏在 x < 0.23。
         task = SupplyScreen()
         task.selected = "战前补给"
@@ -222,6 +223,7 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual(["战前补给"], task.claims)
 
     def test_sidebar_title_alone_never_authorizes_claim(self):
+        """只匹配到侧栏入口时禁止点击正文领取按钮。"""
         task = SupplyScreen()
         task.selected = "战前补给"
         task.title_bounds = (0.075, 0.36, 0.13, 0.40)
@@ -229,6 +231,7 @@ class ActivitySupplyTest(unittest.TestCase):
         self.assertEqual([], task.claims)
 
     def test_right_hand_supply_title_remains_supported(self):
+        """其他补给活动的右半屏标题继续支持领取。"""
         task = SupplyScreen()
         task.selected = "情报补给"
         task.title_bounds = (0.65, 0.30, 0.80, 0.36)
