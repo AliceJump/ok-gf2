@@ -115,7 +115,9 @@ class InteractionSafetyTest(unittest.TestCase):
         obj.post = lambda message, *args: events.append(message)
         with patch.object(genshin.time, "sleep", side_effect=lambda seconds: events.append(("hold", seconds))):
             GenshinInteraction.do_click(obj, 100, 200, down_time=0.04)
-        self.assertEqual([genshin.win32con.WM_LBUTTONDOWN, ("hold", 0.04), genshin.win32con.WM_LBUTTONUP, ("hold", 0.04)], events)
+        self.assertEqual(
+            [genshin.win32con.WM_LBUTTONDOWN, ("hold", 0.04), genshin.win32con.WM_LBUTTONUP, ("hold", 0.04)], events
+        )
 
     def test_interrupted_click_releases_button(self):
         """Post mouse release when the hold is interrupted."""
@@ -178,8 +180,9 @@ class InteractionSafetyTest(unittest.TestCase):
 
         obj = self.make_interaction()
         callback = Mock()
-        with patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)), patch.object(
-            genshin.win32api, "SetCursorPos"
+        with (
+            patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)),
+            patch.object(genshin.win32api, "SetCursorPos"),
         ):
             result = GenshinInteraction.operate(obj, callback, require_foreground=True)
         self.assertFalse(result)
@@ -192,8 +195,9 @@ class InteractionSafetyTest(unittest.TestCase):
 
         obj = self.make_interaction()
         obj.do_move_mouse_relative = Mock()
-        with patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)), patch.object(
-            genshin.win32api, "SetCursorPos"
+        with (
+            patch.object(genshin.win32api, "GetCursorPos", return_value=(30, 40)),
+            patch.object(genshin.win32api, "SetCursorPos"),
         ):
             result = GenshinInteraction.move_mouse_relative(obj, 3, -2)
         self.assertFalse(result)

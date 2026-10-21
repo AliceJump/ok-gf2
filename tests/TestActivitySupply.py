@@ -385,9 +385,11 @@ class SupplyMenuVerificationTest(unittest.TestCase):
         def ocr(*, box, match):
             """返回经过生产正则或主页匹配词筛选的识别框。"""
             texts = home if box == "right" else menu
-            return [SimpleNamespace(name=text) for text in texts if (
-                any(word in text for word in match) if isinstance(match, list) else match.search(text)
-            )]
+            return [
+                SimpleNamespace(name=text)
+                for text in texts
+                if (any(word in text for word in match) if isinstance(match, list) else match.search(text))
+            ]
 
         task.ocr.side_effect = ocr
         return namespace["_ensure_supply_menu"](task), task
@@ -425,8 +427,12 @@ class SupplyMenuVerificationTest(unittest.TestCase):
 class ForegroundSupplyScrollTest(unittest.TestCase):
     def make_task(self, width=1920, height=1080, foreground=99):
         task = SimpleNamespace(
-            width=width, height=height, hwnd=SimpleNamespace(hwnd=123),
-            sleep=Mock(), scroll_relative=Mock(), log_warning=Mock(),
+            width=width,
+            height=height,
+            hwnd=SimpleNamespace(hwnd=123),
+            sleep=Mock(),
+            scroll_relative=Mock(),
+            log_warning=Mock(),
             executor=SimpleNamespace(interaction=SimpleNamespace(do_scroll=Mock())),
         )
         state = {"foreground": foreground, "cursor": (1500, 800)}
@@ -469,8 +475,9 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
 
         gui.error = Win32Error
         gui.SetForegroundWindow.side_effect = Win32Error("foreground locked")
-        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(
-            RuntimeError, "游戏未进入前台"
+        with (
+            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
+            self.assertRaisesRegex(RuntimeError, "游戏未进入前台"),
         ):
             namespace["_scroll_supply_menu"](task, -3)
         task.executor.interaction.do_scroll.assert_not_called()
@@ -479,7 +486,10 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
     def test_wheel_failure_restores_window_and_cursor(self):
         task, state, gui, api = self.make_task()
         task.executor.interaction.do_scroll.side_effect = RuntimeError("wheel failed")
-        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "wheel failed"):
+        with (
+            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
+            self.assertRaisesRegex(RuntimeError, "wheel failed"),
+        ):
             namespace["_scroll_supply_menu"](task, -3)
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
@@ -494,10 +504,15 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
     def test_missing_real_wheel_backend_fails_before_activation(self):
         task, state, gui, api = self.make_task()
         task.executor.interaction = SimpleNamespace()
-        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "真实滚轮"):
+        with (
+            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
+            self.assertRaisesRegex(RuntimeError, "真实滚轮"),
+        ):
             namespace["_scroll_supply_menu"](task, -3)
         gui.SetForegroundWindow.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
+
 class NativeHoverTest(unittest.TestCase):
     def bridge(self):
         """Model bridge."""

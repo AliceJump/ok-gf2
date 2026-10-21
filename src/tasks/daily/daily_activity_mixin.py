@@ -26,7 +26,9 @@ class DailyActivityMixin:
         """逐项领取补给，区分活动缺席与页面未确认并恢复主页。"""
         uncertain = False
         try:
-            self.wait_click_ocr(match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False)
+            self.wait_click_ocr(
+                match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False
+            )
             if not self._ensure_supply_menu():
                 self.info_set("情报补给", "待核查：未确认活动列表打开")
                 self.info_set("战前补给", "待核查：未确认活动列表打开")
@@ -63,7 +65,6 @@ class DailyActivityMixin:
         self.log_warning("未确认活动列表打开，跳过补给检查")
         self.screenshot("supply_menu_not_open")
         return False
-
 
     def _open_supply_activity(self, reward_activity):
         menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
@@ -111,12 +112,15 @@ class DailyActivityMixin:
                 win32api.SetCursorPos(previous_cursor)
             except Exception:
                 self.log_warning("补给滚动后恢复鼠标位置失败")
-            if previous_window != hwnd and win32gui.IsWindow(previous_window) and win32gui.GetForegroundWindow() == hwnd:
+            if (
+                previous_window != hwnd
+                and win32gui.IsWindow(previous_window)
+                and win32gui.GetForegroundWindow() == hwnd
+            ):
                 try:
                     win32gui.SetForegroundWindow(previous_window)
                 except Exception:
                     self.log_warning("补给滚动后恢复原窗口失败")
-
 
     def _claim_supply_activity(self, reward_activity):
         """验证补给页与领取结果，无法确认时保留待核查。"""

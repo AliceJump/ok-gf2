@@ -92,7 +92,14 @@ class WaterFlowersTest(unittest.TestCase):
     def test_progress_rewards_dialog_is_closed_before_cultivation_lookup(self):
         """Verify progress rewards dialog is closed before cultivation lookup."""
         tree = ast.parse(source.read_text(encoding="utf-8"))
-        method = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_dismiss_activity_progress_dialog"), None)
+        method = next(
+            (
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef) and n.name == "_dismiss_activity_progress_dialog"
+            ),
+            None,
+        )
         self.assertIsNotNone(method, "missing progress dialog recovery")
         local = {"re": re}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), local)

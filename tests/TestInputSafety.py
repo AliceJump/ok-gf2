@@ -62,7 +62,6 @@ class InputSafetyTest(unittest.TestCase):
             Mouse.run_in_window(77, lambda: state.update(foreground=123))
         gui.SetForegroundWindow.assert_not_called()
 
-
     def test_click_with_key_releases_modifier_when_click_fails(self):
         """Release the modifier after a failed click and retain the click error."""
         path = Path(__file__).resolve().parents[1] / "src/core/BaseGfTask.py"
