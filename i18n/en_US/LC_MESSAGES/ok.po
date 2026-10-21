@@ -519,3 +519,18 @@ msgstr "Expansion Drill Preset"
 
 msgid "周常「扩编实练」特殊增强关卡用的编队，留空沿用默认编队"
 msgstr "Preset used by special enhancement stages of the weekly \"Expansion Drill\"; leave empty to use the default preset"
+
+msgid "停在任意关卡页面或章节选择页启动即可，先回章节起点从左到右推完未通关的关卡，推完自动进下一章"
+msgstr "Start from any stage map or the chapter list. Returns to the start of the chapter, clears every uncleared stage from left to right, then moves on to the next chapter"
+
+msgid "战斗内点击自动"
+msgstr "Click Auto in Battle"
+
+msgid "推完继续下一章"
+msgstr "Continue to Next Chapter"
+
+msgid "进入战斗后若检测到「行动结束」，自动点击右上角的自动战斗按钮\n默认关闭，依赖游戏内全局自动（设置→其他→自动战斗设置）；未开全局自动时再打开"
+msgstr "When \"End Turn\" is detected in battle, click the auto-battle button at the top right\nOff by default and relies on the in-game global auto setting (Settings → Other → Auto Battle); turn this on only if global auto is disabled"
+
+msgid "本章能推的都推完（或剩下的都没解锁）后，回章节选择页进入下一章继续推\n下一章没解锁（带锁、点了没反应）就正常结束"
+msgstr "After everything clearable in this chapter is done (or the rest is locked), go back to the chapter list and continue with the next chapter\nStops normally if the next chapter is locked"
