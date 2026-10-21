@@ -1,9 +1,15 @@
+import os
 import re
+import sys
+import threading
 import time
+import traceback
 
 from ok import BaseTask, Box, Logger, find_boxes_by_name
 
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
+from src.core.debug_config import DEBUG_OPTION_NAME, KEY_DEBUG_SHOT
+from src.core.debug_shot import save_debug_shot
 from src.data.FeatureList import FeatureList as fL
 from src.image.frame_processs import isolate_by_hsv_ranges
 from src.image.hsv_config import HSVRange as hR
@@ -14,6 +20,41 @@ pop_ups = ["点击空白处关闭", "点击屏幕任意位置继续", "点击任
 number_re = re.compile(r"^\d+$")
 stamina_re = re.compile(r"^\d+/\d+")
 map_re = re.compile(r"^.{0,2}\s*-?\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$")
+# 战斗中界面的标志：右下角「行动结束」或左上角「01/12 回合」计数
+battle_ui_re = re.compile(r"行动结束|\d{1,2}\s*/\s*\d{1,2}\s*回合")
+stamina_popup_re = re.compile(r"情报拼图补充|情报.{0,3}补充|体力不足|体力补充")
+WATCHDOG_TIMEOUT = 120  # 秒：这么久没有任何进展（没点击、没日志、没换阶段）看门狗就截图报警
+WATCHDOG_KILL_LEVEL = 2  # 停滞达到 WATCHDOG_TIMEOUT 的这个倍数、而且不是人为暂停，就自动停止任务
+
+
+def watchdog_message(stalled, executor_paused, task_paused, where, window_hidden=False):
+    """看门狗报警文案：先区分是游戏窗口被最小化、人为暂停，还是真卡住。"""
+    secs = int(stalled)
+    if task_paused:
+        return f"任务已暂停 {secs} 秒（任务卡片上的「暂停」按钮），点「开始」继续"
+    if executor_paused and window_hidden:
+        return f"游戏窗口被最小化或移出了屏幕，程序已暂停 {secs} 秒；把游戏窗口恢复出来就会自动继续（被别的窗口挡住没关系，不能最小化）"
+    if executor_paused:
+        return f"程序已暂停 {secs} 秒（F9 热键或顶部的暂停按钮），按 F9 或点「开始」继续"
+    return f"{secs} 秒没有任何进展，卡在 {where}"
+
+
+def describe_screen(names):
+    """根据整屏 OCR 文字猜当前在哪个页面，给超时/报警信息用。"""
+    text = " ".join(names)
+    if stamina_popup_re.search(text):
+        return "体力弹窗"
+    if "任务失败" in text:
+        return "任务失败页"
+    if "继续前进" in text or "任务完成" in text:
+        return "结算页"
+    if "作战开始" in text:
+        return "部署界面"
+    if battle_ui_re.search(text):
+        return "战斗中"
+    if any(map_re.match(n) for n in names):
+        return "选关页面"
+    return "未知页面"
 
 
 def parse_time_option(option: str) -> list[float]:
@@ -72,6 +113,142 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.account_config_blacklist = set(getattr(self, "account_config_blacklist", ()))
         self.account_config_whitelist = set(getattr(self, "account_config_whitelist", ()))
         self.account_config_defaults = dict(getattr(self, "account_config_defaults", {}))
+
+    def debug_shot(self, tag, boxes=None):
+        """
+        保存调试截图到 screenshots/<任务名>/<日期>/，由设置页全局「调试」里的「调试截图」开关控制，对所有任务生效。
+        :param tag: 文件名标签，说明当前阶段
+        :param boxes: 需要画框标注的 Box 列表，可选
+        """
+        if not self.debug_shot_enabled():
+            return None
+        try:
+            return save_debug_shot(self.frame, self.name, tag, boxes)
+        except Exception as e:
+            self.log_debug(f"调试截图失败: {e}")
+            return None
+
+    def _touch_progress(self):
+        self._progress_ts = time.time()
+        try:
+            executor = self.executor
+        except AttributeError:  # 还没绑定执行器（单测桩、初始化早期）
+            return
+        frame = getattr(executor, "_frame", None)
+        if frame is not None:
+            self._last_frame = frame
+
+    def _game_window_hidden(self):
+        """游戏窗口被最小化/移出屏幕（ok-script 这时会暂停执行器，而且窗口恢复后不会自己继续）。"""
+        hw = getattr(getattr(self.executor, "device_manager", None), "hwnd_window", None)
+        return hw is not None and not getattr(hw, "pos_valid", True)
+
+    def _resume_if_window_back(self):
+        """
+        实录：游戏窗口被最小化时 ok-script 会把执行器暂停并弹「Paused because game window is minimized」，
+        但窗口恢复后它不会自动继续，任务看起来像"自己结束了"。这里记住暂停是窗口引起的，窗口一回来就自动继续。
+        """
+        executor_paused = bool(getattr(self.executor, "paused", False))
+        if executor_paused and self._game_window_hidden():
+            self._paused_by_window = True
+            return
+        if (
+            self._paused_by_window
+            and executor_paused
+            and not getattr(self, "_paused", False)
+            and not self._game_window_hidden()
+        ):
+            logger.info("[看门狗] 游戏窗口恢复了，自动继续被最小化打断的任务")
+            self._paused_by_window = False
+            self.executor.start()
+            self._touch_progress()
+        elif not executor_paused:
+            self._paused_by_window = False
+
+    def log_info(self, message, notify=False, *args, **kwargs):
+        self._touch_progress()
+        return super().log_info(message, notify, *args, **kwargs)
+
+    def info_set(self, key, value):
+        self._touch_progress()
+        return super().info_set(key, value)
+
+    def start_watchdog(self, timeout=WATCHDOG_TIMEOUT):
+        """
+        起一个独立线程盯着任务：超过 timeout 秒没有任何进展就截图、记下执行线程卡在哪一行并弹通知；
+        不是人为暂停、又停滞到 WATCHDOG_KILL_LEVEL 倍超时，就自动停止任务，不让它无限转下去。
+        """
+        self.stop_watchdog()
+        self._touch_progress()
+        self._watchdog_stop_event = threading.Event()
+        threading.Thread(
+            target=self._watchdog_loop,
+            args=(timeout, self._watchdog_stop_event),
+            name=f"watchdog-{self.__class__.__name__}",
+            daemon=True,
+        ).start()
+
+    def stop_watchdog(self):
+        if self._watchdog_stop_event is not None:
+            self._watchdog_stop_event.set()
+            self._watchdog_stop_event = None
+
+    def _watchdog_loop(self, timeout, stop_event):
+        reported = 0
+        while not stop_event.wait(5):
+            try:
+                self._resume_if_window_back()
+                stalled = time.time() - self._progress_ts
+                if stalled < timeout:
+                    reported = 0
+                    continue
+                level = int(stalled // timeout)
+                if level <= reported:
+                    continue
+                reported = level
+                self._watchdog_report(stalled, level)
+            except Exception as e:
+                logger.warning(f"看门狗出错: {e}")
+
+    def _executor_where(self):
+        """执行线程当前的 Python 调用栈（最内层在前），用来判断卡在哪。"""
+        ident = getattr(getattr(self.executor, "thread", None), "ident", None)
+        frame = sys._current_frames().get(ident) if ident else None
+        if frame is None:
+            return "未知位置"
+        stack = traceback.extract_stack(frame)[-8:]
+        return " <- ".join(f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in reversed(stack))
+
+    def _watchdog_report(self, stalled, level):
+        executor_paused = bool(getattr(self.executor, "paused", False))
+        task_paused = bool(getattr(self, "_paused", False))
+        where = self._executor_where()
+        msg = watchdog_message(
+            stalled, executor_paused, task_paused, where, self._game_window_hidden() or self._paused_by_window
+        )
+        path = None
+        try:
+            frame = getattr(self.executor, "_frame", None)
+            path = save_debug_shot(frame if frame is not None else self._last_frame, self.name, f"watchdog_{level}")
+        except Exception as e:
+            logger.warning(f"看门狗截图失败: {e}")
+        logger.warning(f"[看门狗] {msg}；截图 {path}")
+        if level == 1 or not (executor_paused or task_paused):
+            # 暂停状态只在第一次提醒一次，别每两分钟弹一回
+            try:
+                self.notification(msg, error=True, tray=True)
+            except Exception as e:
+                logger.warning(f"看门狗通知失败: {e}")
+        if not executor_paused and not task_paused and level >= WATCHDOG_KILL_LEVEL:
+            logger.error(f"[看门狗] 持续 {int(stalled)} 秒无进展，自动停止任务")
+            self.info["Error"] = f"{int(stalled)} 秒没有进展，看门狗已停止任务，看日志里的 [看门狗] 和 watchdog 截图"
+            self.disable()
+
+    def debug_shot_enabled(self):
+        try:
+            return bool(self.get_global_config(DEBUG_OPTION_NAME).get(KEY_DEBUG_SHOT, True))
+        except Exception:
+            return True
 
     def isolate_by_hsv_ranges(self, frame, ranges, invert=True, kernel_size=2):
         """
@@ -370,6 +547,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         ``alt=True`` 时按住 alt 再点击（等价于 ``click_with_alt``），用于只有 alt 组合键才能命中的界面。
         x 支持 Box、Box 列表、屏幕比例（0~1）与绝对坐标，分派逻辑沿用父类。
         """
+        self._touch_progress()
         if alt:
             return self.click_with_alt(
                 x,

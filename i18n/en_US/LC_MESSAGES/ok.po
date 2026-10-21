@@ -396,3 +396,15 @@ msgstr "How mouse input is sent; applies to all tasks"
 
 msgid "在 RDP 会话里用 Interception 驱动产生真实鼠标点击（能过新手引导、不受窗口激活影响）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
 msgstr "Inside an RDP session, use the Interception driver to send real mouse clicks (works with tutorials and is not affected by window activation); falls back to PostMessage automatically when no device can be bound. When off, PostMessage is always used"
+
+msgid "调试"
+msgstr "Debug"
+
+msgid "调试截图"
+msgstr "Debug Screenshots"
+
+msgid "排查问题用的全局开关，对所有任务生效"
+msgstr "Global troubleshooting switches; apply to all tasks"
+
+msgid "把每个任务各阶段的截图保存到 screenshots/任务名/日期/ 下，每个任务最多保留 400 张；关掉就不存"
+msgstr "Save screenshots of each stage under screenshots/<task>/<date>/, keeping at most 400 per task; nothing is saved when off"
