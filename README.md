@@ -258,3 +258,7 @@ python -m unittest tests/TestMain.py
 * [ok-oldking/OnnxOCR](https://github.com/ok-oldking/OnnxOCR)
 * [zhiyiYo/PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
 * [ok-oldking/ok-script](https://github.com/ok-oldking/ok-script)
+
+## 新版界面（可选）
+
+除现有 Qt 界面外，另提供一个按游戏板块分组、支持自定义流程的网页界面，用 `python tools/app_v2.py` 打开，说明见 [docs/新版界面.md](docs/新版界面.md)。两个界面共用同一份配置，但不能同时运行。

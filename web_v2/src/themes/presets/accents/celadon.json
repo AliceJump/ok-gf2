@@ -1,0 +1,14 @@
+{
+  "name": "celadon",
+  "label": {
+    "zh-CN": "影青色",
+    "zh-TW": "影青色",
+    "en-US": "Celadon",
+    "ja-JP": "青磁色",
+    "ko-KR": "청자색"
+  },
+  "default": "#97B6B0",
+  "hover": "#7D9994",
+  "light": "#F2F7F6",
+  "lightDark": "#2E3D3B"
+}

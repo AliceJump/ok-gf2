@@ -1,0 +1,14 @@
+{
+  "name": "deepsea",
+  "label": {
+    "zh-CN": "深海蓝",
+    "zh-TW": "深海藍",
+    "en-US": "Deep Sea",
+    "ja-JP": "ディープシー",
+    "ko-KR": "딥시 블루"
+  },
+  "default": "#1A4A8E",
+  "hover": "#14396E",
+  "light": "#E8EDF4",
+  "lightDark": "#0D2547"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "rosegold",
+  "label": {
+    "zh-CN": "流金粉",
+    "zh-TW": "流金粉",
+    "en-US": "Rose Gold",
+    "ja-JP": "ローズゴールド",
+    "ko-KR": "로즈 골드"
+  },
+  "default": "#C1A1A1",
+  "hover": "#A58989",
+  "light": "#F7F2F2",
+  "lightDark": "#453838"
+}

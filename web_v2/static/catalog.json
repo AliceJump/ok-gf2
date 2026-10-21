@@ -1,0 +1,461 @@
+{
+  "_comment": "新版界面的目录。groups = 组件库（按游戏板块分组），每个 component 是一个可以加进流程的「块」：task 是任务类名，enable_key 是它在任务配置里的开关键（没有就是整个任务一块：加进流程后随流程一起启动，也可以单独「运行」），keys 是它自己的配置键（\"*\" 全部），lineup_scopes 是用到的阵容场景（流程里每个块单独保存自己的编队/助战，启动前写进全局「阵容与助战」）。templates = 第一次打开时自动建好的默认流程（之后用户自己增删改，存在 configs/workflows.json）。presets = 一键预设：把流程里的这些块勾上、其它块取消。后端注册了但目录里没列的任务会自动出现在「其它任务」分组里。",
+  "groups": [
+    {
+      "id": "mail",
+      "label": "邮件",
+      "icon": "✉️",
+      "desc": "主界面左下角邮件。",
+      "components": [
+        {
+          "id": "mail",
+          "label": "领取邮件奖励",
+          "task": "DailyTask",
+          "enable_key": "邮件",
+          "keys": []
+        }
+      ]
+    },
+    {
+      "id": "activity",
+      "label": "活动",
+      "icon": "🎉",
+      "desc": "主界面底栏「活动」页。",
+      "components": [
+        {
+          "id": "intel",
+          "label": "情报补给 / 战前补给",
+          "task": "DailyTask",
+          "enable_key": "情报和战前补给",
+          "keys": [],
+          "doc": "在活动页里找「情报补给」「战前补给」领取；入口不存在时记为待核查并跳过。"
+        },
+        {
+          "id": "star_wish",
+          "label": "闪耀星愿",
+          "task": "DailyTask",
+          "enable_key": "闪耀星愿",
+          "keys": [],
+          "doc": "主界面左侧活动横幅，有活动时才有。"
+        }
+      ]
+    },
+    {
+      "id": "limited",
+      "label": "限时开启",
+      "icon": "⏱️",
+      "desc": "主界面右侧「限时开启」。",
+      "components": [
+        {
+          "id": "event_auto",
+          "label": "活动自律（物资关卡）",
+          "task": "DailyTask",
+          "enable_key": "活动自律",
+          "keys": [
+            "当前物资关卡名称"
+          ],
+          "lineup_scopes": [
+            "活动"
+          ],
+          "doc": "进入开启中的大活动，挑战「当前物资关卡名称」指定的物资关卡。"
+        },
+        {
+          "id": "explore",
+          "label": "边界推进：探索领取",
+          "task": "DailyTask",
+          "enable_key": "探索领取",
+          "keys": [],
+          "doc": "采集、领取、再派遣；没有「边界推进」入口时跳过。"
+        }
+      ]
+    },
+    {
+      "id": "free_time",
+      "label": "活动层",
+      "icon": "🍵",
+      "desc": "主界面右侧「活动层」：喝水、吃饭、浇花、逸趣导算奖励。",
+      "components": [
+        {
+          "id": "free_time",
+          "label": "喝水 / 吃饭 / 浇花 / 领逸趣奖励",
+          "task": "DailyTask",
+          "enable_key": "活动层",
+          "keys": [
+            "喝水",
+            "吃饭",
+            "活动层浇花"
+          ],
+          "doc": "「茶歇一刻」喝水、「美味烹调」吃饭（今日已饮用/已用餐会跳过），之后浇灌栽培植物并领 F2 面板的逸趣导算奖励。"
+        }
+      ]
+    },
+    {
+      "id": "public",
+      "label": "公共区 / 委托",
+      "icon": "🏢",
+      "desc": "主界面底栏「委托」进入公共区与调度室。",
+      "components": [
+        {
+          "id": "public",
+          "label": "调度室派遣与领取",
+          "task": "DailyTask",
+          "enable_key": "公共区/调度室",
+          "keys": [
+            "自主循环"
+          ],
+          "doc": "派遣、领取、再次派遣。开「自主循环」会在公共区启动游戏内自主循环，并跳过体力本、刷钱本、竞技场。"
+        },
+        {
+          "id": "claim_quest",
+          "label": "领取每日任务奖励",
+          "task": "DailyTask",
+          "enable_key": "领任务",
+          "keys": []
+        }
+      ]
+    },
+    {
+      "id": "shop",
+      "label": "商城",
+      "icon": "🛒",
+      "desc": "主界面右侧「商城」。",
+      "components": [
+        {
+          "id": "free_gift",
+          "label": "免费礼包 / 心愿单",
+          "task": "DailyTask",
+          "enable_key": "购买免费礼包",
+          "keys": [
+            "商店心愿单购买"
+          ],
+          "doc": "品质甄选里领「免费」礼包；开「商店心愿单购买」会到家具/班组/调度/讯段/心智/人形堆栈商店一键买心愿单。"
+        }
+      ]
+    },
+    {
+      "id": "campaign",
+      "label": "战役推进",
+      "icon": "⚔️",
+      "desc": "主界面右侧「战役推进」：补给作战、模拟作战。",
+      "components": [
+        {
+          "id": "stamina",
+          "label": "补给作战：自动刷体力",
+          "task": "DailyTask",
+          "enable_key": "自动刷体力",
+          "keys": [
+            "体力本",
+            "刷钱本"
+          ],
+          "lineup_scopes": [
+            "体力本"
+          ],
+          "doc": "按「体力本」选的关卡刷到体力不足；自律未解锁时改点「挑战」手动打（需要游戏内全局自动）。"
+        },
+        {
+          "id": "arena",
+          "label": "模拟作战：实兵演习（竞技场）",
+          "task": "DailyTask",
+          "enable_key": "竞技场",
+          "keys": [],
+          "lineup_scopes": [
+            "竞技场"
+          ],
+          "doc": "进攻后领周期奖励。"
+        }
+      ]
+    },
+    {
+      "id": "guild",
+      "label": "班组",
+      "icon": "🛡️",
+      "desc": "主界面底栏「班组」。",
+      "components": [
+        {
+          "id": "guild",
+          "label": "要务作战 / 补给领取",
+          "task": "DailyTask",
+          "enable_key": "班组",
+          "keys": [
+            "尘烟",
+            "尘烟买第3次"
+          ],
+          "lineup_scopes": [
+            "班组",
+            "尘烟前哨战"
+          ],
+          "doc": "要务开始作战后领补给。「尘烟」会去尘烟前线：前哨战有次数就打；攻坚战指挥官未到 60 级时自动跳过。「尘烟买第3次」在免费次数用完后花 50 坍塌晶条再买一次。"
+        }
+      ]
+    },
+    {
+      "id": "xunlu",
+      "label": "巡录",
+      "icon": "🧭",
+      "desc": "主界面底栏「巡录」（远航巡录 / 大月卡）。",
+      "components": [
+        {
+          "id": "xunlu",
+          "label": "远航巡录每日领取",
+          "task": "DailyTask",
+          "enable_key": "大月卡",
+          "keys": [
+            "拂晓之光补给包奖励"
+          ],
+          "doc": "沿途行动 / 每日行动一键领取，补给包按选择的奖励领。"
+        }
+      ]
+    },
+    {
+      "id": "community",
+      "label": "网页社区",
+      "icon": "🌐",
+      "desc": "不进游戏，走社区网页接口。",
+      "components": [
+        {
+          "id": "community",
+          "label": "社区每日任务",
+          "task": "DailyTask",
+          "enable_key": "社区每日",
+          "keys": [
+            "用户名",
+            "密码"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "weekly_sim",
+      "label": "模拟作战",
+      "icon": "🎯",
+      "desc": "主界面右侧「战役推进」→ 模拟作战，每周刷新。",
+      "components": [
+        {
+          "id": "weekly_boss",
+          "label": "首领挑战",
+          "task": "WeeklyTask",
+          "enable_key": "首领挑战",
+          "keys": [],
+          "doc": "打完本周的首领挑战并领取奖励。"
+        },
+        {
+          "id": "weekly_peak",
+          "label": "峰值推定",
+          "task": "WeeklyTask",
+          "enable_key": "峰值推定",
+          "keys": [],
+          "doc": "打完本周的峰值推定并领取奖励。"
+        },
+        {
+          "id": "weekly_expand",
+          "label": "扩编实练",
+          "task": "WeeklyTask",
+          "enable_key": "扩编实练",
+          "keys": [],
+          "lineup_scopes": [
+            "扩编实练"
+          ],
+          "doc": "扩编实练用的编队在下面的「阵容」卡片里单独设置，留空沿用全局。"
+        }
+      ]
+    },
+    {
+      "id": "clear_map_main",
+      "label": "推图",
+      "icon": "🗺️",
+      "desc": "主线 / 活动的章节关卡页。",
+      "components": [
+        {
+          "id": "clear_map",
+          "label": "推图设置：关卡名识别与战斗",
+          "task": "ClearMapTask",
+          "enable_key": null,
+          "keys": "*",
+          "lineup_scopes": [
+            "推图"
+          ],
+          "doc": "三种 OCR 方式可以同时勾选，识别不到时会依次换下一种；「战斗内点击自动」只在游戏内全局自动没开时需要。"
+        }
+      ]
+    },
+    {
+      "id": "tools_game",
+      "label": "游戏",
+      "icon": "🎮",
+      "desc": "启动、诊断。",
+      "components": [
+        {
+          "id": "start_game",
+          "label": "启动一次游戏（120 秒后自动关）",
+          "task": "TestStartGame",
+          "enable_key": null,
+          "keys": "*",
+          "doc": "配合系统任务计划提前把游戏拉起来，吃掉更新 / 公告弹窗；默认跑完连 ok-gf2 一起退出（Exit After Task）。"
+        },
+        {
+          "id": "diagnosis",
+          "label": "性能诊断",
+          "task": "DiagnosisTask",
+          "enable_key": null,
+          "keys": "*",
+          "doc": "ok 框架自带的截图 / 识别性能测试。"
+        }
+      ]
+    },
+    {
+      "id": "tools_debug",
+      "label": "调试",
+      "icon": "🛠️",
+      "desc": "远程调试用。",
+      "components": [
+        {
+          "id": "debug",
+          "label": "调试工具",
+          "task": "DebugTask",
+          "enable_key": null,
+          "keys": "*",
+          "doc": "按配置点一个文字 / 点坐标 / 按 ESC / 截图并 OCR，供远程调试用。"
+        },
+        {
+          "id": "monitor",
+          "label": "模板监控（触发任务）",
+          "task": "TemplateMonitorTask",
+          "enable_key": null,
+          "keys": "*",
+          "doc": "触发任务：启用后在后台持续检测指定模板，复选框是启用 / 停用。"
+        },
+        {
+          "id": "test_task",
+          "label": "测试任务（开发用）",
+          "task": "TestTask",
+          "enable_key": null,
+          "keys": "*"
+        }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "daily",
+      "label": "每日日常",
+      "icon": "📅",
+      "desc": "一键日常：按勾选项依次收菜。每天北京时间 05:00 刷新，已完成的项当天不会重复做。",
+      "components": [
+        "mail",
+        "intel",
+        "star_wish",
+        "event_auto",
+        "explore",
+        "free_time",
+        "public",
+        "claim_quest",
+        "free_gift",
+        "stamina",
+        "arena",
+        "guild",
+        "xunlu",
+        "community"
+      ],
+      "presets": [
+        "full",
+        "quick",
+        "battle"
+      ]
+    },
+    {
+      "id": "weekly",
+      "label": "周常",
+      "icon": "🗓️",
+      "desc": "每周刷新的模拟作战三项，勾选后一次跑完。",
+      "components": [
+        "weekly_boss",
+        "weekly_peak",
+        "weekly_expand"
+      ]
+    },
+    {
+      "id": "clear_map",
+      "label": "推图",
+      "icon": "🗺️",
+      "desc": "停在任意关卡页面或章节选择页点「开始」：先回到章节起点，整章反复扫到没有能推的关，用「章节进度」核对后自动进下一章。",
+      "components": [
+        "clear_map"
+      ]
+    },
+    {
+      "id": "tools",
+      "label": "工具",
+      "icon": "🧰",
+      "desc": "独立运行的任务，不属于任何一轮流程，用卡片右侧的「运行」单独跑。",
+      "components": [
+        "start_game",
+        "diagnosis",
+        "debug",
+        "monitor",
+        "test_task"
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "full",
+      "label": "全套日常",
+      "desc": "勾上所有每日项（含刷体力、竞技场、班组要务）",
+      "components": [
+        "mail",
+        "intel",
+        "event_auto",
+        "free_time",
+        "public",
+        "claim_quest",
+        "free_gift",
+        "stamina",
+        "arena",
+        "guild",
+        "xunlu",
+        "explore",
+        "star_wish"
+      ]
+    },
+    {
+      "id": "quick",
+      "label": "快速收菜",
+      "desc": "只做不打架、几分钟能跑完的领取类",
+      "components": [
+        "mail",
+        "intel",
+        "free_time",
+        "public",
+        "claim_quest",
+        "free_gift",
+        "xunlu",
+        "explore"
+      ]
+    },
+    {
+      "id": "battle",
+      "label": "只打体力",
+      "desc": "只跑刷体力和竞技场",
+      "components": [
+        "stamina",
+        "arena"
+      ]
+    }
+  ],
+  "global_sections": [
+    {
+      "label": "日常通用",
+      "desc": "这些项挂在一键日常下，但对整轮都生效，统一放在这里。",
+      "task": "DailyTask",
+      "keys": [
+        "已确认启用游戏内全局自动功能",
+        "生成汇总文件",
+        "自动打开汇总文件",
+        "Exit After Task",
+        "多账户模式",
+        "多账户独立配置",
+        "账号列表"
+      ]
+    }
+  ]
+}
