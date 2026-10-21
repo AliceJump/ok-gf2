@@ -14,6 +14,7 @@ from src.tasks.daily.daily_activity_mixin import DailyActivityMixin
 from src.tasks.daily.daily_battle_mixin import DailyBattleMixin
 from src.tasks.daily.daily_common_mixin import DailyCommonMixin
 from src.tasks.daily.daily_public_mixin import DailyPublicMixin
+from src.tasks.daily.daily_record import DailyRecord
 from src.tasks.daily.daily_reward_mixin import DailyRewardMixin
 from src.tasks.daily_summary import create_task_summary_report, open_local_path_with_default_app
 from src.tasks.DailyTaskRunner import DailyTaskRunner
@@ -198,9 +199,22 @@ class DailyTask(
     def run(self):
         if not self.config.get("已确认启用游戏内全局自动功能"):
             self.confirm_auto_battle_up()
+        self._zilv_locked = False
+        self.reset_lineup(None)
         self.start_watchdog()
         try:
-            self.daily_runner = DailyTaskRunner(self, self.build_task_plan())
+            record = None
+            try:
+                record = DailyRecord()
+                done = record.done_tasks(str(getattr(self, "current_account_id", "") or ""))
+                if done:
+                    self.log_info(f"今天已经完成过的任务（直接跳过）: {done}", notify=True)
+                failed = record.failed_tasks(str(getattr(self, "current_account_id", "") or ""))
+                if failed:
+                    self.log_info(f"今天失败过、这次重试的任务: {failed}", notify=True)
+            except Exception as e:
+                self.log_info(f"读日常记录失败，这次不跳过任何任务: {e}")
+            self.daily_runner = DailyTaskRunner(self, self.build_task_plan(), record=record)
             self.daily_runner.run()
         finally:
             self.stop_watchdog()

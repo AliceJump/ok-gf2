@@ -39,6 +39,15 @@ class StubTask:
         self.calls.append(("ensure_main", kwargs))
 
 
+class UnrecoverableStub(StubTask):
+    """任务抛异常之后 ensure_main 也失败（画面卡死）。"""
+
+    def ensure_main(self, **kwargs):
+        if any(name == "run" and self.config.get("_raised") for name, _ in self.calls):
+            raise RuntimeError("回不到主页")
+        super().ensure_main(**kwargs)
+
+
 def build_plan(stub, results):
     """构造任务清单，results 为 {任务名: 返回值} 或 {任务名: 抛出的异常实例}。"""
 
@@ -47,6 +56,7 @@ def build_plan(stub, results):
             stub.calls.append(("run", key))
             value = results.get(key)
             if isinstance(value, BaseException):
+                stub.config["_raised"] = True
                 raise value
             return value
 
@@ -112,15 +122,27 @@ class TestDailyTaskRunner(unittest.TestCase):
         self.assertEqual(runner.final_summary["status"], "部分失败")
         self.assertTrue(any(msg.startswith("以下任务未完成或失败:") for msg, _ in stub.logs))
 
-    def test_exception_stops_run_and_propagates(self):
+    def test_exception_marks_failure_and_continues(self):
+        """一项任务抛异常：记失败、截图、回主页，后面的任务照跑。"""
         stub = StubTask(dict(ALL_ON))
+        runner = DailyTaskRunner(stub, build_plan(stub, {"邮件": RuntimeError("boom")}))
+        runner.run()
+        self.assertEqual(self.executed(stub), ["社区每日", "ensure_main", "邮件", "自动刷体力", "竞技场"])
+        self.assertGreaterEqual(sum(1 for kind, _ in stub.calls if kind == "ensure_main"), 2)  # 异常后回过主页
+        self.assertEqual(runner.task_status["failed"], ["邮件"])
+        self.assertIn("DailyTask_Exception_邮件", stub.screenshots)
+        self.assertIn("boom", runner.failure_details[""]["邮件"])
+        self.assertEqual(runner.final_summary["status"], "部分失败")
+
+    def test_exception_stops_run_when_main_page_unreachable(self):
+        """异常后连主页都回不去，后面的任务没法跑：整轮停下，异常往外抛。"""
+        stub = UnrecoverableStub(dict(ALL_ON))
         runner = DailyTaskRunner(stub, build_plan(stub, {"邮件": RuntimeError("boom")}))
         with self.assertRaises(RuntimeError):
             runner.run()
-        self.assertEqual(self.executed(stub), ["社区每日", "ensure_main", "邮件"])
+        self.assertNotIn("自动刷体力", self.executed(stub))
         self.assertEqual(runner.final_summary["status"], "异常结束")
-        self.assertEqual(runner.final_summary["exception"], "boom")
-        self.assertIn("DailyTask_Exception", stub.screenshots)
+        self.assertIn("DailyTask_Exception_邮件", stub.screenshots)
         self.assertIn("邮件", runner.failure_details.get("", {}))
 
     def test_predicate_overrides_default_switch(self):
