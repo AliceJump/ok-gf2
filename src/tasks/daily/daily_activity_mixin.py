@@ -525,32 +525,64 @@ class DailyActivityMixin:
             else:
                 return "entry"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                duplicate_result = self._skip_active_food_buff(next_match=second_btn if main_btn == "下一步" else None)
-                if duplicate_result is True:
-                    return True
-                if duplicate_result is False:
-                    return "confirm"
-                if main_btn == "制作":
-                    confirm_match = re.compile(r"^\s*确\s*认\s*$")
-                    if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
-                        if not self.ocr(match="制作", box=self.box.bottom_right):
-                            self.screenshot("food_make_unknown_page")
+                if need_extra_confirm:
+                    # 同名菜品已生效时，“下一步”先弹出覆盖确认，尚未进入邀请页。
+                    # 只处理带菜品覆盖文案的中央弹窗，避免误点其他“确认”。
+                    overwrite_match = re.compile(
+                        r"同名菜品已生效|覆\s*盖\s*已\s*生\s*效\s*菜\s*品|"
+                        r"当前已有.+?生效中.*确认更换"
+                    )
+                    dialog_box = self.box_of_screen(0.25, 0.25, 0.75, 0.75)
+                    if self.wait_ocr(
+                        match=overwrite_match, box=dialog_box, time_out=3, raise_if_not_found=False
+                    ):
+                        if not self.wait_click_ocr(
+                            match=re.compile(r"^\s*确\s*认\s*$"),
+                            box=dialog_box,
+                            time_out=3,
+                            raise_if_not_found=False,
+                            after_sleep=0.5,
+                        ):
                             return "confirm"
-                        if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
-                            # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
+                        if not self.wait_until(
+                            lambda: not self.ocr(match=overwrite_match, box=dialog_box),
+                            time_out=3,
+                            settle_time=0,
+                            raise_if_not_found=False,
+                        ):
+                            return "confirm"
+                else:
+                    duplicate_result = self._skip_active_food_buff(
+                        next_match=second_btn if main_btn == "下一步" else None
+                    )
+                    if duplicate_result is True:
+                        return True
+                    if duplicate_result is False:
+                        return "confirm"
+                    if main_btn == "制作":
+                        confirm_match = re.compile(r"^\s*确\s*认\s*$")
+                        if not self.wait_until(
+                            lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
+                        ):
+                            if not self.ocr(match="制作", box=self.box.bottom_right):
+                                self.screenshot("food_make_unknown_page")
+                                return "confirm"
+                            if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
+                                # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
+                                if not self.wait_until(
+                                    lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
+                                ):
+                                    self.screenshot("food_make_retry_failed")
+                                    return "confirm"
+                            duplicate_result = self._skip_active_food_buff()
+                            if duplicate_result is True:
+                                return True
+                            if duplicate_result is False:
+                                return "confirm"
                             if not self.wait_until(
                                 lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
                             ):
-                                self.screenshot("food_make_retry_failed")
-                                return "confirm"
-                        duplicate_result = self._skip_active_food_buff()
-                        if duplicate_result is True:
-                            return True
-                        if duplicate_result is False:
-                            return "confirm"
-                        if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
-                            self.screenshot("food_make_not_advanced")
-                            return "confirm"
+                                self.screenshot("food_make_not_advanced")
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
                     self.screenshot("food_second_button_missing")
                     return "confirm"
