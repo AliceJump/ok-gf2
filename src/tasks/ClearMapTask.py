@@ -11,7 +11,9 @@ from src.image.hsv_config import HSVRange as hR
 logger = Logger.get_logger(__name__)
 
 
-PANEL_WORDS = ["特殊奖励", "观看", "挑战", "完成前置关卡解锁"]
+# 未解锁提示：主线是「完成前置关卡解锁」，往期活动是「需要完成前置关卡」（实录 2026-10-22 狂想四重奏 MA-1-5）
+LOCKED_WORDS = ["完成前置关卡解锁", "需要完成前置关卡"]
+PANEL_WORDS = ["特殊奖励", "观看", "挑战"] + LOCKED_WORDS
 # 面板底部按钮：实机上 OCR 常把「观看」只框出一个「观」（0.81），所以第二个字可有可无
 BUTTON_RE = [re.compile(r"^观\s*看?$"), re.compile(r"^挑\s*战?$")]
 BUTTON_MIN_Y = 0.85  # 按钮在面板最底下，只认 y 在这以下的框，避免描述文字里的字混进来
@@ -144,7 +146,7 @@ def classify_panel(has_boxes, locked_hint, special_reward, challenge, watch):
     """
     关卡面板文字 -> (状态, 动作按钮)。
     - 没识别到任何面板文字：nopanel
-    - 有「完成前置关卡解锁」：locked
+    - 有「完成前置关卡解锁」/「需要完成前置关卡」：locked
     - 没有「特殊奖励」（首通奖励已领）：cleared
     - 有奖励且有「挑战」/「观看」：challenge / watch
     - 有奖励但按钮还没识别到：unknown，交给调用方重读，绝不能当未解锁跳过
@@ -301,7 +303,7 @@ class ClearMapTask(BaseGfTask):
         """按面板上识别到的文字判断关卡状态；只看到「特殊奖励」没看到按钮算 unknown，不能当作未解锁。"""
         # wait_ocr 的 match 会经过 OCR 纠错表展开（現看/観看 → 观看），
         # 但 find_boxes 是精确比较，这里要用同样展开过的匹配列表
-        locked_hint = self.find_boxes(boxes, match=self.fix_match_regex(["完成前置关卡解锁"]))
+        locked_hint = self.find_boxes(boxes, match=self.fix_match_regex(LOCKED_WORDS))
         special_reward = self.find_boxes(boxes, match=self.fix_match_regex(["特殊奖励"]))
         challenge = self.find_boxes(boxes, match=self.fix_match_regex(["挑战"]))
         watch = self.find_boxes(boxes, match=self.fix_match_regex(["观看"]))
