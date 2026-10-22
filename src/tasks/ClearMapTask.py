@@ -63,7 +63,11 @@ def chapter_titles(boxes, width, height):
 
 
 def current_and_next_chapter(boxes, width, height):
-    """(当前章标题框, 下一章标题框)。当前章按「9.0」角标所在行认，角标没读到就当最上面那个是当前章。"""
+    """
+    (当前章标题框, 下一章标题框)。当前章按「9.0」角标所在行认，角标没读到就当最上面那个是当前章。
+    有新内容的章节前面也有个红色「!」，OCR 读成「018.0」也贴着左边；选中的那个角标是深色底带斜杠「!/19.0」，
+    有斜杠的优先（实录 2026-10-21：18.0、19.0、19.5 都带红点，原来取第一个 18.0，把当前章 19.0 当成「下一章」点）。
+    """
     titles = chapter_titles(boxes, width, height)
     if not titles:
         return None, None
@@ -75,7 +79,8 @@ def current_and_next_chapter(boxes, width, height):
         and not (b.name or "").strip().startswith("C")
     ]
     if badges:
-        by = badges[0].y + badges[0].height / 2
+        badge = next((b for b in badges if re.search(r"[/／]", b.name)), badges[0])
+        by = badge.y + badge.height / 2
         current = min(titles, key=lambda t: abs(t.y + t.height / 2 - by))
     else:
         current = titles[0]

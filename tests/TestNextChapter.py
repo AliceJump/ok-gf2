@@ -99,6 +99,34 @@ class ChapterSelectTest(unittest.TestCase):
         self.assertNotEqual(chapter_signature(boxes(SELECT), W, H), chapter_signature(boxes(after), W, H))
 
 
+# 实录 2026-10-21 23:39（1280x768）：19.0 刚推完，18.0 / 19.5 前面有红色「!」新内容标记，也被读成贴左的角标
+SELECT_RED_DOTS = [
+    ("剧情战役", 697, 25),
+    ("14.0 火花之罪·中篇", 36, 96),
+    ("15.0 火花之罪·下篇", 36, 155),
+    ("16.0歧路双轨·上篇", 36, 214),
+    ("17.0 歧路双轨·下篇", 36, 272),
+    ("018.0", 18, 332),
+    ("铸碑者的黎明·上篇", 88, 332),
+    ("0/19.0", 16, 391),
+    ("铸碑者的黎明·下篇", 104, 391),
+    ("019.5 信号波重度依赖", 18, 450),
+    ("镜像冗余·上篇", 88, 510),
+    ("镜像冗余·下篇", 88, 568),
+    ("100%", 1112, 495),
+    ("章节进度", 1003, 515),
+    ("48/48", 1166, 583),
+    ("猎人评定", 100, 693),
+]
+
+
+class RedDotChapterTest(unittest.TestCase):
+    def test_slash_badge_wins_over_red_dot(self):
+        cur, nxt = current_and_next_chapter(boxes(SELECT_RED_DOTS), 1280, 768)
+        self.assertEqual(cur.name, "铸碑者的黎明·下篇")
+        self.assertEqual(nxt.name, "019.5 信号波重度依赖")
+
+
 class DisplayNameTest(unittest.TestCase):
     def test_strip_badge_and_noise(self):
         f = ns["chapter_display_name"]
