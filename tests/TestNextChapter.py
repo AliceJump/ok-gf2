@@ -135,5 +135,24 @@ class DisplayNameTest(unittest.TestCase):
         self.assertEqual(f("交织突进"), "交织突进")
 
 
+class WindowedChapterSelectTest(unittest.TestCase):
+    def test_current_not_at_top_in_1280_window(self):
+        """实录 2026-10-21 1280x768 窗口：列表顶上是 14.0，当前章 15.0 的角标「/15.0」在 x=35。"""
+        rows = [
+            ("剧情战役", 695, 23),
+            ("14.0 火花之罪·中篇", 35, 91),
+            ("/15.0", 35, 152),
+            ("火花之罪·下篇", 100, 152),
+            ("16.0歧路双轨·上篇", 35, 208),
+            ("17.0歧路双轨·下篇", 29, 271),
+            ("铸碑者的黎明·上篇", 88, 331),
+            ("章节进度1100%", 997, 496),
+            ("猎人评定", 100, 691),
+        ]
+        current, nxt = current_and_next_chapter(boxes(rows), 1280, 768)
+        self.assertEqual(current.name, "火花之罪·下篇")
+        self.assertEqual(nxt.name, "16.0歧路双轨·上篇")
+
+
 if __name__ == "__main__":
     unittest.main()
