@@ -33,6 +33,7 @@ class FoodScreen:
         self.main_present = True
         self.clicks = []
         self.unsafe_clicks = []
+        self.screenshots = []
         self.dialogs_skipped = False
         self.box = SimpleNamespace(bottom_right="bottom_right", bottom="bottom")
 
@@ -66,7 +67,7 @@ class FoodScreen:
         """兼容生产流程使用的正则和字符串匹配。"""
         return bool(match.search(text)) if hasattr(match, "search") else match in text
 
-    def wait_ocr(self, *, match, box=None, **kwargs):
+    def wait_ocr(self, *, match=None, box=None, **kwargs):
         """推进关闭动画并按识别区域筛选当前可见文字。"""
         if self.state == "closing":
             if self.dismiss_frames:
@@ -80,6 +81,8 @@ class FoodScreen:
                 if box[0] <= (self.prompt_position if label == self.prompt else self.confirm_position)[0] <= box[2]
                 and box[1] <= (self.prompt_position if label == self.prompt else self.confirm_position)[1] <= box[3]
             ]
+        if match is None:
+            return labels
         return [label for label in labels if self.matches(match, label)]
 
     def ocr(self, **kwargs):
@@ -131,6 +134,10 @@ class FoodScreen:
     def back(self, **kwargs):
         """将模拟页面返回入口以支持再次检查。"""
         self.state = "entry"
+
+    def screenshot(self, name):
+        """记录失败路径截图请求。"""
+        self.screenshots.append(name)
 
     def run(self):
         """用吃饭或饮品参数执行真实 do_food_flow 方法。"""

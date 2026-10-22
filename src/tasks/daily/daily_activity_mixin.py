@@ -583,6 +583,7 @@ class DailyActivityMixin:
                                 lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
                             ):
                                 self.screenshot("food_make_not_advanced")
+                                return "confirm"
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
                     self.screenshot("food_second_button_missing")
                     return "confirm"
