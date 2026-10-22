@@ -253,9 +253,10 @@ class WaterFlowersTest(unittest.TestCase):
 
 class FoodFlowResultTest(unittest.TestCase):
     def test_missing_second_button_reports_confirm_failure(self):
+        """Verify missing second button reports confirm failure."""
         task = Mock()
         task.box.bottom_right = "bottom_right"
-        task.wait_ocr.return_value = object()
+        task.wait_ocr.return_value = [SimpleNamespace(name="entry")]
         task.wait_click_ocr.side_effect = [True, False]
         enter_func = Mock()
 
