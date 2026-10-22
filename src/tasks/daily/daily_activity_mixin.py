@@ -330,10 +330,32 @@ class DailyActivityMixin:
             ):
                 break
             claimed = True
-            self.wait_pop_up(time_out=6, count=1)
+            self._close_reward_popup()
         if claimed:
             self.log_info("活动层逸趣导算进度奖励已领取")
         return claimed
+
+    def _close_reward_popup(self, time_out=15):
+        """关闭领奖后的「获得道具」弹层：点底部「点击空白处关闭」，不按 ESC（会把 F2 面板一起关掉）。
+
+        实录 2026-10-21：领奖让活动层升到 Lv.10，「获得道具」要等约 12 秒升级动画才出来，
+        原来 wait_pop_up(time_out=6) 没等到就返回，弹层一直盖着栽培页签，浇灌被跳过。
+        """
+        hint = re.compile(r"(?:空\s*白\s*)?处\s*关\s*闭$")
+        title = re.compile(r"^获\s*得\s*道\s*具$")
+        wait = time_out
+        for _ in range(4):
+            found = self.wait_ocr(match=[hint, title], time_out=wait, raise_if_not_found=False)
+            if not found:
+                return True
+            hints = [b for b in found if hint.search(b.name)]
+            if hints:
+                self.click(hints[0], after_sleep=1.5)
+            else:
+                self.click(0.5, 0.9, after_sleep=1.5)
+            wait = 3
+        self.log_warning("「获得道具」弹层点了多次仍未关闭")
+        return False
 
     def _dismiss_activity_progress_dialog(self):
         """关闭遮住栽培页签的进度窗口，并确认它已消失。"""
