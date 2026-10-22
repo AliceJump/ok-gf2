@@ -436,8 +436,8 @@ msgstr "On"
 msgid "关"
 msgstr "Off"
 
-msgid "所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 各场景单独设置（新版界面里在各板块直接改）"
-msgstr "Shared by every task that enters the deployment screen. Priority: built-in defaults → these global values → per-scene settings (editable per section in the new UI)"
+msgid "所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 下面各场景单独的「××编队 / ××助战」"
+msgstr "Shared by every task that enters the deployment screen. Priority: built-in defaults → these global values → the per-scene \"… squad / … support\" settings below"
 
 msgid "体力"
 msgstr "Stamina"
@@ -540,3 +540,77 @@ msgstr "Buy 3rd Dust Smoke Run"
 
 msgid "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
 msgstr "After the two free Dust Smoke runs, spend 50 Collapse Crystals on one extra run (once per day)"
+msgid "用 Interception 驱动产生真实鼠标点击（能过新手引导、活动层等只认真实输入的界面）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
+msgstr "Use the Interception driver for real mouse clicks (needed for tutorials, the Free Time layer and other screens that only accept real input); falls back to PostMessage when no device can be bound. When off, always use PostMessage"
+
+msgid "自动识别：远程桌面用会话鼠标，本机桌面用 PostMessage（不动你的光标）；\n远程桌面：只在 RDP 会话里用该会话的 RDP 鼠标；\n本机桌面：用机器上的真实鼠标点击，跑的时候会接管光标，别同时用鼠标。\n设的环境和实际不符时退回 PostMessage，不往别的桌面点。改了下一次点击就生效"
+msgstr "Auto detect: session mouse on Remote Desktop, PostMessage on the local desktop (your cursor is not touched);\nRemote Desktop: use the RDP mouse of this session, only inside an RDP session;\nLocal desktop: click with the machine's real mouse, which takes over the cursor while running, so do not use the mouse at the same time.\nIf the setting does not match the actual environment, PostMessage is used and nothing is clicked on another desktop. Changes apply from the next click"
+
+msgid "远程桌面用哪台 Interception 鼠标（10~19），自动 = 按本会话实际收到的标记识别"
+msgstr "Which Interception mouse (10~19) to use on Remote Desktop; Auto = detect from the marker this session actually receives"
+
+msgid "本机桌面用哪台 Interception 鼠标（10~19），自动 = 本机桌面收到标记的第一台"
+msgstr "Which Interception mouse (10~19) to use on the local desktop; Auto = the first one whose marker reaches the local desktop"
+
+msgid "运行环境"
+msgstr "Environment"
+
+msgid "远程桌面鼠标设备"
+msgstr "Remote Desktop mouse device"
+
+msgid "本机桌面鼠标设备"
+msgstr "Local desktop mouse device"
+
+msgid "自动识别"
+msgstr "Auto detect"
+
+msgid "远程桌面"
+msgstr "Remote Desktop"
+
+msgid "本机桌面"
+msgstr "Local desktop"
+
+msgid "自动"
+msgstr "Auto"
+
+msgid "普通"
+msgstr "Normal"
+
+msgid "困难"
+msgstr "Hard"
+
+msgid "普通OCR"
+msgstr "Plain OCR"
+
+msgid "除杂色OCR1"
+msgstr "Filtered OCR 1"
+
+msgid "除杂色OCR2"
+msgstr "Filtered OCR 2"
+
+msgid "难度"
+msgstr "Difficulty"
+
+msgid "英雄难度"
+msgstr "Hero difficulty"
+
+msgid "领取章节奖励"
+msgstr "Claim chapter rewards"
+
+msgid "普通OCR：不做任何图像预处理，直接识别关卡名称\n适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨"
+msgstr "Plain OCR: read stage names without any image preprocessing\nUse when: the stage cards stand out clearly from a non-white background and the text is easy to read"
+
+msgid "除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别"
+msgstr "Filtered OCR 1 (pure white): mask out everything that is not pure white before reading\nUse when: stage card text is pure white and a busy background gets in the way"
+
+msgid "除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时"
+msgstr "Filtered OCR 2 (white and light grey): keep white and light-grey areas before reading\nUse when: stage card text is white or light grey, or neither plain OCR nor filtered OCR 1 can read it"
+
+msgid "推普通还是困难。困难和普通是两套章节进度：本章困难还没解锁时，回章节选择页切到困难，从困难当前推到的章节开始推"
+msgstr "Push Normal or Hard. They have separate chapter progress: if Hard is not unlocked for this chapter yet, go back to chapter select, switch to Hard and start from the chapter Hard has reached"
+
+msgid "11.0 及之后的章节开启游戏的「英雄难度」再推（没打过的关也直接按英雄难度打），关掉则确保游戏里也是关的\n英雄难度下敌人等级按指挥官等级匹配、额外附加不利效果，更容易打输；11.0 之前的章节没有英雄难度，照常推"
+msgstr "From chapter 11.0 on, turn on the in-game Hero difficulty before pushing (uncleared stages are fought on Hero as well); when off, make sure it is off in the game too\nOn Hero, enemy levels match the commander level and extra debuffs apply, so losses are more likely; chapters before 11.0 have no Hero difficulty and are pushed as usual"
+
+msgid "每章（活动每个页签）推完后，点地图左下角的「可领取」把收集数奖励领掉\n还有「未完成」的档位会通知出来：多半是漏了关卡或有关卡没三星通关"
+msgstr "After each chapter (each tab of an event) is cleared, click \"Claimable\" at the bottom left of the map to collect the collection rewards\nTiers still marked \"Incomplete\" are reported: usually a stage was missed or not cleared with three stars"

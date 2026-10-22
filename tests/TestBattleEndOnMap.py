@@ -31,6 +31,9 @@ consts = [
             "challenge_button_re",
             "nav_tabs_re",
             "chapter_select_re",
+            "story_exit_re",
+            "story_blank_re",
+            "LOADING_EXTEND",
         )
         for t in n.targets
     )
@@ -127,6 +130,30 @@ class SkipDialogsOnMapTest(unittest.TestCase):
         self.assertEqual([b.name for b in result], ["VS-1-10"])
         task.click_relative.assert_not_called()
 
+    def test_loading_with_stalled_frames_still_waits(self):
+        """
+        实录 2026-10-22 往期活动：打完回地图的「资源加载中 39%」画面不动，WGC 不出新帧，next_frame 一次卡 10 多秒；
+        超时只顺延 5 秒时，取完一帧就已经过了期限，30 秒就判「跳过剧情超时」把推图停了。
+        """
+        clock = SimpleNamespace(now=1000.0)
+        fake_time = SimpleNamespace(time=lambda: clock.now, sleep=lambda s: None)
+        loading = [box("39%"), box("资源加载中")]
+        task = self.make_task([])
+        task.ocr.side_effect = lambda *a, **k: loading if clock.now < 1060 else [box("LA-1-3"), box("普通")]
+        task._is_loading_frame.side_effect = lambda boxes: boxes is loading
+
+        def advance(seconds):
+            clock.now += seconds
+
+        task.sleep.side_effect = advance
+        task.next_frame.side_effect = lambda: advance(12)  # 画面不动，等一张新帧要 12 秒
+        real_time, ns["time"] = ns["time"], fake_time
+        try:
+            result = skip_dialogs(task, end_match=[map_re], time_out=30, has_dialog=True, raise_if_not_found=True)
+        finally:
+            ns["time"] = real_time
+        self.assertEqual([b.name for b in result], ["LA-1-3"])
+
     def test_loading_grace_is_bounded(self):
         task = self.make_task([box("资源加载中"), box("30%")])
         task._is_loading_frame.return_value = True
@@ -154,6 +181,24 @@ class SkipDialogsOnMapTest(unittest.TestCase):
         )
         self.assertEqual([b.name for b in result], ["9-7"])
         task.click_relative.assert_not_called()
+
+
+class StoryExitPageTest(unittest.TestCase):
+    """实录 2026-10-22 密米尔的返演·下篇 PS-1-7：「演算完成」页只有「终止覆写」，之后是「点击空白处继续」。"""
+
+    def make_task(self, pages):
+        task = SkipDialogsOnMapTest.make_task(self, [])
+        task.ocr.side_effect = lambda *a, **k: pages.pop(0) if len(pages) > 1 else pages[0]
+        return task
+
+    def test_exit_button_then_blank_then_map(self):
+        exit_page = [box("掩码列表"), box("演算完成"), box("LUSTRATIO"), box("终止覆写")]
+        text_page = [box("终止码演算"), box("佩莉，我们来接你了。")]
+        task = self.make_task([exit_page, text_page, [box("PS-1-7"), box("PA-1-11")]])
+        result = skip_dialogs(task, end_match=[map_re], time_out=5, has_dialog=True, raise_if_not_found=True)
+        self.assertEqual([b.name for b in result], ["PS-1-7", "PA-1-11"])
+        self.assertEqual(task.click.call_args_list[0].args[0][0].name, "终止覆写")
+        task.click_relative.assert_called_once_with(0.5, 0.6, after_sleep=2)
 
 
 if __name__ == "__main__":

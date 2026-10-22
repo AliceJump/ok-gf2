@@ -306,8 +306,8 @@ class DailyTaskRunner:
             self.record.save()
             self.task.info_set("今日已完成(含之前几次)", self.record.done_tasks(account_id))
             failed = self.record.failed_tasks(account_id)
-            if failed:
-                self.task.info_set("今日待重试", list(failed))
+            # 重试成功后失败记录清空了也要刷新这一栏，否则旧版 App 的信息面板一直显示开头那份待重试列表
+            self.task.info_set("今日待重试", list(failed) if failed else "无")
         except Exception as e:
             self.task.log_info(f"写日常记录失败: {e}")
 

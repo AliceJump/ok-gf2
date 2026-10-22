@@ -4,6 +4,9 @@
 绑定不到会话鼠标（不在 RDP 会话 / 没装 Interception 驱动 / 设置里关掉）时，每个动作都原样退回
 GenshinInteraction，行为和改之前一样。真实点击落在光标下的窗口，所以点之前若游戏不在前台会先把它提到前台
 （ok 的 bring_to_front），app 窗口会被全屏游戏盖住——这是真实输入的代价，用 web 页面看进度不受影响。
+
+用哪台设备看全局「输入 / 运行环境」（远程桌面 = 本会话 RDP 鼠标，本机桌面 = 真实鼠标，见 src/core/input_env.py）；
+设置改了，下一次鼠标动作前重新绑定，不用重启。
 """
 
 import time
@@ -11,32 +14,53 @@ import time
 from ok.device.interaction_methods.genshin import GenshinInteraction
 from ok.util.logger import Logger
 
-from src.core.input_config import INPUT_OPTION_NAME, KEY_SESSION_MOUSE
-from src.core.session_mouse import BTN_LEFT, BUTTON_OF_KEY, SessionMouseDevice
+from src.core.input_config import INPUT_OPTION_NAME
+from src.core.input_env import choose_input, input_key
+from src.core.session_mouse import BTN_LEFT, BUTTON_OF_KEY, SessionMouseDevice, current_kind
 
 logger = Logger.get_logger(__name__)
+
+
+def input_settings():
+    try:
+        from ok import og
+
+        return dict(og.executor.global_config.get_config(INPUT_OPTION_NAME))
+    except Exception:  # 没有 executor（单测 / 初始化早期）时按默认值
+        return {}
 
 
 class GfInteraction(GenshinInteraction):
     def __init__(self, capture, hwnd_window):
         super().__init__(capture, hwnd_window)
-        self.session_mouse = SessionMouseDevice()
+        self.session_mouse = None
+        self.session_mouse_ok = False
+        self.input_key = None
+        self._bind(input_settings())
+
+    def _bind(self, settings):
+        """按「输入」设置和实际所在环境绑定设备；不该用或绑不上就走 PostMessage。"""
+        self.input_key = input_key(settings)
+        if self.session_mouse is not None:
+            self.session_mouse.close()
+        self.session_mouse, self.session_mouse_ok = None, False
+        kind, device, reason = choose_input(settings, current_kind())
+        if kind is None:
+            logger.warning(f"鼠标输入：{reason}，用 PostMessage（Genshin）")
+            return
+        self.session_mouse = SessionMouseDevice(kind=kind, device=device)
         self.session_mouse_ok = self.session_mouse.open()
         if self.session_mouse_ok:
-            logger.info(f"鼠标输入：Interception 会话鼠标（{self.session_mouse.device_path}），键盘仍走 PostMessage")
+            logger.info(f"鼠标输入：{reason}，Interception 鼠标（{self.session_mouse.device_path}），键盘仍走 PostMessage")
         else:
-            logger.warning("鼠标输入：会话鼠标不可用，退回 PostMessage（Genshin）")
+            logger.warning(f"鼠标输入：{reason}，但绑定不到设备，退回 PostMessage（Genshin）")
 
     # ---- 开关 / 坐标 ----
     def session_mouse_enabled(self):
-        if not self.session_mouse_ok:
-            return False
-        try:
-            from ok import og
-
-            return bool(og.executor.global_config.get_config(INPUT_OPTION_NAME).get(KEY_SESSION_MOUSE, True))
-        except Exception:  # 没有 executor（单测 / 初始化早期）时按开着算
-            return True
+        settings = input_settings()
+        if settings and input_key(settings) != self.input_key:
+            self._bind(settings)
+        return self.session_mouse_ok
 
     def _abs(self, x, y):
         return self.capture.get_abs_cords(int(x), int(y))
@@ -121,5 +145,6 @@ class GfInteraction(GenshinInteraction):
             self.deactivate()
 
     def on_destroy(self):
-        self.session_mouse.close()
+        if self.session_mouse is not None:
+            self.session_mouse.close()
         super().on_destroy()

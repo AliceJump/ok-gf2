@@ -10,6 +10,10 @@ RDP 窗口最小化也能点，而且只动本会话的光标，控制台鼠标�
 协议：https://github.com/oblitum/Interception/blob/master/library/interception.c
 只有硬件 ID 为 TS_INPT\\TS_MOU 的设备（RDP 鼠标）会被用到；用一条无位移无按键的 RAWINPUT 标记找出
 「哪台设备属于本会话」，设备号不写死、识别不到就明确报错，绝不往别的桌面乱点。
+
+实录 2026-10-21：本机桌面（控制台）跑也要真实点击（活动层不认 PostMessage），于是按「运行环境」分两种设备：
+远程桌面 = 本会话的 RDP 鼠标；本机桌面 = 机器上的真实鼠标（硬件 ID 以 HID\\ 开头）。同样用标记确认设备的输入
+真的进了本桌面；设置里可以固定设备号，固定了也要标记验证通过才用。
 """
 
 import ctypes
@@ -19,6 +23,8 @@ import secrets
 import struct
 import sys
 import time
+
+from src.core.input_env import KIND_CONSOLE, KIND_NAMES, KIND_RDP
 
 try:  # ok 框架的 logger；单测环境没有 ok 时退回标准 logging
     from ok.util.logger import Logger
@@ -104,6 +110,7 @@ else:  # 非 Windows（mac 上跑单测）只保留纯函数和可注入假通�
 
 
 RDP_MOUSE_ID = "TS_INPT\\TS_MOU"
+PHYSICAL_PREFIX = "HID\\"
 IOCTL_EVENT = 0x222040
 IOCTL_WRITE = 0x222080
 IOCTL_HARDWARE_ID = 0x222200
@@ -136,30 +143,54 @@ def absolute_point(x, y, bounds):
     return round((x - left) * 65535 / width), round((y - top) * 65535 / height)
 
 
-def select_session_device(received, candidates):
-    """RAWINPUT 标记只在本会话收到一次才算识别成功；0 个或多个都拒绝。"""
+def is_candidate(hardware_id, kind):
+    """远程桌面只认 RDP 鼠标；本机桌面只认插在机器上的 HID 鼠标（不碰任何 RDP 设备）。"""
+    if kind == KIND_RDP:
+        return hardware_id == RDP_MOUSE_ID
+    return kind == KIND_CONSOLE and str(hardware_id).upper().startswith(PHYSICAL_PREFIX)
+
+
+def select_session_device(received, candidates, kind=KIND_RDP):
+    """RAWINPUT 标记在本桌面收到才算识别成功。
+
+    远程桌面：每个会话只有一台 RDP 鼠标，0 台或多台都拒绝。本机桌面：所有真实鼠标都进控制台，收到几台都行，取设备号最小的。
+    """
     matches = set(received).intersection(candidates)
+    if kind == KIND_CONSOLE and matches:
+        return min(matches)
     if len(matches) != 1:
-        raise SessionMouseError(f"本会话应只收到一台 RDP 鼠标的标记，实际收到 {sorted(matches)}")
+        name = "RDP 鼠标" if kind == KIND_RDP else "真实鼠标"
+        raise SessionMouseError(f"本桌面应收到一台{name}的标记，实际收到 {sorted(matches)}")
     return matches.pop()
 
 
-def remote_session_id():
-    """当前进程所在的 RDP 会话 id；在控制台桌面返回 None（控制台鼠标不归这里管）。"""
+def session_identity():
+    """(rdp/console, 会话 id)：当前进程在远程桌面还是本机桌面。识别不出来就报错，不猜。"""
     value = wintypes.DWORD()
     if not _kernel.ProcessIdToSessionId(os.getpid(), ctypes.byref(value)):
         raise ctypes.WinError(ctypes.get_last_error())
     if _user.GetSystemMetrics(0x1000):  # SM_REMOTESESSION
-        return value.value
+        return KIND_RDP, value.value
     if value.value == _kernel.WTSGetActiveConsoleSessionId():
-        return None
+        return KIND_CONSOLE, value.value
     try:
         protocol = win32ts.WTSQuerySessionInformation(0, value.value, win32ts.WTSClientProtocolType)
     except pywintypes.error as exc:
-        raise SessionMouseError("识别不出当前输入会话，不使用控制台输入") from exc
+        raise SessionMouseError("识别不出当前输入会话") from exc
     if protocol != 2:
         raise SessionMouseError("需要在控制台或经确认的 RDP 会话里运行")
-    return value.value
+    return KIND_RDP, value.value
+
+
+def current_kind():
+    """rdp / console；不是 Windows 或识别不出返回 None。"""
+    if not IS_WINDOWS:
+        return None
+    try:
+        return session_identity()[0]
+    except (OSError, SessionMouseError) as exc:
+        logger.warning(f"识别运行环境失败：{exc}")
+        return None
 
 
 def desktop_bounds():
@@ -215,7 +246,7 @@ class _Channel:
             self.event = None
 
 
-def _identify_session(channels):
+def _identify_session(channels, kind=KIND_RDP):
     """往每台候选设备写一条带标记的空报文，看本会话的 RAWINPUT 收到哪一台的：设备号由桌面自己说了算。"""
     received, callback_errors = set(), []
     marker = secrets.randbits(24) << 8
@@ -256,7 +287,7 @@ def _identify_session(channels):
             time.sleep(0.01)
         if callback_errors:
             raise SessionMouseError("; ".join(callback_errors))
-        return select_session_device(received, channels)
+        return select_session_device(received, channels, kind)
     finally:
         if hwnd is not None:
             removal = RawInputDevice(1, 2, 1, None)  # RIDEV_REMOVE
@@ -266,17 +297,20 @@ def _identify_session(channels):
 
 
 class SessionMouseDevice:
-    """绑定本 RDP 会话的 Interception 鼠标设备，提供 move / press / release / click / wheel。
+    """绑定本桌面（远程桌面 / 本机桌面）的 Interception 鼠标设备，提供 move / press / release / click / wheel。
 
+    kind 是 rdp 或 console，device 是设置里固定的设备号（None = 自动识别）。
     所有坐标都是会话桌面的像素坐标。open() 失败只记日志并返回 False，由调用方决定退回别的输入方式。
     """
 
-    def __init__(self, session_id_fn=None, bounds_fn=None, cursor_fn=None):
+    def __init__(self, kind=KIND_RDP, device=None, identity_fn=None, bounds_fn=None, cursor_fn=None):
+        self.kind = kind
+        self.device = device
         self.channel = None
         self.session_id = None
         self.buttons = 0
         self.position = None
-        self._session_id_fn = session_id_fn or remote_session_id
+        self._identity_fn = identity_fn or session_identity
         self._bounds_fn = bounds_fn or desktop_bounds
         self._cursor_fn = cursor_fn or (win32api.GetCursorPos if win32api else None)
 
@@ -286,7 +320,9 @@ class SessionMouseDevice:
 
     @property
     def device_path(self):
-        return f"RDP 会话 {self.session_id}，Interception 设备 {self.channel.index}" if self.channel else None
+        if not self.channel:
+            return None
+        return f"{KIND_NAMES.get(self.kind, self.kind)}会话 {self.session_id}，Interception 设备 {self.channel.index}"
 
     def open(self):
         if self.channel is not None:
@@ -296,14 +332,14 @@ class SessionMouseDevice:
             return False
         channels = {}
         try:
-            self.session_id = self._session_id_fn()
-            if self.session_id is None:
-                raise SessionMouseError("当前在控制台桌面，不是 RDP 会话；会话鼠标只在 RDP 会话里用")
-            for index in MOUSE_CHANNELS:
+            kind, self.session_id = self._identity_fn()
+            if kind != self.kind:
+                raise SessionMouseError(f"要绑定{KIND_NAMES.get(self.kind)}的鼠标，但当前在{KIND_NAMES.get(kind, kind)}")
+            for index in [self.device] if self.device else MOUSE_CHANNELS:
                 candidate = None
                 try:
                     candidate = _Channel(index)
-                    if candidate.hardware_id() == RDP_MOUSE_ID:
+                    if is_candidate(candidate.hardware_id(), self.kind):
                         candidate.prepare()
                         channels[index] = candidate
                         candidate = None
@@ -313,8 +349,9 @@ class SessionMouseDevice:
                     if candidate is not None:
                         candidate.close()
             if not channels:
-                raise SessionMouseError("没找到 Interception 的 RDP 鼠标设备（驱动没装或没有 RDP 鼠标）")
-            index = _identify_session(channels)
+                which = f"设备 {self.device}" if self.device else "设备"
+                raise SessionMouseError(f"没找到可用的 Interception {KIND_NAMES.get(self.kind)}鼠标{which}（驱动没装或设备号不对）")
+            index = _identify_session(channels, self.kind)
             self.channel = channels.pop(index)
             logger.info(f"会话鼠标已绑定（光标没动过）：{self.device_path}")
             return True
@@ -339,7 +376,7 @@ class SessionMouseDevice:
         if self.channel is None and not self.open():
             return False
         try:
-            if self._session_id_fn() != self.session_id:
+            if self._identity_fn() != (self.kind, self.session_id):
                 raise SessionMouseError("输入会话变了，不再使用之前绑定的设备")
             px, py = absolute_point(int(x), int(y), self._bounds_fn())
             flags = button_edges(self.buttons, buttons)
