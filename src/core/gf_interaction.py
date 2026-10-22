@@ -109,6 +109,17 @@ class GfInteraction(GenshinInteraction):
         self._ensure_front()
         self.session_mouse.wheel(*self._abs(x, y), scroll_amount)
 
+    # ---- 键盘 ----
+    def send_key_up(self, key):
+        """
+        GenshinInteraction.send_key_up 不发 WM_KEYUP，只发一条 WM_ACTIVATE(INACTIVE)。实录 2026-10-21：活动层
+        「按住 alt 点茶歇一刻」之后，游戏认为 alt 还按着、自己已失活，饮品页的「制作」、ESC 全都不认，日常卡在喝水；
+        真正把窗口提到前台后才恢复。这里发真的抬起，游戏在前台时不再伪造失活（后台时照旧，和 operate 一致）。
+        """
+        self.post_interaction.send_key_up(key)
+        if not self.hwnd_window.is_foreground():
+            self.deactivate()
+
     def on_destroy(self):
         self.session_mouse.close()
         super().on_destroy()
