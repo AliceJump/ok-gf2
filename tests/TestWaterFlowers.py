@@ -250,6 +250,23 @@ class WaterFlowersTest(unittest.TestCase):
         self.assertTrue(water_flowers(task))
         self.assertEqual(["浇灌"], clicks)
 
+    def test_panel_closed_by_progress_esc_is_reopened(self):
+        """实录 2026-10-22：关进度窗口的 ESC 把 F2 面板一起关了，要重新打开面板再找栽培。"""
+        task, clicks = self.make_task()
+        opened = []
+        task._ensure_activity_panel.side_effect = lambda: opened.append(1) or ensure_panel(task)
+        self.assertIs(True, water_flowers(task))
+        self.assertEqual(2, len(opened))
+        self.assertEqual(["上栽培", "浇灌"], clicks)
+
+    def test_panel_not_reopened_skips_watering(self):
+        task = Mock()
+        task._ensure_activity_panel.side_effect = [True, False]
+        task._dismiss_activity_progress_dialog.return_value = True
+        self.assertEqual("待核查", water_flowers(task))
+        task.wait_click_ocr.assert_not_called()
+        task.info_set.assert_any_call("浇灌", "已跳过：未识别到栽培入口")
+
     def test_missing_tab_does_not_water(self):
         """Verify missing tab does not water."""
         task, clicks = self.make_task(missing_tab=True)

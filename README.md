@@ -70,6 +70,7 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 
 - **[日常任务](docs/日常任务.md)**：一键长草，完成每日例行的各项操作
 - **[清图任务](docs/清图任务.md)**：自动清理地图关卡
+- **[往期活动推图](docs/往期活动推图.md)**：按顺序推完完成度不到 100% 的往期活动
 - **[兵棋推演](docs/兵棋推演.md)**：自动进行兵棋推演玩法
 - **活动体力扫荡**：自动扫荡活动关卡消耗体力
 - **竞技场**：自动进行竞技场战斗

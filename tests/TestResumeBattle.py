@@ -21,6 +21,9 @@ ns = {
     "map_re": re.compile(r"^[^\d\s]{0,4}\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$"),
     "BACK_TO_MAP": ["back"],
     "pop_ups": ["点击空白处关闭"],
+    "BattleLost": type("BattleLost", (Exception,), {}),
+    "campaign_re": re.compile(r"战役推进"),
+    "failure_page_re": re.compile(r"重新挑战|战斗重演"),
 }
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), ns)
 resume_battle = ns["resume_battle"]
@@ -49,6 +52,7 @@ def make_task(screens):
     task.find_boxes.side_effect = find_boxes
     task.fix_match_regex.side_effect = lambda words: words
     task._is_battle_frame.return_value = False
+    task.hero_mode = False
     task.skip_dialogs.return_value = [box("任务完成")]
     return task
 
@@ -78,6 +82,25 @@ class ResumeBattleTest(unittest.TestCase):
         task = make_task([[box("继续前进"), box("任务完成")]])
         self.assertTrue(resume_battle(task, time_out=5))
         task.auto_battle.assert_called_once()
+
+    def test_hero_failure_page_confirms_back_to_map(self):
+        """实录 12.5 章英雄难度：失败结算页「重新挑战 / 战斗重演 / 确认」，点确认回地图。"""
+        fail = [box("任务失败"), box("重新挑战"), box("战斗重演（9）"), box("确认")]
+        task = make_task([fail, [box("LZ-1-5")]])
+        task.hero_mode = True
+        self.assertTrue(resume_battle(task))
+        self.assertEqual(task.click.call_args.args[0][0].name, "确认")
+
+    def test_normal_failure_page_still_raises(self):
+        task = make_task([[box("任务失败"), box("重新挑战"), box("确认")]])
+        with self.assertRaises(ns["BattleLost"]):
+            resume_battle(task)
+
+    def test_main_page_is_left_to_ensure_map(self):
+        """实录 12.5 章：失败结算后回到了游戏主页，不能在主页当剧情反复跳过。"""
+        task = make_task([[box("战役推进"), box("整备室"), box("活动层")]])
+        self.assertFalse(resume_battle(task))
+        task.skip_dialogs.assert_not_called()
 
     def test_unhandled_page_does_not_spin_until_timeout(self):
         task = make_task([[box("？？？")]])

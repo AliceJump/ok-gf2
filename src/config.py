@@ -74,6 +74,7 @@ config = {
         ["src.tasks.DailyTask", "DailyTask"],
         ["src.tasks.WeeklyTask", "WeeklyTask"],
         ["src.tasks.ClearMapTask", "ClearMapTask"],
+        ["src.tasks.EventMapTask", "EventMapTask"],
         ["src.tasks.TestStartGame", "TestStartGame"],
         ["src.tasks.TestTask", "TestTask"],
         ["src.tasks.DebugTask", "DebugTask"],

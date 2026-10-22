@@ -4,7 +4,7 @@
 取值优先级：内置默认 -> 全局设置 -> 各场景单独设置（越后面越优先）。
 - 编队：「<场景>编队」留空就用全局「编队名」。
 - 借助战：「<场景>助战」选「沿用全局」就用全局「借好友助战」（内置默认开）。
-场景都登记在 SCOPES 里；新版界面在对应板块里直接显示这些键（catalog.json 的 lineup_scopes）。
+场景都登记在 SCOPES 里；Qt 设置页在「阵容与助战」里逐个列出这些键，可选的 web_v2 新界面在对应板块里显示（catalog.json 的 lineup_scopes）。
 """
 
 from ok.util.config import ConfigOption
@@ -79,7 +79,7 @@ for _s in SCOPES:
 lineup_option = ConfigOption(
     LINEUP_OPTION_NAME,
     _defaults,
-    description="所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 各场景单独设置（新版界面里在各板块直接改）",
+    description="所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 下面各场景单独的「××编队 / ××助战」",
     config_description=_descriptions,
     config_type=_types,
 )
