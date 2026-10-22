@@ -205,6 +205,18 @@ class TestSupportSelect(unittest.TestCase):
         # 没有蓝圈的位置读不到
         self.assertIsNone(read_badge(frame, Box(600, 400, 36, 16, name="1234"), self.W, self.H))
 
+    def test_read_badge_dim_digits(self):
+        """实录 2026-10-21：本机桌面好友助战(物理)，第一行角标数字偏暗（~200），原来 6/4 都读成 None。"""
+        import cv2
+
+        frame = cv2.imread(str(Path(__file__).resolve().parent / "fixtures" / "support_panel_dim_badge_1280x768.jpg"))
+        self.assertIsNotNone(frame)
+        expected = {"26074": 6, "24871": 6, "24292": 4, "19160": 0, "17800": 0}
+        centers = {"26074": (1032, 199), "24871": (1124, 199), "24292": (1217, 199), "19160": (1032, 311), "17800": (1124, 311)}
+        for name, (x, y) in centers.items():
+            b = Box(x - 18, y - 7, 36, 14, name=name)
+            self.assertEqual(read_badge(frame, b, self.W, self.H), expected[name], name)
+
     def test_orange_check(self):
         cards = find_cards(self.boxes(), self.W, self.H)
         c = cards[0]

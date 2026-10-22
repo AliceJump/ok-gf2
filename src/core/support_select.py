@@ -32,6 +32,9 @@ BADGE_WIN = 13  # 角标搜索窗半径，1280x768 下的像素
 BADGE_DIGIT_R = 5.5  # 只看圆内这个半径里的白色像素
 BADGE_SIZE = 13  # 模板尺寸
 BADGE_MIN_IOU = 0.6
+# 模板比对时数字笔画的亮度下限：先按原来的 215，比不上再放宽到 170
+# （实录 2026-10-21：本机桌面 1280x768 下好友助战第一行角标数字只有 ~200 亮，6/4 都读成 None，助战没选上）
+BADGE_WHITES = (215, 170)
 BADGE_DIR = os.path.join("assets", "support_badges")
 # 蓝圈颜色 (S 下限, V 下限)：先按 1280x768 实测的亮蓝找，找不到再放宽
 # （实录 2026-10-20：RDP 会话 2560x1440 下蓝圈是暗青色，V 只有 120~160）
@@ -218,12 +221,19 @@ def read_badge(frame, power_box, width, height, templates=None, recognize=None):
             return badge
     if not templates:
         return None
-    best, best_score = None, 0.0
-    for digit, tpl in templates.items():
-        score = max(_iou(badge_digit_mask(frame, cx, cy, scale, dx, dy), tpl) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-        if score > best_score:
-            best, best_score = digit, score
-    return best if best_score >= BADGE_MIN_IOU else None
+    for white in BADGE_WHITES:
+        best, best_score = None, 0.0
+        for digit, tpl in templates.items():
+            score = max(
+                _iou(badge_digit_mask(frame, cx, cy, scale, dx, dy, white), tpl)
+                for dx in (-1, 0, 1)
+                for dy in (-1, 0, 1)
+            )
+            if score > best_score:
+                best, best_score = digit, score
+        if best_score >= BADGE_MIN_IOU:
+            return best
+    return None
 
 
 # ------------------------------------------------------------------ 地格
