@@ -7,7 +7,7 @@ import time
 import traceback
 from difflib import SequenceMatcher
 
-from ok import BaseTask, Box, Logger, TriggerTask, find_boxes_by_name
+from ok import BaseTask, Box, Logger, TaskDisabledException, TriggerTask, find_boxes_by_name
 
 from src.core.base_mixin.lineup_mixin import LineupMixin
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
@@ -91,6 +91,12 @@ story_skip_re = re.compile(r"跳过")  # 剧情对话右上角的「跳过 / 全
 main_marks = ["整备室", "公共区", "活动层", re.compile("招募")]  # 主页右侧的入口文字  # 标题页底部的「点击开始」
 GAME_LAUNCH_MAIN_TIMEOUT = 150  # 秒：从拉起游戏到进入主页的上限（实机：启动到标题约 50 秒，再加公告弹窗）
 GAME_FRESH_SECONDS = 180  # 秒：游戏进程比这更新，就当成刚被框架拉起、还停在启动/标题页，要走一遍进主页
+GAME_CRASH_RETRIES = 3  # 一次任务里游戏进程中途没了（崩溃/被关）时，重新拉起再从头跑的次数上限
+GAME_ALIVE_CHECK_INTERVAL = 10  # 秒：next_frame 里隔这么久查一次游戏进程还在不在
+
+
+class GameCrashed(Exception):
+    """任务跑到一半游戏进程没了。"""
 
 
 def _with_game_started(run):
@@ -98,8 +104,19 @@ def _with_game_started(run):
 
     @functools.wraps(run)
     def wrapped(self, *args, **kwargs):
-        self.ensure_game_started()
-        return run(self, *args, **kwargs)
+        # 实录 2026-10-22：往期活动推图时挪了一下游戏窗口，游戏崩溃退出，脚本对着失效的窗口句柄一直空点。
+        # 跑到一半游戏进程没了：重新拉起游戏、进主页，再从头跑一遍任务（推图类任务会自己找回进度）。
+        for attempt in range(GAME_CRASH_RETRIES + 1):
+            self.crash_resume = attempt > 0  # 崩溃后重跑：任务可以沿用这次已经做完的进度
+            try:
+                self.ensure_game_started()
+                return run(self, *args, **kwargs)
+            except TaskDisabledException:
+                raise
+            except Exception as e:
+                if attempt >= GAME_CRASH_RETRIES or not self._game_gone():
+                    raise
+                self.log_info(f"游戏进程没了（崩溃或被关闭，{type(e).__name__}），重新拉起游戏后从头接着跑", notify=True)
 
     wrapped._ensures_game = True
     return wrapped
@@ -1303,6 +1320,8 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         keep_lineup=False,
     ):
         """
+        确认战斗界面后执行自动作战；开局无法识别时抛出明确错误。
+
         :param keep_lineup: 这一轮是点「继续前进」进来的，阵容（含助战）沿用上一段，不再整理直接开战
         """
         self.info_set("current_task", "auto battle")
@@ -1315,7 +1334,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         )
         self.debug_shot("battle_entry", result)
         if not result:
-            raise Exception("2 分钟内没进入部署界面（没等到作战开始/行动结束/继续前进），已停止，看 battle_entry 截图")
+            raise RuntimeError("2 分钟内没进入部署界面（没等到作战开始/行动结束/继续前进），已停止，看 battle_entry 截图")
         if result[0].name != "继续前进":
             self._continue_streak = 0
         if result and result[0].name == "继续前进":
@@ -2323,6 +2342,29 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
 
         names = self._game_exe_names()
         return [p for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() in names]
+
+    def _game_gone(self):
+        try:
+            gone = not self._game_processes()
+        except Exception as e:
+            self.log_info(f"查游戏进程失败: {e}", notify=False)
+            return False
+        if not gone:
+            self._game_seen = True
+        return gone
+
+    def next_frame(self):
+        """
+        隔一会儿查一次游戏进程：之前在、现在没了就抛 GameCrashed，交给任务外层重新拉起游戏（不再对着空窗口干等/空点）。
+        从没见过游戏进程（截图回放的单测）不算崩溃。
+        """
+        now = time.time()
+        watch = not isinstance(self, TriggerTask) and not getattr(self, "skip_game_check", False)
+        if watch and now - getattr(self, "_alive_checked", 0) >= GAME_ALIVE_CHECK_INTERVAL:
+            self._alive_checked = now
+            if self._game_gone() and getattr(self, "_game_seen", False):
+                raise GameCrashed("游戏进程没了")
+        return super().next_frame()
 
     def _wait_game_exit(self, timeout):
         end = time.time() + timeout
