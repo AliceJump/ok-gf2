@@ -11,8 +11,9 @@ source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_m
 tree = ast.parse(source.read_text(encoding="utf-8"))
 namespace = {"re": re}
 methods = [
-    n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
-    and n.name in {"_confirm_drink_result", "_skip_active_food_buff", "do_food_flow"}
+    n
+    for n in ast.walk(tree)
+    if isinstance(n, ast.FunctionDef) and n.name in {"_confirm_drink_result", "_skip_active_food_buff", "do_food_flow"}
 ]
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
@@ -49,8 +50,12 @@ class DuplicateDrinkReturnTest(unittest.TestCase):
         )
         task._skip_active_food_buff = namespace["_skip_active_food_buff"].__get__(task)
         result = namespace["do_food_flow"](
-            task, enter_func=lambda **kwargs: None, entry_match="茶歇一刻",
-            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+            task,
+            enter_func=lambda **kwargs: None,
+            entry_match="茶歇一刻",
+            main_btn="制作",
+            second_btn="确认",
+            skip_end_match=["饮品加成"],
         )
         return result, state
 
@@ -110,8 +115,12 @@ class DrinkResultTest(unittest.TestCase):
         task.ocr.side_effect = read
         task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
         result = namespace["do_food_flow"](
-            task, enter_func=Mock(), entry_match="茶歇一刻",
-            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+            task,
+            enter_func=Mock(),
+            entry_match="茶歇一刻",
+            main_btn="制作",
+            second_btn="确认",
+            skip_end_match=["饮品加成"],
         )
         self.assertIs(True, result)
         self.assertEqual(2, state["makes"])
@@ -126,8 +135,12 @@ class DrinkResultTest(unittest.TestCase):
         task.ocr.side_effect = lambda *, match, **kwargs: [object()] if match == "制作" else []
         task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
         result = namespace["do_food_flow"](
-            task, enter_func=Mock(), entry_match="茶歇一刻",
-            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+            task,
+            enter_func=Mock(),
+            entry_match="茶歇一刻",
+            main_btn="制作",
+            second_btn="确认",
+            skip_end_match=["饮品加成"],
         )
         self.assertEqual("confirm", result)
         self.assertEqual(2, sum(call.kwargs.get("match") == "制作" for call in task.wait_click_ocr.call_args_list))
@@ -161,8 +174,12 @@ class DrinkResultTest(unittest.TestCase):
         task.ocr.side_effect = read
         task.wait_until.side_effect = lambda condition, **kwargs: bool(condition())
         result = namespace["do_food_flow"](
-            task, enter_func=Mock(), entry_match="茶歇一刻",
-            main_btn="制作", second_btn="确认", skip_end_match=["饮品加成"],
+            task,
+            enter_func=Mock(),
+            entry_match="茶歇一刻",
+            main_btn="制作",
+            second_btn="确认",
+            skip_end_match=["饮品加成"],
         )
         self.assertIs(True, result)
         self.assertEqual(2, state["makes"])
