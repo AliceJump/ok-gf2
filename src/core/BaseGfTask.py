@@ -335,6 +335,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
     def auto_battle(
         self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False, has_dialog_behind_start=False
     ):
+        """确认战斗界面后执行自动作战；开局无法识别时抛出明确错误。"""
         self.info_set("current_task", "auto battle")
         result = self.skip_dialogs(
             end_match=["作战开始", "行动结束", "继续前进"],
@@ -343,6 +344,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
             has_dialog=has_dialog,
             raise_if_not_found=False,
         )
+        if not result:
+            raise RuntimeError("等待作战开始超时：未识别到战斗界面，请检查编队或助战选择是否完成")
         if result and result[0].name == "继续前进":
             self.log_info("开局检测到继续前进，点击后开启新一轮自动战斗", notify=True)
             self.click_box(result, after_sleep=2)

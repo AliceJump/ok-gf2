@@ -132,6 +132,7 @@ class SupplyScreen:
         self.selected = None
         self.popup = False
         self.page_ok = True
+        self.title_bounds = (0.345, 0.65, 0.495, 0.72)
         self.restore_page = True
         self.popup_ok = True
         self.stuck_button = False
@@ -201,7 +202,9 @@ class SupplyScreen:
         if isinstance(match, list):
             return self.popup
         if self.page_ok and match.search(self.selected or ""):
-            return True
+            bounds = (0.5, 0, 1, 1) if box == "right" else box
+            left, top, right, bottom = self.title_bounds
+            return bounds[0] <= left and bounds[1] <= top and bounds[2] >= right and bounds[3] >= bottom
         return self.known_empty and not self.remaining.get(self.selected, 0) and bool(match.search(self.empty_text))
 
     def wait_pop_up(self, **kwargs):
@@ -211,6 +214,30 @@ class SupplyScreen:
 
 
 class ActivitySupplyTest(unittest.TestCase):
+    def test_screenshot_title_left_of_midpoint_is_claimed(self):
+        """正文标题在截图左半屏时仍能确认页面并领取。"""
+        # 现场 3840×2160 截图的正文标题边界，侧栏在 x < 0.23。
+        task = SupplyScreen()
+        task.selected = "战前补给"
+        self.assertIs(True, task._claim_supply_activity("战前补给"))
+        self.assertEqual(["战前补给"], task.claims)
+
+    def test_sidebar_title_alone_never_authorizes_claim(self):
+        """只匹配到侧栏入口时禁止点击正文领取按钮。"""
+        task = SupplyScreen()
+        task.selected = "战前补给"
+        task.title_bounds = (0.075, 0.36, 0.13, 0.40)
+        self.assertEqual("待核查", task._claim_supply_activity("战前补给"))
+        self.assertEqual([], task.claims)
+
+    def test_right_hand_supply_title_remains_supported(self):
+        """其他补给活动的右半屏标题继续支持领取。"""
+        task = SupplyScreen()
+        task.selected = "情报补给"
+        task.title_bounds = (0.65, 0.30, 0.80, 0.36)
+        self.assertIs(True, task._claim_supply_activity("情报补给"))
+        self.assertEqual(["情报补给", "情报补给"], task.claims)
+
     def test_finds_hidden_entries_and_claims_both_time_slots(self):
         """Verify finds hidden entries and claims both time slots."""
         task = SupplyScreen()
