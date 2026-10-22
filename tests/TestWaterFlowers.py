@@ -11,9 +11,16 @@ methods = [
     n
     for n in node.body
     if isinstance(n, ast.FunctionDef)
-    and n.name in ("water_flowers", "_ensure_activity_panel", "free_time_layer", "do_food_flow")
+    and n.name in ("water_flowers", "_ensure_activity_panel", "free_time_layer", "do_food_flow", "_route", "go_drink", "go_eat")
 ]
-ns = {"re": re}
+DRINK_ROUTE, EAT_ROUTE = "1.087-1.0-0.6", "0.65"
+ns = {
+    "re": re,
+    "DRINK_ROUTE": DRINK_ROUTE,
+    "EAT_ROUTE": EAT_ROUTE,
+    "LEGACY_ROUTES": {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)},
+    "parse_time_option": lambda v: [float(x) for x in v.split("-")],
+}
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), ns)
 water_flowers = ns["water_flowers"]
 ensure_panel = ns["_ensure_activity_panel"]
@@ -341,7 +348,7 @@ class WaterIntegrationTest(unittest.TestCase):
         self.assertIs(False, ns["free_time_layer"](task))
         message = task.log_warning.call_args.args[0]
         self.assertIn("茶歇一刻", message)
-        self.assertIn("1.087-1.0-0.8", message)
+        self.assertIn("1.087-1.0-0.6", message)
 
     def test_missing_drink_button_does_not_blame_entry_or_duration(self):
         task = Mock()
@@ -353,4 +360,38 @@ class WaterIntegrationTest(unittest.TestCase):
         message = task.log_warning.call_args.args[0]
         self.assertIn("喝水", message)
         self.assertNotIn("茶歇一刻", message)
-        self.assertNotIn("1.087-1.0-0.8", message)
+        self.assertNotIn("1.087-1.0-0.6", message)
+
+
+class WalkRouteTest(unittest.TestCase):
+    """实录 2026-10-21：按键之间停顿时镜头会转到角色身后，走到的位置不稳定；改成连续按键并重新量时长。"""
+
+    def make_task(self, **config):
+        task = Mock()
+        task.config = config
+        task._route = lambda key: ns["_route"](task, key)
+        return task
+
+    def test_drink_keys_are_pressed_back_to_back(self):
+        task = self.make_task(喝水="1.087-1.0-0.6")
+        ns["go_drink"](task)
+        task.press_keys_sequence.assert_called_once_with(["a", "w", "d"], [1.087, 1.0, 0.6], sleep_between=0)
+
+    def test_eat_is_a_single_s_press(self):
+        task = self.make_task(吃饭="0.7")
+        ns["go_eat"](task)
+        task.press_keys_sequence.assert_called_once_with(["s"], [0.7], sleep_between=0)
+
+    def test_legacy_defaults_use_new_routes(self):
+        task = self.make_task(喝水="1.087-1.0-0.8", 吃饭="1.0")
+        ns["go_drink"](task)
+        ns["go_eat"](task)
+        self.assertEqual(task.press_keys_sequence.call_args_list[0].args[1], [1.087, 1.0, 0.6])
+        self.assertEqual(task.press_keys_sequence.call_args_list[1].args[1], [0.65])
+
+    def test_user_tuned_values_are_kept(self):
+        task = self.make_task(喝水="1.0-1.1-0.5", 吃饭="")
+        ns["go_drink"](task)
+        ns["go_eat"](task)
+        self.assertEqual(task.press_keys_sequence.call_args_list[0].args[1], [1.0, 1.1, 0.5])
+        self.assertEqual(task.press_keys_sequence.call_args_list[1].args[1], [0.65])

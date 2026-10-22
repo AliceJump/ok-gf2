@@ -18,6 +18,14 @@ activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours
 # （实录截图 tests/fixtures/food_already_active_1280x768.png；菜名是橙色，OCR 可能把这句拆成几段）
 food_active_re = re.compile(r"生效中|是否确认更换|已有.{0,12}生效")
 
+# 活动层走路：各键连续按、中间不停。实录 2026-10-21：角色往旁边跑之后镜头会转到它身后，按键之间停 0.5 秒时
+# 镜头转多少每次不一样，后面的 w/d 方向就跟着变，同一组时长有时走到水吧、有时走到沙发边。连续按之后
+# 从出生点走的位置稳定，按此重新量过：喝水 d 0.4 偏左、0.8 偏右（停在 NPC 旁），0.6 正好；吃饭 s 0.55～0.78 都能出「美味烹调」。
+DRINK_ROUTE = "1.087-1.0-0.6"
+EAT_ROUTE = "0.65"
+# 旧默认值是按「中间停顿」量的，换成连续按键后已经不对；存着旧默认值的配置按新默认走
+LEGACY_ROUTES = {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)}
+
 
 class DailyActivityMixin:
     def activities(self):
@@ -222,7 +230,7 @@ class DailyActivityMixin:
                     elif drink_result is not True:
                         if drink_result == "entry":
                             self.log_warning(
-                                "未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8"
+                                f"未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 {DRINK_ROUTE}"
                             )
                         elif drink_result == "button":
                             self.log_warning("喝水流程未完成：未找到制作按钮，请检查移动是否到位或界面是否已加载完成")
@@ -621,15 +629,24 @@ class DailyActivityMixin:
                     return "button"
         return "button"
 
+    def _route(self, key):
+        value = str(self.config.get(key) or "").strip()
+        legacy, current = LEGACY_ROUTES[key]
+        if not value or value == legacy:
+            if value:
+                self.log_info(f"「{key}」还是旧默认值 {legacy}（按停顿走量的），改用连续按键的 {current}", notify=False)
+            return current
+        return value
+
     def go_drink(self, after_sleep=None):
-        down_times = parse_time_option(self.config.get("喝水"))
-        self.press_keys_sequence(["a", "w", "d"], down_times, sleep_between=0.5)
+        down_times = parse_time_option(self._route("喝水"))
+        self.press_keys_sequence(["a", "w", "d"], down_times, sleep_between=0)
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
     def go_eat(self, after_sleep=None):
-        down_time = float(self.config.get("吃饭"))
-        self.press_keys_sequence(["s", "d"], [down_time, 0], sleep_between=1)
+        down_time = float(self._route("吃饭"))
+        self.press_keys_sequence(["s"], [down_time], sleep_between=0)
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
