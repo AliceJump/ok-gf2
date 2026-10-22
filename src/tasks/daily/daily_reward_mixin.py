@@ -306,6 +306,7 @@ class DailyRewardMixin:
             raise_if_not_found=False,
             log=True,
         ):
+            self.ensure_main()
             return
 
     def star_wish(self):
