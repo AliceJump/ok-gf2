@@ -18,7 +18,7 @@ NOTICES = (
         id="drink-route-issue-78",
         title="喝水任务可能因移动受阻而失败",
         task="喝水",
-        solution="请检查并调整「喝水」移动时长，参考 1.087-1.0-0.8",
+        solution="请检查并调整「喝水」移动时长，参考 1.087-1.0-0.6（三个键连续按）",
         url="https://github.com/AliceJump/ok-gf2/issues/78",
     ),
 )
