@@ -153,6 +153,21 @@ class TestDailyTaskRunner(unittest.TestCase):
         runner.run()
         self.assertEqual(self.executed(stub), ["ensure_main", "邮件"])
 
+    def test_retry_success_clears_pending_retry_info(self):
+        """实录 2026-10-22：活动层重跑成功后，旧版 App 信息面板的「今日待重试」还显示活动层。"""
+        import tempfile
+
+        from src.tasks.daily.daily_record import DailyRecord
+
+        with tempfile.TemporaryDirectory() as d:
+            record = DailyRecord(str(Path(d) / "daily_record.json"))
+            record.mark_failed("邮件", "任务返回 False")
+            stub = StubTask(dict(ALL_ON))
+            DailyTaskRunner(stub, build_plan(stub, {"社区每日": True, "ensure_main": True, "邮件": True,
+                                                    "自动刷体力": True, "竞技场": True}), record=record).run()
+            self.assertEqual("无", stub.infos["今日待重试"])
+            self.assertIn("邮件", stub.infos["今日已完成(含之前几次)"])
+
     def test_publish_info_enabled(self):
         stub = StubTask(dict(ALL_ON))
         runner = DailyTaskRunner(stub, build_plan(stub, {}), publish_info=True)
