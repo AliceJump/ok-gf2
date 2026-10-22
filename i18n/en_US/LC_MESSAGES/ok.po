@@ -662,3 +662,21 @@ msgstr "Drag"
 
 msgid "非空时按住从 x1,y1 拖到 x2,y2（相对坐标 0~1），如 0.85,0.5,0.25,0.5"
 msgstr "When set, press and drag from x1,y1 to x2,y2 (relative 0~1), e.g. 0.85,0.5,0.25,0.5"
+
+msgid "往期活动推图"
+msgstr "Past Events"
+
+msgid "从主页、作战页或活动列表启动：进第一个完成度不到 100% 的往期活动推图，推完回列表找下一个；停在活动地图上启动就先推当前这个"
+msgstr "Start from the home screen, the combat screen or the event list: enter the first past event below 100% and push it, then go back to the list for the next one; when started on an event map, push that event first"
+
+msgid "推完继续下一个活动"
+msgstr "Continue with the next event"
+
+msgid "当前活动推完（或剩下的关都推不动）后，回往期活动列表进下一个完成度不到 100% 的活动继续推"
+msgstr "When the current event is cleared (or the remaining stages cannot be pushed), go back to the past event list and continue with the next event below 100%"
+
+msgid "看心智回溯"
+msgstr "Watch Mind Replay"
+
+msgid "活动「剧情」页签左边有「心智回溯」（第 8 期起）时，把能看的剧情一条条播放（跳过）领抽卡资源\n开着「推完继续下一个活动」时，推完还会把列表上右上角带「!」（奖励没领完）的活动逐个进去领章节奖励和心智回溯"
+msgstr "When the event Story tab has \"Mind Replay\" on the left (from the 8th event on), play (skip) each available story to collect gacha currency\nWith \"Continue with the next event\" on, after pushing it also visits every event marked \"!\" in the list (rewards left) to claim chapter rewards and Mind Replay"
