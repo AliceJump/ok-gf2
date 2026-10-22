@@ -16,7 +16,7 @@ from unittest.mock import Mock
 source = Path(__file__).resolve().parents[1] / "src/core/BaseGfTask.py"
 tree = ast.parse(source.read_text(encoding="utf-8"))
 cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "BaseGfTask")
-wanted = ("ensure_game_started", "_game_process_age", "_on_title_screen")
+wanted = ("ensure_game_started", "_game_process_age", "_on_title_screen", "_game_gone", "next_frame")
 methods = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
 funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_with_game_started"]
 consts = [
@@ -24,7 +24,14 @@ consts = [
     for n in tree.body
     if isinstance(n, ast.Assign)
     and any(
-        isinstance(t, ast.Name) and t.id in ("title_start_re", "GAME_LAUNCH_MAIN_TIMEOUT", "GAME_FRESH_SECONDS")
+        isinstance(t, ast.Name) and t.id
+        in (
+            "title_start_re",
+            "GAME_LAUNCH_MAIN_TIMEOUT",
+            "GAME_FRESH_SECONDS",
+            "GAME_CRASH_RETRIES",
+            "GAME_ALIVE_CHECK_INTERVAL",
+        )
         for t in n.targets
     )
 ]
@@ -34,8 +41,31 @@ class TriggerTask:  # 顶替 ok.TriggerTask，只用来做 isinstance 判断
     pass
 
 
-ns = {"re": re, "time": time, "functools": functools, "TriggerTask": TriggerTask}
-exec(compile(ast.Module(body=consts + funcs + methods, type_ignores=[]), str(source), "exec"), ns)
+class TaskDisabledException(Exception):  # 顶替 ok 的用户停止任务异常
+    pass
+
+
+class Base:
+    def next_frame(self):
+        return "frame"
+
+
+crash_cls = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GameCrashed"]
+ns = {
+    "re": re,
+    "time": time,
+    "functools": functools,
+    "TriggerTask": TriggerTask,
+    "TaskDisabledException": TaskDisabledException,
+}
+exec(compile(ast.Module(body=consts + crash_cls + funcs, type_ignores=[]), str(source), "exec"), ns)
+helpers = [n for n in methods if n.name != "next_frame"]
+exec(compile(ast.Module(body=helpers, type_ignores=[]), str(source), "exec"), ns)
+watched = ast.parse("class Watched(Base):\n    pass\n")
+watched.body[0].body = [n for n in methods if n.name in ("next_frame", "_game_gone")]
+ns["Base"] = Base
+exec(compile(watched, str(source), "exec"), ns)
+Watched = ns["Watched"]
 ensure_game_started = ns["ensure_game_started"]
 game_process_age = ns["_game_process_age"]
 on_title_screen = ns["_on_title_screen"]
@@ -138,6 +168,99 @@ class RunWrapperTest(unittest.TestCase):
 
         once = with_game_started(FakeTask.run)
         self.assertTrue(getattr(once, "_ensures_game", False))
+
+
+class GameCrashRecoveryTest(unittest.TestCase):
+    """实录 2026-10-22：推图时挪动游戏窗口，游戏崩溃退出，脚本对着失效窗口一直空点。"""
+
+    def make(self, alive, body):
+        class FakeTask:
+            skip_game_check = False
+
+            def run(self):
+                return body(self)
+
+        FakeTask.run = with_game_started(FakeTask.run)
+        task = FakeTask()
+        task.ensure_game_started = Mock()
+        task.log_info = Mock()
+        task._game_gone = Mock(side_effect=lambda: not alive[0])
+        return task
+
+    def test_crash_mid_run_relaunches_and_reruns(self):
+        alive = [True]
+        calls = []
+
+        def body(task):
+            calls.append(1)
+            if len(calls) == 1:
+                alive[0] = False
+                raise ns["GameCrashed"]("游戏进程没了")
+            return "done"
+
+        task = self.make(alive, body)
+        task.ensure_game_started.side_effect = lambda: alive.__setitem__(0, True)
+        self.assertEqual("done", task.run())
+        self.assertTrue(task.crash_resume)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(2, task.ensure_game_started.call_count)
+
+    def test_error_with_game_alive_is_not_retried(self):
+        task = self.make([True], lambda t: (_ for _ in ()).throw(ValueError("识别失败")))
+        with self.assertRaises(ValueError):
+            task.run()
+        self.assertFalse(task.crash_resume)
+        self.assertEqual(1, task.ensure_game_started.call_count)
+
+    def test_user_stop_is_not_retried(self):
+        task = self.make([False], lambda t: (_ for _ in ()).throw(TaskDisabledException()))
+        with self.assertRaises(TaskDisabledException):
+            task.run()
+        self.assertEqual(1, task.ensure_game_started.call_count)
+
+    def test_gives_up_after_retry_limit(self):
+        task = self.make([False], lambda t: (_ for _ in ()).throw(ns["GameCrashed"]("游戏进程没了")))
+        with self.assertRaises(ns["GameCrashed"]):
+            task.run()
+        self.assertEqual(ns["GAME_CRASH_RETRIES"] + 1, task.ensure_game_started.call_count)
+
+
+class NextFrameWatchTest(unittest.TestCase):
+    def make(self, procs):
+        task = Watched()
+        task.skip_game_check = False
+        task._game_processes = Mock(return_value=procs)
+        task.log_info = Mock()
+        return task
+
+    def test_game_that_disappears_raises(self):
+        procs = [object()]
+        task = self.make(procs)
+        self.assertEqual("frame", task.next_frame())
+        procs.clear()
+        task._alive_checked = 0
+        with self.assertRaises(ns["GameCrashed"]):
+            task.next_frame()
+
+    def test_never_seen_game_is_not_a_crash(self):
+        """截图回放的单测里从来没有游戏进程。"""
+        self.assertEqual("frame", self.make([]).next_frame())
+
+    def test_running_game_returns_frame_and_throttles_checks(self):
+        task = self.make([object()])
+        self.assertEqual("frame", task.next_frame())
+        self.assertEqual("frame", task.next_frame())
+        self.assertEqual(1, task._game_processes.call_count)
+
+    def test_process_lookup_error_is_not_a_crash(self):
+        task = self.make([])
+        task._game_processes.side_effect = OSError("access denied")
+        self.assertEqual("frame", task.next_frame())
+
+    def test_skip_game_check_task_not_watched(self):
+        task = self.make([])
+        task.skip_game_check = True
+        self.assertEqual("frame", task.next_frame())
 
 
 if __name__ == "__main__":
