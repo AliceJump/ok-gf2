@@ -166,6 +166,9 @@ class FakeGenshin:
     def on_destroy(self):
         self.calls.append(("destroy",))
 
+    def deactivate(self):
+        self.calls.append(("deactivate",))
+
 
 class FakeDevice:
     opens = True
@@ -222,7 +225,9 @@ def make_interaction(bound=True, foreground=True, origin=(0, 0)):
     window = Mock()
     window.is_foreground.return_value = foreground
     window.bring_to_front.return_value = True
-    return GfInteraction(capture, window)
+    it = GfInteraction(capture, window)
+    it.post_interaction = Mock()
+    return it
 
 
 class GfInteractionTest(unittest.TestCase):
@@ -277,6 +282,19 @@ class GfInteractionTest(unittest.TestCase):
         self.assertEqual(calls[1], ("press", 1))
         self.assertEqual(calls[-1], ("release",))
         self.assertEqual([c for c in calls if c[0] == "move"][-1], ("move", 100, 0))
+
+    def test_key_up_really_releases_and_keeps_foreground_game_active(self):
+        """alt+点击之后不能伪造失活，否则活动层饮品页的「制作」和 ESC 都不认（实录 2026-10-21）。"""
+        it = make_interaction(foreground=True)
+        it.send_key_up("alt")
+        it.post_interaction.send_key_up.assert_called_once_with("alt")
+        self.assertEqual(it.calls, [])
+
+    def test_key_up_in_background_still_deactivates(self):
+        it = make_interaction(foreground=False)
+        it.send_key_up("alt")
+        it.post_interaction.send_key_up.assert_called_once_with("alt")
+        self.assertEqual(it.calls, [("deactivate",)])
 
     def test_destroy_closes_device(self):
         it = make_interaction()
