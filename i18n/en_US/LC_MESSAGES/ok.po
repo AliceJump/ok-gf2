@@ -436,8 +436,8 @@ msgstr "On"
 msgid "关"
 msgstr "Off"
 
-msgid "所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 各场景单独设置（新版界面里在各板块直接改）"
-msgstr "Shared by every task that enters the deployment screen. Priority: built-in defaults → these global values → per-scene settings (editable per section in the new UI)"
+msgid "所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 下面各场景单独的「××编队 / ××助战」"
+msgstr "Shared by every task that enters the deployment screen. Priority: built-in defaults → these global values → the per-scene \"… squad / … support\" settings below"
 
 msgid "体力"
 msgstr "Stamina"
