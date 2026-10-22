@@ -656,3 +656,9 @@ msgstr "From chapter 11.0 on, turn on the in-game Hero difficulty before pushing
 
 msgid "每章（活动每个页签）推完后，点地图左下角的「可领取」把收集数奖励领掉\n还有「未完成」的档位会通知出来：多半是漏了关卡或有关卡没三星通关"
 msgstr "After each chapter (each tab of an event) is cleared, click \"Claimable\" at the bottom left of the map to collect the collection rewards\nTiers still marked \"Incomplete\" are reported: usually a stage was missed or not cleared with three stars"
+
+msgid "拖动"
+msgstr "Drag"
+
+msgid "非空时按住从 x1,y1 拖到 x2,y2（相对坐标 0~1），如 0.85,0.5,0.25,0.5"
+msgstr "When set, press and drag from x1,y1 to x2,y2 (relative 0~1), e.g. 0.85,0.5,0.25,0.5"
