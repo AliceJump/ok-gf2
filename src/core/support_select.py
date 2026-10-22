@@ -610,8 +610,27 @@ def find_unit_tags(frame, width, height, max_n=8):
     return out
 
 
-def unit_tiles_from_tags(tags, height):
-    return [(x, y + UNIT_TAG_DY * height) for x, y, _ in tags]
+# 底部「作战开始」和它左边的切换按钮。站在最下面一排的单位，地格被按钮盖住，按标签往下推的点会落进按钮里，
+# 实录 2026-10-22 NZ-1-1：整理阵容时点 1 号单位的地格 (1151,1291) 直接点中了作战开始，人没核对完就开战了。
+START_BUTTON_BOX = (0.34, 0.86, 0.61, 0.96)
+
+
+def in_start_button(point, width, height):
+    x0, y0, x1, y1 = START_BUTTON_BOX
+    return x0 * width <= point[0] <= x1 * width and y0 * height <= point[1] <= y1 * height
+
+
+def unit_tiles_from_tags(tags, height, width=None):
+    """标签下方的地格中心；给了 width 时，被作战开始按钮挡住的改点按钮上沿上面的人形身体，还挡着就不点。"""
+    out = []
+    for x, y, _ in tags:
+        point = (x, y + UNIT_TAG_DY * height)
+        if width is not None and in_start_button(point, width, height):
+            point = (x, max(y + 0.02 * height, (START_BUTTON_BOX[1] - 0.01) * height))
+            if in_start_button(point, width, height):
+                continue
+        out.append(point)
+    return out
 
 
 # ------------------------------------------------------------------ 换人决策

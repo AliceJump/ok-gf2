@@ -146,6 +146,8 @@ class DailyActivityMixin:
     def _claim_supply_activity(self, reward_activity):
         """验证补给页与领取结果，无法确认时保留待核查。"""
         page_match = re.compile(r"^\s*" + r"\s*".join(map(re.escape, reward_activity)) + r"\s*$")
+        # 战前补给的正文标题位于画面中下方、左半屏；排除侧栏，不能仅凭入口文字确认页面。
+        page_box = self.box_of_screen(0.24, 0, 1, 1)
         claim_match = re.compile(r"^\s*(?:一\s*键\s*)?领\s*取(?:\s*奖\s*励)?\s*$")
         empty_match = re.compile(
             r"已\s*领\s*取|暂无可领取|未到领取时间|未到开放时间|"
@@ -153,7 +155,7 @@ class DailyActivityMixin:
         )
         claimed = 0
         for _ in range(10):
-            if not self.wait_ocr(match=page_match, box=self.box.right, time_out=3, raise_if_not_found=False):
+            if not self.wait_ocr(match=page_match, box=page_box, time_out=3, raise_if_not_found=False):
                 self.info_set(reward_activity, "待核查：未确认补给页面")
                 return "待核查"
             # 必须完整匹配，不能把「已领取」当成「领取」反复点击。
