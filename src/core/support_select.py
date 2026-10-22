@@ -66,6 +66,24 @@ def find_cards(boxes, width, height, badge_of=None):
     return cards
 
 
+# 「强制出战」字样在战力数字正上方（1280x768 实测：字中心比战力中心高 22px）
+forced_re = re.compile(r"强\s*制|制\s*出\s*战")
+
+
+def mark_forced(cards, labels, width, height):
+    """把「强制出战」字样对到它正下方的卡片上：card["forced"] = True。返回被标记的卡片。"""
+    out = []
+    for c in cards:
+        px, py = _center(c["power_box"])
+        c["forced"] = any(
+            abs(_center(b)[0] - px) < 0.03 * width and -0.05 * height < _center(b)[1] - py < -0.005 * height
+            for b in labels
+        )
+        if c["forced"]:
+            out.append(c)
+    return out
+
+
 def check_point(card, width, height):
     """卡片右上角橙色勾的采样点。"""
     px, py = _center(card["power_box"])

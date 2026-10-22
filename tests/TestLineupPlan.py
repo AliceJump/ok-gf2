@@ -29,6 +29,10 @@ def own(name, power, deployed=False):
     return Unit(name, power, deployed=deployed)
 
 
+def forced(name, power):
+    return Unit(name, power, deployed=True, locked=True)
+
+
 def sup(name, power=0):
     return Unit(name, power, deployed=True, support=True)
 
@@ -112,6 +116,44 @@ class PlanTest(unittest.TestCase):
         )
 
 
+class ForcedPlanTest(unittest.TestCase):
+    """实录 2026-10-21 LA-1-5：闪电、乌尔丽德「强制出战」，5 个位置，春田 + 助战威玛西娜已在场。"""
+
+    OWN = [forced("闪电", 10840), forced("乌尔丽德", 7136), own("春田", 3224, True), own("琼玖", 5505), own("A", 4522)]
+
+    def test_forced_count_as_deployed_and_fill_rest(self):
+        state = LineupState(5, 4, own=list(self.OWN), supports_on_map=[sup("威玛西娜")])
+        self.assertEqual(actions(plan_lineup(state, Unit("威玛西娜", 1, support=True))), [("deploy", "琼玖")])
+
+    def test_forced_never_withdrawn_to_make_room(self):
+        state = LineupState(3, 3, own=[forced("闪电", 100), forced("乌尔丽德", 200), own("春田", 900, True)])
+        self.assertEqual(
+            actions(plan_lineup(state, Unit("X", 1, support=True))), [("withdraw", "春田"), ("deploy", "X")]
+        )
+
+    def test_only_forced_left_support_waits(self):
+        state = LineupState(2, 2, own=[forced("闪电", 100), forced("乌尔丽德", 200), own("春田", 900)])
+        self.assertEqual(actions(plan_lineup(state, Unit("X", 1, support=True))), [("deploy", "X")])
+
+    def test_forced_same_name_as_support_skips_support(self):
+        state = LineupState(4, 2, own=[forced("威玛西娜", 4522), own("春田", 3224, True), own("琼玖", 5505)])
+        self.assertEqual(actions(plan_lineup(state, Unit("威玛西娜", 1, support=True))), [("deploy", "琼玖")])
+
+
+class MarkForcedTest(unittest.TestCase):
+    """1280x768 实测：「强制出战」字中心 (1032,222)/(1124,222)，战力中心 (1032,244)/(1124,244)/(1217,244)。"""
+
+    def test_label_above_power_marks_card(self):
+        from src.core.support_select import mark_forced
+
+        cards = [{"power_box": box(str(p), x - 18, 237, 36, 14)} for p, x in ((10840, 1032), (7136, 1124), (3224, 1217))]
+        cards.append({"power_box": box("5505", 1032 - 18, 349, 36, 14)})  # 第二行：上面的字在两行之外
+        labels = [box("强制出战", 1032 - 25, 215, 50, 14), box("强制出战", 1124 - 25, 215, 50, 14)]
+        marked = mark_forced(cards, labels, 1280, 768)
+        self.assertEqual([c["power_box"].name for c in marked], ["10840", "7136"])
+        self.assertEqual([c["forced"] for c in cards], [True, True, False, False])
+
+
 def box(name, x, y, w=60, h=30):
     return SimpleNamespace(name=name, x=x, y=y, width=w, height=h)
 
@@ -141,8 +183,9 @@ class CountTest(unittest.TestCase):
 class FakeScreen(LineupMixin):
     """模拟部署界面：只模拟观察/撤/上这几个动作的效果，可以注入失手。"""
 
-    def __init__(self, cap, own_cards, on_map, support_list=(), fail=()):
+    def __init__(self, cap, own_cards, on_map, support_list=(), fail=(), forced=()):
         self.cap = cap
+        self.forced = set(forced)  # 强制出战的我方人形：一直在场、撤不下来
         self.own_cards = dict(own_cards)  # 名字 -> 战力
         self.on_map = list(on_map)  # [(名字, 是否助战)]
         self.fail = list(fail)  # 依次消耗的失手：("withdraw", 名字) / ("deploy", 名字) / ("count", None)
@@ -182,7 +225,9 @@ class FakeScreen(LineupMixin):
             self.fail.append(("count", None))
         n = None if self._take_fail("count", None) else len(self.on_map)
         own_on = {name for name, s in self.on_map if not s}
-        units = [Unit(name, p, deployed=name in own_on) for name, p in self.own_cards.items()]
+        units = [
+            Unit(name, p, deployed=name in own_on, locked=name in self.forced) for name, p in self.own_cards.items()
+        ]
         supports = [Unit(name, 0, deployed=True, support=True) for name, s in self.on_map if s] if need_map else []
         known = self._borrowed_support or (want.name if want is not None and want.deployed else None)
         if self.map_blind:
@@ -193,7 +238,7 @@ class FakeScreen(LineupMixin):
 
     def _withdraw(self, step):
         u = step.unit
-        if self._take_fail("withdraw", u.name):
+        if self._take_fail("withdraw", u.name) or u.name in self.forced:
             return False
         self.on_map.remove((u.name, u.support))
         return True
@@ -279,6 +324,20 @@ class ReconcileTest(unittest.TestCase):
         s.reconcile_lineup(Unit("威玛西娜", 24871, deployed=True, support=True))
         self.assertEqual(deployed, [])
         self.assertEqual(len(s.on_map), 4)
+
+    def test_forced_units_stay_and_rest_filled(self):
+        """实录 2026-10-21 LA-1-5：旧逻辑没认出灰勾，想再部署一次强制出战的闪电，点两次没反应。"""
+        own_cards = {"闪电": 10840, "乌尔丽德": 7136, "春田": 3224, "琼玖": 5505, "罗蕾莱": 1408}
+        s = FakeScreen(
+            5,
+            own_cards,
+            [("闪电", False), ("乌尔丽德", False), ("春田", False), ("威玛西娜", True)],
+            forced=("闪电", "乌尔丽德"),
+        )
+        self.assertTrue(s.reconcile_lineup(WANT))
+        self.assertIn(("琼玖", False), s.on_map)
+        self.assertIn(("闪电", False), s.on_map)
+        self.assertNotIn(("罗蕾莱", False), s.on_map)
 
     def test_keep_existing_support(self):
         s = FakeScreen(4, OWN, [("春田", False), ("贝丝蒂", False), ("琼玖", False), ("威玛西娜", True)])
