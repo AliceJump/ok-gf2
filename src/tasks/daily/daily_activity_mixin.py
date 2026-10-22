@@ -596,8 +596,8 @@ class DailyActivityMixin:
                             return "confirm"
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
                     # 实录：今天已经吃过饭时点「下一步」后不会出现「确认邀请」，留下画面文字和截图，好判断是不是"已完成"
-                    texts = [b.name for b in self.ocr()]
-                    self.log_info(f"没找到「{second_btn}」，当前画面文字: {texts[:15]}", notify=False)
+                    self.log_info(f"没找到「{second_btn}」，当前画面文字见下一行 OCR 日志", notify=False)
+                    self.ocr(log=True)
                     self.screenshot("food_second_button_missing")
                     return "confirm"
                 if need_extra_confirm:
