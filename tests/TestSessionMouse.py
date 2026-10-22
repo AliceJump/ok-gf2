@@ -13,6 +13,20 @@ from unittest.mock import Mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.core.input_env import (  # noqa: E402
+    ENV_AUTO,
+    ENV_CONSOLE,
+    ENV_RDP,
+    KEY_CONSOLE_DEVICE,
+    KEY_ENVIRONMENT,
+    KEY_RDP_DEVICE,
+    KEY_SESSION_MOUSE,
+    KIND_CONSOLE,
+    KIND_RDP,
+    choose_input,
+    input_key,
+    pinned_device,
+)
 from src.core.session_mouse import (  # noqa: E402
     BTN_LEFT,
     BTN_RIGHT,
@@ -20,6 +34,7 @@ from src.core.session_mouse import (  # noqa: E402
     SessionMouseError,
     absolute_point,
     button_edges,
+    is_candidate,
     select_session_device,
 )
 
@@ -56,6 +71,53 @@ class PureFunctionTest(unittest.TestCase):
         with self.assertRaises(SessionMouseError):
             select_session_device({3}, {12: 1})  # 标记来自不是候选的设备
 
+    def test_console_takes_lowest_of_received_physical_mice(self):
+        """本机桌面的真实鼠标都进控制台（实测：11 无线鼠标接收器、12 键盘上的鼠标集合），收到几台都行。"""
+        self.assertEqual(select_session_device({12, 11}, {11: 1, 12: 2}, KIND_CONSOLE), 11)
+        with self.assertRaises(SessionMouseError):
+            select_session_device(set(), {11: 1}, KIND_CONSOLE)
+
+    def test_candidates_by_environment(self):
+        self.assertTrue(is_candidate("TS_INPT\\TS_MOU", KIND_RDP))
+        self.assertFalse(is_candidate("HID\\VID_046D&PID_C54D&REV_1402&MI_00", KIND_RDP))
+        self.assertTrue(is_candidate("HID\\VID_046D&PID_C54D&REV_1402&MI_00", KIND_CONSOLE))
+        self.assertFalse(is_candidate("TS_INPT\\TS_MOU", KIND_CONSOLE))  # 本机桌面绝不碰 RDP 鼠标
+        self.assertFalse(is_candidate("", KIND_CONSOLE))
+
+
+class ChooseInputTest(unittest.TestCase):
+    def test_auto_uses_rdp_mouse_only_in_rdp(self):
+        self.assertEqual(choose_input({}, KIND_RDP)[:2], (KIND_RDP, None))
+        kind, _, reason = choose_input({}, KIND_CONSOLE)
+        self.assertIsNone(kind)  # 自动识别到本机桌面不接管人的鼠标
+        self.assertIn("本机桌面", reason)
+
+    def test_explicit_environment_must_match_actual(self):
+        self.assertEqual(choose_input({KEY_ENVIRONMENT: ENV_CONSOLE}, KIND_CONSOLE)[:2], (KIND_CONSOLE, None))
+        self.assertEqual(choose_input({KEY_ENVIRONMENT: ENV_RDP}, KIND_RDP)[:2], (KIND_RDP, None))
+        kind, _, reason = choose_input({KEY_ENVIRONMENT: ENV_RDP}, KIND_CONSOLE)
+        self.assertIsNone(kind)
+        self.assertIn("实际跑在「本机桌面」", reason)
+        self.assertIsNone(choose_input({KEY_ENVIRONMENT: ENV_CONSOLE}, KIND_RDP)[0])
+
+    def test_device_setting_per_environment(self):
+        settings = {KEY_ENVIRONMENT: ENV_AUTO, KEY_RDP_DEVICE: "13", KEY_CONSOLE_DEVICE: "11"}
+        self.assertEqual(choose_input(settings, KIND_RDP)[:2], (KIND_RDP, 13))
+        settings[KEY_ENVIRONMENT] = ENV_CONSOLE
+        self.assertEqual(choose_input(settings, KIND_CONSOLE)[:2], (KIND_CONSOLE, 11))
+
+    def test_switch_off_or_unknown_session_uses_post_message(self):
+        self.assertIsNone(choose_input({KEY_SESSION_MOUSE: False}, KIND_RDP)[0])
+        self.assertIsNone(choose_input({}, None)[0])
+        self.assertIsNone(choose_input({KEY_ENVIRONMENT: "别的"}, KIND_RDP)[0])
+
+    def test_pinned_device_and_key(self):
+        self.assertEqual(pinned_device("15"), 15)
+        for value in ("自动", "", None, "3", "abc"):
+            self.assertIsNone(pinned_device(value))
+        self.assertEqual(input_key({}), input_key({KEY_ENVIRONMENT: ENV_AUTO}))
+        self.assertNotEqual(input_key({}), input_key({KEY_ENVIRONMENT: ENV_CONSOLE}))
+
 
 class FakeChannel:
     index = 15
@@ -71,10 +133,11 @@ class FakeChannel:
         self.closed = True
 
 
-def make_device(session=3, cursor=None):
-    state = {"session": session, "cursor": cursor or (0, 0)}
+def make_device(session=3, cursor=None, kind=KIND_RDP):
+    state = {"session": session, "cursor": cursor or (0, 0), "kind": kind}
     dev = SessionMouseDevice(
-        session_id_fn=lambda: state["session"],
+        kind=kind,
+        identity_fn=lambda: (state["kind"], state["session"]),
         bounds_fn=lambda: (0, 0, 2560, 1440),
         cursor_fn=lambda: state["cursor"],
     )
@@ -111,6 +174,19 @@ class SessionMouseDeviceTest(unittest.TestCase):
         state["session"] = 4
         self.assertFalse(dev.move(10, 10))
         self.assertEqual(dev.channel.packets, [])
+
+    def test_environment_change_refuses_to_write(self):
+        dev, state = make_device(kind=KIND_CONSOLE, session=1)
+        self.assertTrue(dev.move(10, 10, settle=0))
+        state["kind"] = KIND_RDP  # 同一会话号被当成远程桌面连进来，也不再用控制台的真实鼠标
+        self.assertFalse(dev.move(20, 20))
+        self.assertEqual(len(dev.channel.packets), 1)
+
+    def test_open_refuses_wrong_environment(self):
+        dev = SessionMouseDevice(kind=KIND_CONSOLE, identity_fn=lambda: (KIND_RDP, 3))
+        if sys.platform == "win32":
+            self.assertFalse(dev.open())
+        self.assertFalse(dev.bound)
 
     def test_move_waits_for_cursor_but_does_not_fail_on_mismatch(self):
         dev, state = make_device(cursor=(0, 0))
@@ -172,8 +248,11 @@ class FakeGenshin:
 
 class FakeDevice:
     opens = True
+    created = []
 
-    def __init__(self):
+    def __init__(self, kind=None, device=None):
+        self.kind, self.device = kind, device
+        FakeDevice.created.append(self)
         self.calls = []
         self.device_path = "fake"
         self.click_ok = True
@@ -211,16 +290,22 @@ ns = {
     "BTN_LEFT": 1,
     "BUTTON_OF_KEY": {"left": 1, "right": 2, "middle": 4},
     "INPUT_OPTION_NAME": "输入",
-    "KEY_SESSION_MOUSE": "会话鼠标驱动",
+    "choose_input": choose_input,
+    "input_key": input_key,
+    "current_kind": lambda: STATE["kind"],
+    "input_settings": lambda: dict(STATE["settings"]),
     "logger": Mock(),
     "time": __import__("time"),
 }
+STATE = {"kind": KIND_RDP, "settings": {}}
 exec(compile(ast.Module(body=[cls], type_ignores=[]), str(source), "exec"), ns)
 GfInteraction = ns["GfInteraction"]
 
 
-def make_interaction(bound=True, foreground=True, origin=(0, 0)):
+def make_interaction(bound=True, foreground=True, origin=(0, 0), kind=KIND_RDP, settings=None):
     FakeDevice.opens = bound
+    FakeDevice.created = []
+    STATE["kind"], STATE["settings"] = kind, settings or {}
     capture = SimpleNamespace(get_abs_cords=lambda x, y: (origin[0] + x, origin[1] + y))
     window = Mock()
     window.is_foreground.return_value = foreground
@@ -260,7 +345,35 @@ class GfInteractionTest(unittest.TestCase):
 
     def test_disabled_in_global_config_uses_post_message(self):
         it = make_interaction()
-        it.session_mouse_enabled = lambda: False
+        STATE["settings"] = {KEY_SESSION_MOUSE: False}
+        it.click(10, 20)
+        self.assertEqual(it.calls, [("post_click", 10, 20, "left")])
+        self.assertEqual(FakeDevice.created[0].calls, [("close",)])
+
+    def test_console_auto_stays_on_post_message(self):
+        it = make_interaction(kind=KIND_CONSOLE)
+        self.assertIsNone(it.session_mouse)
+        it.click(10, 20)
+        self.assertEqual(it.calls, [("post_click", 10, 20, "left")])
+
+    def test_console_environment_binds_real_mouse(self):
+        it = make_interaction(kind=KIND_CONSOLE, settings={KEY_ENVIRONMENT: ENV_CONSOLE, KEY_CONSOLE_DEVICE: "11"})
+        self.assertEqual((it.session_mouse.kind, it.session_mouse.device), (KIND_CONSOLE, 11))
+        it.click(10, 20)
+        self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_changing_environment_rebinds_before_next_click(self):
+        it = make_interaction(kind=KIND_CONSOLE)
+        it.click(1, 1)
+        STATE["settings"] = {KEY_ENVIRONMENT: ENV_CONSOLE}
+        it.click(2, 2)
+        self.assertEqual(it.calls, [("post_click", 1, 1, "left")])
+        self.assertEqual(it.session_mouse.kind, KIND_CONSOLE)
+        self.assertEqual(it.session_mouse.calls, [("click", 2, 2, 1)])
+
+    def test_mismatched_environment_never_binds(self):
+        it = make_interaction(kind=KIND_RDP, settings={KEY_ENVIRONMENT: ENV_CONSOLE})
+        self.assertEqual(FakeDevice.created, [])
         it.click(10, 20)
         self.assertEqual(it.calls, [("post_click", 10, 20, "left")])
 
