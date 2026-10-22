@@ -1,6 +1,7 @@
 """限时活动相关：活动自律（物资关卡）、活动层（喝水/吃饭/领奖）、活动列表识别。"""
 
 import re
+import time
 
 import win32api
 import win32gui
@@ -25,6 +26,8 @@ DRINK_ROUTE = "1.087-1.0-0.6"
 EAT_ROUTE = "0.65"
 # 旧默认值是按「中间停顿」量的，换成连续按键后已经不对；存着旧默认值的配置按新默认走
 LEGACY_ROUTES = {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)}
+# 进活动层时画面还是黑屏/加载页，在入口原有的 8+12 秒之外最多再等这么久
+LAYER_LOADING_GRACE = 40
 
 
 class DailyActivityMixin:
@@ -201,9 +204,31 @@ class DailyActivityMixin:
                 # 额外等待后重新确认主页，避免单次 OCR 漏读提前结束重试。
                 home = self.ocr(box=self.box.right, match=["整备室", "公共区", "活动层", "招募"])
                 if len(home) < 2:
+                    if self._wait_free_layer_loading():
+                        return True
                     break
         self.log_warning("活动层入口未成功打开，恢复主页后继续后续步骤")
         self.screenshot("activity_layer_entry_failed")
+        return False
+
+    def _wait_free_layer_loading(self, grace=LAYER_LOADING_GRACE):
+        """
+        点了入口、等过 HUD 也不在主页：画面还是黑屏或加载页就接着等 HUD，最多再等 grace 秒。
+
+        实录 2026-10-22：当天第一次进活动层，画面全黑 20 多秒（OCR 一个字都读不到）才出 HUD，
+        原来 8+12 秒就判失败；回主页按 ESC 才弹出「是否离开活动层」，说明其实已经进去了，喝水那一轮被整个跳过。
+        """
+        deadline = time.time() + grace
+        logged = False
+        while time.time() < deadline:
+            self.next_frame()
+            if not self._is_loading_frame(self.ocr()):
+                return self.is_free_layer(time_out=2)
+            if not logged:
+                self.log_info("进活动层还在黑屏/加载，继续等", notify=False)
+                logged = True
+            if self.is_free_layer(time_out=4):
+                return True
         return False
 
     def free_time_layer(self):
@@ -382,6 +407,12 @@ class DailyActivityMixin:
         self._claim_activity_panel_rewards()
         if self._dismiss_activity_progress_dialog() is False:
             self.info_set("浇灌", "待核查：进度窗口未关闭")
+            return "待核查"
+        # 实录 2026-10-22：领奖升到 Lv.11 多弹了一层升级提示，关进度窗口的 ESC 把整个 F2 面板也关了，
+        # 画面只剩活动层背景，找不到栽培页签，浇灌被跳过（游戏里显示「今日未浇水」）。面板没了就重新打开
+        if not self._ensure_activity_panel():
+            self.info_set("浇灌", "已跳过：未识别到栽培入口")
+            self.log_info("关掉进度窗口后 F2 面板没能重新打开，跳过浇灌并继续后续任务")
             return "待核查"
         watering_match = re.compile(r"浇\s*灌")
         # F2 可能直接选中栽培页；优先识别内容，避免依赖选中页签的黑字。
