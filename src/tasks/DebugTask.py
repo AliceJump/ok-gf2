@@ -18,6 +18,7 @@ class DebugTask(BaseGfTask):
                 "先回主页": False,
                 "点击文字": "",
                 "点击坐标": "",
+                "拖动": "",
                 "按ESC次数": 0,
                 "按键": "",
                 "截图并OCR": False,
@@ -28,6 +29,7 @@ class DebugTask(BaseGfTask):
                 "先回主页": "先执行 ensure_main 回到游戏主页再做后面的动作",
                 "点击文字": "非空时用 OCR 找到这个文字并点击（支持正则），找不到就报错",
                 "点击坐标": "非空时点击这个相对坐标，格式 x,y（0~1），如 0.3,0.5",
+                "拖动": "非空时按住从 x1,y1 拖到 x2,y2（相对坐标 0~1），如 0.85,0.5,0.25,0.5",
                 "按ESC次数": "点击之后再按几次 ESC",
                 "按键": "最后按这些键，逗号分隔，键:秒 表示按住多久，如 f2 或 w:1.5,e",
                 "截图并OCR": "把当前画面全部 OCR 一遍，文字写进日志，截图存到 screenshots/调试工具/",
@@ -49,6 +51,12 @@ class DebugTask(BaseGfTask):
             x, y = (float(v) for v in coord.split(","))
             self.log_info(f"点击相对坐标 ({x}, {y})", notify=True)
             self.click_relative(x, y, after_sleep=1.5)
+        drag = (self.config.get("拖动") or "").strip()
+        if drag:
+            x1, y1, x2, y2 = (float(v) for v in drag.split(","))
+            self.log_info(f"拖动 ({x1}, {y1}) -> ({x2}, {y2})", notify=True)
+            self.swipe_relative(x1, y1, x2, y2, duration=0.6)
+            self.sleep(1.5)
         for _ in range(int(self.config.get("按ESC次数") or 0)):
             self.back(after_sleep=1.5)
         for item in (self.config.get("按键") or "").split(","):
