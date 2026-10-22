@@ -12,9 +12,12 @@ from src.core.lineup_config import KEY_FALLBACK, KEY_MIN_BADGE, KEY_ROLE
 from src.core.lineup_plan import LineupState, Unit, plan_lineup
 from src.core.support_select import (
     check_point,
+    PANEL_BOX,
     filter_point,
+    forced_re,
     freed_tile,
     is_orange_check,
+    mark_forced,
     pick_candidates,
 )
 
@@ -84,7 +87,8 @@ class LineupMixin:
             ]
             self.log_info(
                 f"阵容第 {rnd + 1} 轮：{state.used()}/{state.capacity}，我方在场 "
-                f"{[u.name for u in state.own_deployed()]}，场上助战 {[u.name for u in state.supports_on_map]}，"
+                f"{[f'{u.name}(强制出战)' if u.locked else u.name for u in state.own_deployed()]}，"
+                f"场上助战 {[u.name for u in state.supports_on_map]}，"
                 f"要做 {[str(s) for s in steps] or '无'}",
                 notify=True,
             )
@@ -159,10 +163,13 @@ class LineupMixin:
     def _observe_own(self):
         self._open_own_tab()
         cards = self._scan_cards()
+        # 「强制出战」的卡勾是灰白的（不是橙勾），也算在场，并且撤不下来（实录 2026-10-21 LA-1-5）
+        mark_forced(cards, self._ocr_panel(PANEL_BOX, match=forced_re), self.width, self.height)
         units = []
         for c in cards:
-            on = is_orange_check(self.frame, *check_point(c, self.width, self.height))
-            units.append(Unit(c["name"], c["power"], deployed=on, ref=c))
+            forced = c.get("forced", False)
+            on = forced or is_orange_check(self.frame, *check_point(c, self.width, self.height))
+            units.append(Unit(c["name"], c["power"], deployed=on, locked=forced, ref=c))
         for u in units:
             if u.deployed and not u.name:
                 # 在场的必须知道名字（同名判断要用），立绘没认出来就点一下读

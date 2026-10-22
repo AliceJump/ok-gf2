@@ -12,6 +12,8 @@
 4. 腾完还是满的：撤我方战力最低的给助战让位；
 5. 部署助战；
 6. 剩下的空位按战力从高到低补我方没上场的人形（不补和助战同名的）。
+7. 「强制出战」的人形（关卡指定，撤不下来）：当它占的格子不存在，不撤、不拿来让位；
+   它和要借的助战同名时这次不借助战（实录 2026-10-21 LA-1-5：闪电、乌尔丽德强制出战）。
 """
 
 import re
@@ -26,6 +28,7 @@ class Unit:
     power: int = 0
     deployed: bool = False
     support: bool = False  # 好友助战（不是我的人形）
+    locked: bool = False  # 「强制出战」：关卡指定上场，撤不下来
     ref: object = None  # 执行时用的定位信息（卡片 dict / 地格坐标），规划不看
 
 
@@ -81,14 +84,17 @@ def plan_lineup(state, want_support=None, like=name_like, exclude=()):
             else:
                 steps.append(Step("withdraw", s, "上一关留下的助战"))
                 used -= 1
-        if not support_ok:
+        if not support_ok and any(u.locked and like(u.name, want_support.name) for u in state.own_deployed()):
+            # 强制出战里有同名人形，游戏不让同名同时上场，助战上不去
+            want_support = None
+        if want_support is not None and not support_ok:
             for u in state.own_deployed():
                 if like(u.name, want_support.name):
                     steps.append(Step("withdraw", u, "与助战同名"))
                     used -= 1
             if cap is not None and used >= cap:
                 withdrawn = {id(s.unit) for s in steps}
-                left = [u for u in state.own_deployed() if id(u) not in withdrawn]
+                left = [u for u in state.own_deployed() if id(u) not in withdrawn and not u.locked]
                 if left:
                     weakest = min(left, key=lambda u: u.power)
                     steps.append(Step("withdraw", weakest, f"给助战让位，我方战力最低({weakest.power})"))
