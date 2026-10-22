@@ -253,11 +253,12 @@ class WaterFlowersTest(unittest.TestCase):
 
 class FoodFlowResultTest(unittest.TestCase):
     def test_missing_second_button_reports_confirm_failure(self):
+        """Verify missing second button reports confirm failure."""
         task = Mock()
         task.box.bottom_right = "bottom_right"
-        task.wait_ocr.return_value = object()
+        task.wait_ocr.return_value = [SimpleNamespace(name="entry")]
         task.wait_click_ocr.side_effect = [True, False]
-        task._dismiss_already_active.return_value = False  # 没弹「已有 xx 生效中，是否确认更换」
+        task._skip_active_food_buff.return_value = None  # 没弹「已有 xx 生效中，是否确认更换」
         task.ocr.return_value = []  # 没找到第二个按钮时会记录画面文字
         enter_func = Mock()
 

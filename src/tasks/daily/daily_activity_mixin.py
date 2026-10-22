@@ -426,6 +426,73 @@ class DailyActivityMixin:
         self.back(after_sleep=2)
         return completed
 
+    def _skip_active_food_buff(self, next_match=None):
+        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。"""
+        # 只点「取消」，千万不能点确认（会把材料再花一遍）；后半段同 food_active_re，覆盖 OCR 把这句拆成几段的情况
+        duplicate = re.compile(
+            r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)|当前已有.+?生效中.*确认更换|生效中|是否确认更换|已有.{0,12}生效"
+        )
+
+        def page_state():
+            """页面状态判定：无重复弹窗且出现预期界面"""
+            if self.ocr(match=duplicate, box=self.box.center):
+                return False
+            if next_match is not None:
+                return bool(self.ocr(match=next_match, box=self.box.center))
+            return (
+                not self.ocr(match="饮品加成")
+                and len(self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)) >= 5
+            )
+
+        if not self.wait_until(
+            lambda: self.ocr(match=duplicate, box=self.box.center),
+            time_out=3,
+            raise_if_not_found=False,
+        ):
+            return None
+        if not self.wait_click_ocr(
+            match="取消",
+            box=self.box.center,
+            time_out=2,
+            raise_if_not_found=False,
+            after_sleep=0.5,
+        ):
+            self.screenshot("food_duplicate_cancel_failed")
+            return False
+        if not self.wait_until(page_state, time_out=3, settle_time=0):
+            self.screenshot("food_duplicate_dialog_blocked")
+            return False
+        self.log_info("已确认同名饮食增益生效，取消重复制作，继续日常")
+        return True
+
+    def _confirm_drink_result(self):
+        """确认饮品结果页已关闭并回到活动层，丢失点击最多重试三次。"""
+
+        def returned_to_layer():
+            # time_out=0 在 ok-script 中使用默认超时，不能用于外层轮询。
+            # HUD 同样直接读取当前帧，避免 is_free_layer 内部再次等待。
+            """单帧确认结果页消失且活动层 HUD 出现，避免嵌套默认超时。"""
+            return (
+                not self.ocr(match="饮品加成")
+                and len(self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)) >= 5
+            )
+
+        for attempt in range(3):
+            if not self.wait_click_ocr(
+                match=re.compile(r"^\s*确\s*认\s*$"),
+                box=self.box.bottom,
+                time_out=3,
+                raise_if_not_found=False,
+                after_sleep=1,
+            ):
+                if returned_to_layer():
+                    return True
+            elif self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
+                return True
+            self.log_warning(f"饮品加成确认后未返回活动层，重试 {attempt + 1}/3")
+        self.screenshot("drink_result_blocked")
+        return False
+
     def do_food_flow(
         self,
         *,
@@ -457,6 +524,37 @@ class DailyActivityMixin:
                     if result := self.wait_ocr(match=entry_match, time_out=2):
                         break
             if result:
+                drink_done = False
+                if main_btn == "制作":
+                    for entry in result:
+                        name = getattr(entry, "name", "")
+                        title = re.search(r"茶\s*歇\s*一\s*刻", name)
+                        if not title:
+                            continue
+                        count = re.search(r"(\d+)\s*[/／]\s*(\d+)\s*$", name[title.end() :])
+                        if count:
+                            drink_done = count.groups() == ("1", "1")
+                        else:
+                            # 计数可能被 OCR 分成独立框，只读取入口旁及下方的局部区域。
+                            h = entry.height
+                            count_box = self.box_of_screen(
+                                max(0, (entry.x - h) / self.width),
+                                max(0, (entry.y - h / 2) / self.height),
+                                min(1, (entry.x + entry.width + 4 * h) / self.width),
+                                min(1, (entry.y + 3 * h) / self.height),
+                            )
+                            drink_done = bool(
+                                self.ocr(
+                                    match=re.compile(r"^\s*1\s*[/／]\s*1\s*$"),
+                                    box=count_box,
+                                    log=True,
+                                )
+                            )
+                        if drink_done:
+                            break
+                if drink_done:
+                    self.log_info("茶歇一刻 1/1：今日喝水已完成，跳过重复制作")
+                    return True
                 self.click_with_key("alt", result)
             else:
                 self.screenshot(f"food_entry_missing_{entry_match.pattern}")
@@ -470,17 +568,46 @@ class DailyActivityMixin:
                 self.back(after_sleep=2)
                 return "done"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                if self._dismiss_already_active(getattr(entry_match, "pattern", entry_match)):
-                    return "done"
+                duplicate_result = self._skip_active_food_buff(next_match=second_btn if main_btn == "下一步" else None)
+                if duplicate_result is True:
+                    return True
+                if duplicate_result is False:
+                    return "confirm"
+                if main_btn == "制作":
+                    confirm_match = re.compile(r"^\s*确\s*认\s*$")
+                    if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
+                        if not self.ocr(match="制作", box=self.box.bottom_right):
+                            self.screenshot("food_make_unknown_page")
+                            return "confirm"
+                        if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
+                            # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
+                            if not self.wait_until(
+                                lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
+                            ):
+                                self.screenshot("food_make_retry_failed")
+                                return "confirm"
+                        duplicate_result = self._skip_active_food_buff()
+                        if duplicate_result is True:
+                            return True
+                        if duplicate_result is False:
+                            return "confirm"
+                        if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
+                            self.screenshot("food_make_not_advanced")
+                            return "confirm"
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
                     # 实录：今天已经吃过饭时点「下一步」后不会出现「确认邀请」，留下画面文字和截图，好判断是不是"已完成"
                     texts = [b.name for b in self.ocr()]
                     self.log_info(f"没找到「{second_btn}」，当前画面文字: {texts[:15]}", notify=False)
-                    self.screenshot(f"food_{second_btn}_missing")
+                    self.screenshot("food_second_button_missing")
                     return "confirm"
                 if need_extra_confirm:
                     self.wait_click_ocr(match="确认", time_out=3, after_sleep=1)
                 self.skip_dialogs(end_match=skip_end_match, time_out=60)
+                if skip_end_match == ["饮品加成"]:
+                    if self._confirm_drink_result() is False:
+                        self.log_error("饮品加成确认失败：结果页未关闭")
+                        return "confirm"
+                    return True
                 self.wait_click_ocr(match="确认", time_out=3, box=self.box.bottom, after_sleep=1)
                 self.wait_pop_up(count=1)
                 return True
@@ -488,24 +615,11 @@ class DailyActivityMixin:
                 if need_again_test and attempt == 0:
                     continue
                 else:
+                    self.ocr(log=True, screenshot=True)
+                    self.screenshot("food_main_button_missing")
                     self.back(after_sleep=2)
                     return "button"
         return "button"
-
-    def _dismiss_already_active(self, what):
-        """
-        点「下一步/制作」后弹出「当前已有 xx 生效中，是否确认更换?」说明今天已经吃过/喝过：
-        点「取消」（千万不能点确认，会把材料再花一遍），当作这项已完成。
-        """
-        if not self.wait_ocr(match=food_active_re, time_out=2, raise_if_not_found=False, log=True):
-            return False
-        self.log_info(f"今天已经有「{what}」的效果在生效中，点取消，这项算完成", notify=True)
-        self.screenshot("food_already_active")
-        if cancel := self.ocr(match=self.fix_match_regex(["取消"]), box=self.box.bottom):
-            self.click(cancel, after_sleep=1)
-        else:
-            self.back(after_sleep=1)
-        return True
 
     def go_drink(self, after_sleep=None):
         down_times = parse_time_option(self.config.get("喝水"))
