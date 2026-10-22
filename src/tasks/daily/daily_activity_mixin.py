@@ -456,8 +456,12 @@ class DailyActivityMixin:
         self.back(after_sleep=2)
         return completed
 
-    def _skip_active_food_buff(self, next_match=None):
-        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。"""
+    def _skip_active_food_buff(self, next_match=None, stay_match=None):
+        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。
+
+        stay_match：取消后留在原页面时右下角的按钮。实录 2026-10-21：今天已经吃过时点「下一步」弹
+        「已有 xx 生效中」，点「取消」后回到选择菜品页（右下角仍是「下一步」），不会出现「确认邀请」。
+        """
         # 只点「取消」，千万不能点确认（会把材料再花一遍）；后半段同 food_active_re，覆盖 OCR 把这句拆成几段的情况
         duplicate = re.compile(
             r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)|当前已有.+?生效中.*确认更换|生效中|是否确认更换|已有.{0,12}生效"
@@ -468,6 +472,8 @@ class DailyActivityMixin:
             if self.ocr(match=duplicate, box=self.box.center):
                 return False
             if next_match is not None:
+                if stay_match is not None and self.ocr(match=stay_match, box=self.box.bottom_right):
+                    return True
                 return bool(self.ocr(match=next_match, box=self.box.center))
             return (
                 not self.ocr(match="饮品加成")
@@ -598,7 +604,10 @@ class DailyActivityMixin:
                 self.back(after_sleep=2)
                 return "done"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                duplicate_result = self._skip_active_food_buff(next_match=second_btn if main_btn == "下一步" else None)
+                if main_btn == "下一步":
+                    duplicate_result = self._skip_active_food_buff(next_match=second_btn, stay_match=main_btn)
+                else:
+                    duplicate_result = self._skip_active_food_buff()
                 if duplicate_result is True:
                     return True
                 if duplicate_result is False:
