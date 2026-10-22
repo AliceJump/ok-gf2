@@ -38,6 +38,7 @@ from src.core.support_select import (
     find_tutorial_tile,
     find_unit_tags,
     identify_cards,
+    in_start_button,
     is_orange_check,
     parse_support_count,
     read_badge,
@@ -64,6 +65,13 @@ battle_ui_re = re.compile(r"行动结束|\d{1,2}\s*/\s*\d{1,2}\s*回合")
 # 体力不足弹窗「情报拼图补充」：三个页签从左到右是 调度室储存、情报拼图道具、坍塌晶条
 challenge_button_re = re.compile(r"^挑战?$")  # 选关面板右下角的「挑战」按钮，实机偶尔只 OCR 出一个字
 stamina_popup_re = re.compile(r"情报拼图补充|情报.{0,3}补充|体力不足|体力补充")
+# 活动剧情里的特殊演出页（实录 2026-10-22 密米尔的返演·下篇 PS-1-7）：「掩码列表 / 演算完成」只有一个「终止覆写」按钮，
+# 点了是「终止码演算」文字页，底部「点击空白处继续」字很淡 OCR 读不到。剧情的跳过点不掉，要专门点
+story_exit_re = re.compile(r"^终止覆写$")
+story_blank_re = re.compile(r"^终止码演算$|点击空白处继续")
+# 加载页每看到一次，skip_dialogs 的超时至少顺延到这么多秒以后。要比一次取帧可能卡住的时间长：加载页画面不动，
+# WGC 不出新帧，next_frame 会卡 10 秒以上（实录 2026-10-22 两次「资源加载中」页 30 秒超时，顺延 5 秒等于没顺延）
+LOADING_EXTEND = 30
 # 弹窗说明里出现这些字样，说明当前页签会消耗抽卡资源，绝不能点确认
 # 第三页签是坍塌晶条（抽卡资源），绝不能用；第二页签「消耗接入密钥兑换」是正常的体力道具，
 # 所以禁用词里不能有「兑换」
@@ -97,6 +105,15 @@ GAME_ALIVE_CHECK_INTERVAL = 10  # 秒：next_frame 里隔这么久查一次游�
 
 class GameCrashed(Exception):
     """任务跑到一半游戏进程没了。"""
+
+
+class BattleLost(Exception):
+    """战斗结算是「任务失败」。"""
+
+
+# 真的失败结算页底部有「重新挑战 / 战斗重演(9) / 确认」；战斗中途红色特效偶尔会被 OCR 读成「任务失败」
+# （实录 2026-10-21 16.0 章英雄难度 HZ-1-4：读到「任务失败」当打输跳过了，其实这关后来打赢了）
+failure_page_re = re.compile(r"重新挑战|战斗重演")
 
 
 def _with_game_started(run):
@@ -544,6 +561,10 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
                 if challenge := self.ocr(0.5, 0.85, 1, 1, match=challenge_button_re):
                     self.log_info("体力恢复后重新点「挑战」", notify=True)
                     self.click(challenge[0], after_sleep=2)
+            elif story_exit := self.find_boxes(boxes, match=story_exit_re):
+                self.click(story_exit, after_sleep=2)
+            elif self.find_boxes(boxes, match=story_blank_re):
+                self.click_relative(0.5, 0.6, after_sleep=2)
             elif result := self.find_boxes(boxes, match=end_match, boundary=end_box):
                 # 优先返回"继续前进"
                 for r in result:
@@ -563,7 +584,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
                     # 游戏在打/在加载，不算卡住，喂一下看门狗
                     self._touch_progress()
                 if self._is_loading_frame(boxes):
-                    deadline = min(max(deadline, time.time() + 5), hard_deadline)
+                    deadline = min(max(deadline, time.time() + LOADING_EXTEND), hard_deadline)
                 if has_dialog and (self.find_boxes(boxes, match=map_re) or self.find_boxes(boxes, match=nav_tabs_re)):
                     # 实录 2026-10-20：选关页面右上角是货币和「+」，真实输入下乱点会弹出「物品详情」；
                     # 章节选择页右上角是「模拟作战」页签，乱点会跑进模拟作战。导航页上什么都别点
@@ -828,7 +849,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         for t in reversed(find_deploy_tiles(self.frame, self.width, self.height)):
             if all((t["center"][0] - x) ** 2 + (t["center"][1] - y) ** 2 >= 45**2 for (x, y), _ in out):
                 out.append((t["center"], f"地格({int(t['center'][0])},{int(t['center'][1])}, 填充 {t['fill']})"))
-        return out[:6]
+        return [(c, d) for c, d in out if not in_start_button(c, self.width, self.height)][:6]
 
     def _select_unit_on_map(self, want):
         """点地图上的单位格子，直到左下角名字是 want。点中单位后右侧面板会切回「我的人形」。"""
@@ -876,7 +897,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
     def _occupied_and_empty(self):
         """(有人的地格列表, 空地格列表)：有人的按编号标签定位，空的用菱形模板找并排除标签附近的。"""
         tags = find_unit_tags(self.frame, self.width, self.height)
-        occupied = unit_tiles_from_tags(tags, self.height)
+        occupied = unit_tiles_from_tags(tags, self.height, self.width)
         tiles = find_deploy_tiles(self.frame, self.width, self.height)
         near = lambda t: any((t["center"][0] - x) ** 2 + (t["center"][1] - y) ** 2 < 45**2 for x, y in occupied)
         empty = [t for t in tiles if not near(t)]
@@ -904,6 +925,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             ]
             extra = fallback_empty_tiles(self.frame, self.width, self.height, [c for c, _ in out], occupied)
             out += [(c, f"兜底地格({int(c[0])},{int(c[1])})") for c in extra]
+        out = [(c, d) for c, d in out if not in_start_button(c, self.width, self.height)]
         self.log_info(f"阵容 {count}，候选地格 {len(out)} 个", notify=False)
         return out[:6]
 
@@ -1283,6 +1305,10 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             raise Exception(f"连续点击继续前进 {MAX_CONTINUE_STREAK} 次都没进入战斗，已停止")
         self.click_box(box, after_sleep=2)
 
+    def _is_failure_page(self):
+        """读到「任务失败」后核对：底部有「重新挑战 / 战斗重演」才是真的失败结算页。"""
+        return bool(self.wait_ocr(match=failure_page_re, box=self.box.bottom, time_out=3, raise_if_not_found=False))
+
     def _is_battle_frame(self, boxes):
         """
         判断当前帧是否为战斗中界面（存在「行动结束」或回合计数）。
@@ -1480,6 +1506,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
                         self.debug_shot("after_click_auto")
 
         clicked_continue = False
+        fake_failures = 0
         while results := self.skip_dialogs(
             # 实录 2026-10-20：真实输入下角落点击会把结算页点过去，等到的直接是选关页面，也算打完了
             end_match=[
@@ -1500,6 +1527,11 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             if battle_over_on_map(results):
                 self.log_info("结算页已经过去，回到了选关页面 / 章节选择页", notify=False)
                 break
+            if results[0].name == "任务失败" and fake_failures < 20 and not self._is_failure_page():
+                fake_failures += 1
+                self.log_info("读到「任务失败」但没有失败结算页的按钮，当成战斗特效误读，继续等", notify=False)
+                self.debug_shot("fake_failure", results)
+                continue
             # 优先遍历所有结果找"继续前进"
             clicked = False
             if any(r.name != "继续前进" for r in results):
@@ -1524,7 +1556,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         if not results:
             raise Exception("自动战斗异常")
         if results[0].name == "任务失败":
-            raise Exception("任务失败, 没打过!")
+            raise BattleLost("任务失败, 没打过!")
         if clicked_continue:
             self.log_info("检测到继续前进，点击后开启新一轮自动战斗", notify=True)
             self.auto_battle(
