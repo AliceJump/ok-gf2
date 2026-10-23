@@ -90,6 +90,11 @@ TAB_FALLBACK_XY = {"我的人形": (0.815, 0.039), "好友助战": (0.902, 0.039
 restart_required_re = re.compile(r"重新启动游戏|重启游戏|需要重启")
 GAME_RESTART_TITLE_TIMEOUT = 120  # 秒：重新拉起游戏后等标题页「点击开始」的时间（实机：启动到标题约 50 秒）
 GAME_EXIT_TIMEOUT = 20  # 秒：点「确认」后等游戏自己退出的时间，超过就直接结束进程
+# 标题页前的「用户中心初始化失败 / 请您稍后再试」+「重试」（实录 2026-10-22：刚拉起游戏时连服务器失败，点重试就进标题页了）。
+# ESC 关不掉它，不处理的话回主页一直超时
+init_failed_re = re.compile(r"初始化失败|稍后再试")
+INIT_RETRY_EXTEND = 60  # 秒：点了重试后回主页的超时从现在起至少再给这么久（重连 + 标题页）
+INIT_RETRY_MAX = 5  # 一次回主页最多点几次重试，一直失败就让它按原超时报错，别无限重连
 # 竞技场打完后的通知框 / 结算页（实录 2026-10-20）
 rank_up_notice_re = re.compile(r"晋升至|段位可获得|补给将通过邮件发放")  # 「您已晋升至新锐·三」段位晋升通知，ESC 能关
 battle_result_re = re.compile(r"^对战(胜利|失败)$|已结束$")  # 「对战胜利 / 对战失败」结算页只有「确认」能关
@@ -495,6 +500,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         最多多等 loading_grace 秒（实录：离开活动层的「艾莫号 移动中…69%」加载页把 60 秒耗光，任务被判失败）。
         """
         self.info_set("current_task", "go_to_main")
+        self._init_retries = 0
         deadline = time.time() + time_out
         hard_deadline = deadline + loading_grace
         extended = False
@@ -1627,6 +1633,8 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             return True
         if self._handle_restart_required():
             return False
+        if self._handle_init_failed():
+            return False
         # 剧情对话：右上角「自动 / 跳过 / 全部跳过」，ESC 没用，交给 skip_dialogs 点「跳过」
         # （实录 2026-10-21：停掉推图时正好在放下一章的开场剧情，接着跑一键日常，回主页 90 秒超时；OCR 会把「自动跳过」读成一个框）
         if self.ocr(box=self.box.top_right, match=story_skip_re):
@@ -2507,6 +2515,24 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             self._wait_game_exit(10)
         self._relaunch_game()
         self._deadline_bump = GAME_RESTART_TITLE_TIMEOUT
+        return True
+
+    def _handle_init_failed(self):
+        """
+        实录 2026-10-22：拉起游戏后停在「用户中心初始化失败 请您稍后再试」，框里只有「重试」，点一下就正常进标题页。
+        点重试并把回主页的超时顺延；同一次回主页里点满 INIT_RETRY_MAX 次就不再顺延，交给原来的超时报错。
+        """
+        if not self.ocr(box=self.box.center, match=init_failed_re, log=True):
+            return False
+        retry = self.ocr(match=re.compile(r"^重\s*试$"))
+        if not retry:
+            return False
+        self._init_retries = getattr(self, "_init_retries", 0) + 1
+        self.log_info(f"游戏提示用户中心初始化失败，点「重试」（第 {self._init_retries} 次）", notify=True)
+        self.debug_shot("init_failed")
+        self.click(retry, after_sleep=5)
+        if self._init_retries <= INIT_RETRY_MAX:
+            self._deadline_bump = INIT_RETRY_EXTEND
         return True
 
     def kill_all_related_processes(self):
