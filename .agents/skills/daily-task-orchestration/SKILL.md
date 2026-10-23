@@ -19,7 +19,7 @@ description: Orchestrate multi-step daily (每日) task plans in ok-gf2 with Dai
 | `daily_reward_mixin.py` | `DailyRewardMixin` | 邮件、委托、巡录、探索、闪耀星愿、社区每日 |
 | `daily_activity_mixin.py` | `DailyActivityMixin` | 活动自律、活动层（喝水/吃饭/领奖）、活动列表识别 |
 | `daily_public_mixin.py` | `DailyPublicMixin` | 公共区委托、自主循环、免费礼包与心愿单 |
-| `daily_battle_mixin.py` | `DailyBattleMixin` | 体力本、竞技场、兵棋推演、班组尘烟 |
+| `daily_battle_mixin.py` | `DailyBattleMixin` | 体力本、竞技场、班组尘烟 |
 
 MRO：`DailyTask(AccountMixin, DailyCommonMixin, DailyRewardMixin, DailyActivityMixin, DailyPublicMixin, DailyBattleMixin, CommunityMixin, BaseGfTask)`。
 

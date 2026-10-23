@@ -14,6 +14,9 @@ class DailyPublicMixin:
                 if time.time() - start_time > 10:
                     self.log_info("公共区委托界面停留过久，返回")
                     break
+                # 实录 2026-10-22：循环里不取新帧，10 秒都在看点「委托」之前的主页旧帧，调度室按钮永远找不到，
+                # 资源没领、也没再次派遣，日志里却记成功
+                self.next_frame()
                 buttons = self.find_feature(feature_name="ggq_can_button", box=self.box.left)
                 if buttons and len(buttons) >= 2:
                     break

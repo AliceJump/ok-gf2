@@ -1,4 +1,4 @@
-"""用可见页面和弹窗状态验证吃饭，不发送游戏输入。"""
+"""用可见页面和弹窗状态验证吃饭，不发送游戏输入。已有菜品生效时只取消、不覆盖（覆盖会再花一遍材料）。"""
 
 import ast
 import re
@@ -41,9 +41,25 @@ class FoodScreen:
         """以归一化边界表示识别区域。"""
         return bounds
 
-    def _skip_active_food_buff(self, next_match=None):
-        """模拟无重复饮食提示时继续当前流程。"""
-        return None
+    def _skip_active_food_buff(self, next_match=None, stay_match=None):
+        """模拟已有菜品生效的弹窗：只点「取消」回到选菜页，绝不确认覆盖（会把材料再花一遍）。"""
+        if self.state != "overwrite":
+            return None
+        self.clicks.append("取消")
+        self.state = "menu"
+        return True
+
+    def log_info(self, *args, **kwargs):
+        """忽略运行日志。"""
+        pass
+
+    def press_keys_sequence(self, keys, holds, **kwargs):
+        """找不到入口时的前后微调走位，不改变可见页面。"""
+        pass
+
+    def sleep(self, *args):
+        """不做真实等待。"""
+        pass
 
     def _confirm_drink_result(self):
         """模拟点击饮品结果页确认并返回活动层。"""
@@ -153,28 +169,13 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
-    def test_existing_dish_overwrite_then_invitation_completes(self):
-        """已有同名菜品时先确认覆盖，再完成邀请和结果确认。"""
+    def test_existing_dish_is_cancelled_not_overwritten(self):
+        """已有菜品生效时点「取消」当作今天已吃过，不点覆盖确认、不进邀请页。"""
         task = FoodScreen()
         self.assertIs(True, task.run())
-        self.assertEqual(["下一步", "确认", "确认邀请", "确认", "确认"], task.clicks)
-        self.assertEqual([], task.unsafe_clicks)
-        self.assertTrue(task.dialogs_skipped)
-
-    def test_ocr_spaces_in_overwrite_prompt_and_button(self):
-        """识别覆盖提示与确认按钮中的 OCR 空白。"""
-        task = FoodScreen()
-        task.prompt = "覆 盖 已 生 效 菜 品，是否确认继续"
-        task.confirm_label = "确 认"
-        self.assertIs(True, task.run())
-        self.assertEqual([], task.unsafe_clicks)
-
-    def test_overwrite_dialog_can_take_multiple_frames_to_close(self):
-        """允许覆盖确认后的关闭动画持续多个识别帧。"""
-        task = FoodScreen()
-        task.dismiss_frames = 2
-        self.assertIs(True, task.run())
-        self.assertEqual(["下一步", "确认", "确认邀请", "确认", "确认"], task.clicks)
+        self.assertEqual(["下一步", "取消"], task.clicks)
+        self.assertNotIn("确认", task.clicks)
+        self.assertFalse(task.dialogs_skipped)
 
     def test_no_overwrite_goes_straight_to_invitation(self):
         """没有覆盖弹窗时直接继续原有邀请流程。"""
@@ -182,50 +183,12 @@ class FoodFlowTest(unittest.TestCase):
         self.assertIs(True, task.run())
         self.assertEqual(["下一步", "确认邀请", "确认", "确认"], task.clicks)
 
-    def test_unknown_confirmation_is_not_accepted(self):
-        """未知购买提示不能授权点击确认。"""
-        task = FoodScreen()
-        task.prompt = "是否消耗晶条购买次数"
-        self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步"], task.clicks)
-        self.assertFalse(task.dialogs_skipped)
-
-    def test_background_overwrite_text_does_not_authorize_dialog_confirmation(self):
-        """中央弹窗之外的覆盖文字不能授权确认。"""
-        task = FoodScreen()
-        task.prompt_position = (0.90, 0.15)
-        self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步"], task.clicks)
-
-    def test_background_confirmation_button_is_not_clicked(self):
-        """中央弹窗之外的确认按钮不能被点击。"""
-        task = FoodScreen()
-        task.confirm_position = (0.90, 0.90)
-        self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步"], task.clicks)
-
-    def test_missing_overwrite_confirm_does_not_click_invite_label(self):
-        """缺少精确确认按钮时不能误点确认邀请。"""
-        task = FoodScreen()
-        task.confirm_label = "确认邀请"
-        self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步"], task.clicks)
-        self.assertFalse(task.dialogs_skipped)
-
-    def test_overwrite_dialog_stuck_stops_after_one_confirmation(self):
-        """覆盖弹窗卡住时仅点击一次并返回确认失败。"""
-        task = FoodScreen()
-        task.confirm_works = False
-        self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步", "确认"], task.clicks)
-        self.assertFalse(task.dialogs_skipped)
-
-    def test_missing_invitation_after_overwrite_is_failure(self):
-        """覆盖完成但邀请按钮缺失时不能报告成功。"""
-        task = FoodScreen()
+    def test_missing_invitation_is_failure(self):
+        """邀请按钮缺失时不能报告成功。"""
+        task = FoodScreen(overwrite=False)
         task.invite_present = False
         self.assertEqual("confirm", task.run())
-        self.assertEqual(["下一步", "确认"], task.clicks)
+        self.assertEqual(["下一步"], task.clicks)
         self.assertFalse(task.dialogs_skipped)
 
     def test_drinking_still_completes(self):

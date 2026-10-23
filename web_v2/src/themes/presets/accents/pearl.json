@@ -1,0 +1,14 @@
+{
+  "name": "pearl",
+  "label": {
+    "zh-CN": "珍珠白",
+    "zh-TW": "珍珠白",
+    "en-US": "Pearl",
+    "ja-JP": "パール",
+    "ko-KR": "펄 화이트"
+  },
+  "default": "#D1D5DB",
+  "hover": "#9CA3AF",
+  "light": "#F9FAFB",
+  "lightDark": "#374151"
+}

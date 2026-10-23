@@ -70,12 +70,14 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 
 - **[日常任务](docs/日常任务.md)**：一键长草，完成每日例行的各项操作
 - **[清图任务](docs/清图任务.md)**：自动清理地图关卡
+- **[往期活动推图](docs/往期活动推图.md)**：按顺序推完完成度不到 100% 的往期活动
 - **[兵棋推演](docs/兵棋推演.md)**：自动进行兵棋推演玩法
 - **活动体力扫荡**：自动扫荡活动关卡消耗体力
 - **竞技场**：自动进行竞技场战斗
 - **尘烟前线**：自动完成尘烟玩法
 - **要务**：自动完成要务任务
 - **[周常任务](docs/周常任务.md)**：自动完成每周例行任务
+- **[输入方式](docs/输入方式.md)**：RDP 会话里用 Interception 会话鼠标做真实点击，PostMessage 只作退路
 - **诊断**：框架内置诊断任务的简单封装
 
 ### 触发任务（后台运行）
@@ -257,3 +259,7 @@ python -m unittest tests/TestMain.py
 * [ok-oldking/OnnxOCR](https://github.com/ok-oldking/OnnxOCR)
 * [zhiyiYo/PyQt-Fluent-Widgets](https://github.com/zhiyiYo/PyQt-Fluent-Widgets)
 * [ok-oldking/ok-script](https://github.com/ok-oldking/ok-script)
+
+## 新版界面（可选）
+
+除现有 Qt 界面外，另提供一个按游戏板块分组、支持自定义流程的网页界面，用 `python tools/app_v2.py` 打开，说明见 [docs/新版界面.md](docs/新版界面.md)。两个界面共用同一份配置，但不能同时运行。

@@ -9,7 +9,9 @@ class XunluTest(unittest.TestCase):
         ns = {"xunlu": DailyRewardMixin.xunlu}
         task = Mock()
         task.wait_ocr.return_value = []
+        task.ocr.return_value = []  # 小框没读到时会再用整个底部找一次
         self.assertFalse(ns["xunlu"](task))
+        task.ocr.assert_called_once()
         task.wait_click_ocr.assert_not_called()
         task.ensure_main.assert_called_once()
 

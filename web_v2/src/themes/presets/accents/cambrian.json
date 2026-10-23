@@ -1,0 +1,14 @@
+{
+  "name": "cambrian",
+  "label": {
+    "zh-CN": "寒武岩灰",
+    "zh-TW": "寒武岩灰",
+    "en-US": "Cambrian",
+    "ja-JP": "カンブリアン",
+    "ko-KR": "캄브리안"
+  },
+  "default": "#3B4754",
+  "hover": "#2D3640",
+  "light": "#EBECEE",
+  "lightDark": "#1E242B"
+}

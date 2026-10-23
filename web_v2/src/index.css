@@ -1,0 +1,140 @@
+@import 'tailwindcss';
+
+/*
+ * 主题 CSS 变量：颜色值由 src/themes/index.ts 动态注入，这里只放固定值。
+ * 样式体系沿用 MXU（MistEO/MXU，AGPL-3.0）。
+ */
+:root {
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  /* 首帧用浅色默认值，避免主题脚本执行前闪白/闪黑 */
+  --color-bg-primary: #fafafa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f4f4f5;
+  --color-bg-hover: #e4e4e7;
+  --color-bg-active: #d4d4d8;
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-tertiary: #71717a;
+  --color-text-muted: #a1a1aa;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+  --color-accent: #1a4a8e;
+  --color-accent-hover: #14396e;
+  --color-accent-light: #e8edf4;
+  --color-success: #1a4a8e;
+  --color-info: #1a4a8e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+@theme {
+  --color-bg-primary: var(--color-bg-primary);
+  --color-bg-secondary: var(--color-bg-secondary);
+  --color-bg-tertiary: var(--color-bg-tertiary);
+  --color-bg-hover: var(--color-bg-hover);
+  --color-bg-active: var(--color-bg-active);
+
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --color-text-muted: var(--color-text-muted);
+
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-light: var(--color-accent-light);
+
+  --color-success: var(--color-success);
+  --color-info: var(--color-info);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
+}
+
+.transition-theme {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+@keyframes contextMenuIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-in {
+  animation-name: contextMenuIn;
+  animation-duration: 100ms;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.no-spinner[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+
+/* 运行中指示点 */
+@keyframes taskRunningPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px 1px var(--color-accent); }
+  50% { opacity: 0.6; box-shadow: 0 0 4px 0 var(--color-accent); }
+}
+.task-running-indicator { animation: taskRunningPulse 3s ease-in-out infinite; }
+
+/* 运行中的任务卡片边框呼吸 */
+@keyframes taskCardBreathing {
+  0%, 100% {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 8px 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  50% {
+    border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+    box-shadow: 0 0 2px 0 color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+}
+.task-item-running { animation: taskCardBreathing 3s ease-in-out infinite; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+
+@keyframes taskSlideIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-task-slide-in { animation: taskSlideIn 0.15s ease-out forwards; }
+
+/* 页面切换 */
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideOutToRight {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(24px); }
+}
+.page-slide-right-enter { animation: slideInFromRight 150ms ease-out forwards; }
+.page-slide-right-exit { animation: slideOutToRight 120ms ease-in forwards; }
+
+/* pywebview 无边框模式下标题栏可拖动 */
+.pywebview-drag-region { -webkit-app-region: drag; }

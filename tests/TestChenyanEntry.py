@@ -46,7 +46,7 @@ class ChenyanDevice:
             return [SimpleNamespace(name="班组")]
         if isinstance(match, list) and "每日要务已完成" in match:
             return [SimpleNamespace(name="每日要务已完成")]
-        if match == "攻坚战":
+        if match == "攻坚战" or (isinstance(match, list) and "攻坚战" in match):
             return [SimpleNamespace(name="攻坚战")] if self.ready else []
         if isinstance(match, re.Pattern):
             return [SimpleNamespace(name="尘烟前线")] if self.entry else []
@@ -96,6 +96,14 @@ class ChenyanDevice:
     def ensure_main(self, **kwargs):
         """Record recovery to the main page."""
         self.home = True
+
+    def next_frame(self):
+        """No new frame is needed by the simulation."""
+        pass
+
+    def set_lineup_kind(self, kind):
+        """Lineup scene selection does not affect this fixture."""
+        pass
 
 
 class TestChenyanEntry(unittest.TestCase):
