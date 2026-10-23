@@ -10,10 +10,11 @@ from pathlib import Path
 from src.core.BaseGfTask import BaseGfTask
 from src.tasks.AccountMixin import AccountMixin
 from src.tasks.CommunityClient import CommunityMixin
-from src.tasks.daily.daily_activity_mixin import DailyActivityMixin
+from src.tasks.daily.daily_activity_mixin import DRINK_ROUTE, EAT_ROUTE, DailyActivityMixin
 from src.tasks.daily.daily_battle_mixin import DailyBattleMixin
 from src.tasks.daily.daily_common_mixin import DailyCommonMixin
 from src.tasks.daily.daily_public_mixin import DailyPublicMixin
+from src.tasks.daily.daily_record import DailyRecord
 from src.tasks.daily.daily_reward_mixin import DailyRewardMixin
 from src.tasks.daily_summary import create_task_summary_report, open_local_path_with_default_app
 from src.tasks.DailyTaskRunner import DailyTaskRunner
@@ -74,10 +75,10 @@ class DailyTask(
                 "用户名": "使用账户密码方式登录网页社区时(不是直接的手机号或邮箱)\n account 请求负载中的 account_name 的值",
                 "密码": "使用账户密码方式登录网页社区时(不是直接的密码)\n account 请求负载中的 passwd 的值",
                 "喝水": (
-                    "活动层喝水动作的按键时长，格式：a键时长-w键时长-d键时长\n"
-                    "例：1.087-1.0-0.8；如果角色移动时被挡住，请微调各键时长"
+                    "活动层喝水动作的按键时长，格式：a键时长-w键时长-d键时长（三个键连续按，中间不停）\n"
+                    f"例：{DRINK_ROUTE}；如果角色走不到茶歇一刻，请微调各键时长"
                 ),
-                "吃饭": ("活动层吃饭动作的按键时长，格式：时长（秒）\n例：1.0"),
+                "吃饭": f"活动层吃饭动作按 s 键的时长（秒）\n例：{EAT_ROUTE}",
                 "社区每日": "自动完成社区每日任务（需填写用户名和密码）",
                 "邮件": "自动领取邮件中的所有奖励",
                 "情报/战前补给": "自动领取活动页面中的情报补给奖励",
@@ -91,6 +92,7 @@ class DailyTask(
                 "购买免费礼包": "自动购买商城中的免费礼包",
                 "商店心愿单购买": ("自动在各商店（家具/班组/调度/讯段/心智/人形堆栈）中\n一键购买心愿单商品"),
                 "尘烟": "需开启班组项",
+                "尘烟买第3次": "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）",
                 "领任务": "自动领取委托中的每日任务奖励",
                 "大月卡": "自动领取巡录（大月卡）的每日沿途行动奖励",
                 "拂晓之光补给包奖励": "远航巡录领取时自动选择的补给包奖励，默认数据链路",
@@ -106,8 +108,8 @@ class DailyTask(
                 "体力本": "军备解析",
                 "用户名": "",
                 "密码": "",
-                "喝水": "1.087-1.0-0.8",
-                "吃饭": "1.0",
+                "喝水": DRINK_ROUTE,
+                "吃饭": EAT_ROUTE,
                 "社区每日": False,
                 "邮件": True,
                 "情报和战前补给": True,
@@ -124,6 +126,7 @@ class DailyTask(
                 "竞技场": True,
                 "班组": True,
                 "尘烟": True,
+                "尘烟买第3次": False,
                 "领任务": True,
                 "大月卡": True,
                 "拂晓之光补给包奖励": "数据链路",
@@ -161,10 +164,14 @@ class DailyTask(
                 "自主循环跳过项": ["自动刷体力", "刷钱本", "竞技场"],
                 "购买免费礼包": ["商店心愿单购买"],
                 "自动刷体力": ["体力本"],
-                "班组": ["尘烟"],
+                "班组": ["尘烟", "尘烟买第3次"],
             }
         )
         for group, keys in self.default_config_group.items():
+            if group not in self.default_config:
+                # 「自主循环跳过项」这种只用来分组、不是真实开关的名字，不能写成 sub_configs：
+                # 框架会把它当成父开关去读值（读到 None），子项全部判成隐藏，Web 接口里就看不到「自动刷体力」「竞技场」了
+                continue
             self.config_type.update({group: {"sub_configs": {True: keys}}})
 
     def build_task_plan(self):
@@ -198,10 +205,25 @@ class DailyTask(
     def run(self):
         if not self.config.get("已确认启用游戏内全局自动功能"):
             self.confirm_auto_battle_up()
+        self._zilv_locked = False
+        self.reset_lineup(None)
+        self.start_watchdog()
         try:
-            self.daily_runner = DailyTaskRunner(self, self.build_task_plan())
+            record = None
+            try:
+                record = DailyRecord()
+                done = record.done_tasks(str(getattr(self, "current_account_id", "") or ""))
+                if done:
+                    self.log_info(f"今天已经完成过的任务（直接跳过）: {done}", notify=True)
+                failed = record.failed_tasks(str(getattr(self, "current_account_id", "") or ""))
+                if failed:
+                    self.log_info(f"今天失败过、这次重试的任务: {failed}", notify=True)
+            except Exception as e:
+                self.log_info(f"读日常记录失败，这次不跳过任何任务: {e}")
+            self.daily_runner = DailyTaskRunner(self, self.build_task_plan(), record=record)
             self.daily_runner.run()
         finally:
+            self.stop_watchdog()
             # 无论正常结束还是异常中断，都尝试落地汇总，便于事后排查
             self.run_daily_finally()
 

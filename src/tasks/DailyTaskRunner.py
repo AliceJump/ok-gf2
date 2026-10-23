@@ -21,7 +21,10 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable, Iterable
+
+from ok import TaskDisabledException
 
 TaskItem = tuple[str, Callable[[], object]]
 # 可选的第三元素：开关谓词。提供时替代默认的 config.get(key) 判断（例如多开关 OR 逻辑）。
@@ -53,6 +56,7 @@ class DailyTaskRunner:
         task_items: Iterable[TaskItem | TaskItemWithSwitch],
         ensure_main_kwargs: dict | None = None,
         publish_info: bool = False,
+        record=None,
     ):
         """
         Args:
@@ -64,6 +68,7 @@ class DailyTaskRunner:
                 开启后会在面板上多出「已完成/已失败/已跳过/未处理的任务列表」四项。
         """
         self.task = task
+        self.record = record  # DailyRecord：当天已成功的任务直接跳过，失败的记下来下次重试
         self.task_items = list(task_items)
         self.ensure_main_kwargs = dict(ensure_main_kwargs or {"recheck_time": 2, "time_out": 90})
         self.publish_info = publish_info
@@ -221,16 +226,46 @@ class DailyTaskRunner:
         if not enabled:
             self.task_status["skipped"].append(key)
             return True
+        account_id = self._current_account_info().get("account_id", "")
+        if self.record is not None and key not in ALWAYS_RUN_KEYS and self.record.is_done(key, account_id):
+            self.task_status["success"].append(key)
+            self.task.log_info(self._tr("任务 {key} 今天已经完成过，跳过").format(key=self._tr(key)))
+            return True
 
         self.current_task_key = key
         self.failure_screenshot_tasks.discard(key)
         self.final_summary["current_task"] = key
         self.task.log_info(self._tr("开始任务: {key}").format(key=self._tr(key)))
         self.task.ensure_main(**self.ensure_main_kwargs)
-        result = func()
+        if hasattr(self.task, "set_lineup_kind"):
+            self.task.set_lineup_kind(None)
+        try:
+            result = func()
+        except TaskDisabledException:
+            raise
+        except Exception as e:
+            # 一项任务出错不拖累后面的：记下原因和截图，回主页接着跑下一项
+            self.task.log_info(self._tr("任务 {key} 异常: {err}").format(key=self._tr(key), err=e), notify=True)
+            self.task.log_info(traceback.format_exc(), notify=False)
+            try:
+                self.task.screenshot(f"DailyTask_Exception_{key}")
+            except Exception:
+                pass
+            self.task_status["failed"].append(key)
+            self._record(key, "failed", self._tr("异常: {err}").format(err=e))
+            self.set_task_failure(self._tr("异常: {err}").format(err=e), task_name=key)
+            self.current_task_key = None
+            self.final_summary["current_task"] = ""
+            try:
+                self.task.ensure_main(**self.ensure_main_kwargs)
+            except Exception as e2:
+                self.task.log_info(f"异常后回主页也失败了: {e2}", notify=True)
+                raise
+            return False
 
         if result is False:
             self.task_status["failed"].append(key)
+            self._record(key, "failed", self._tr("任务返回 False"))
             self.set_task_failure(self._tr("任务返回 False"), task_name=key)
             if key not in self.failure_screenshot_tasks:
                 self.task.screenshot(f"DailyTask_FailTask_{key}")
@@ -241,6 +276,7 @@ class DailyTaskRunner:
 
         if result == "待核查":
             self.task_status["uncertain"].append(key)
+            self._record(key, "uncertain")
             self.clear_task_failure(key)
             self.task.screenshot(f"DailyTask_Uncertain_{key}")
             self.task.log_info(self._tr("任务 {key} 结果待核查").format(key=self._tr(key)), notify=True)
@@ -249,10 +285,31 @@ class DailyTaskRunner:
             return True
 
         self.task_status["success"].append(key)
+        self._record(key, "success")
         self.clear_task_failure(key)
         self.current_task_key = None
         self.final_summary["current_task"] = ""
         return True
+
+    def _record(self, key, status, message=""):
+        """把结果写进当天的记录文件；记录出错只记日志，不影响任务。"""
+        if self.record is None:
+            return
+        try:
+            account_id = self._current_account_info().get("account_id", "")
+            if status == "success":
+                self.record.mark_success(key, account_id)
+            elif status == "failed":
+                self.record.mark_failed(key, message, account_id)
+            else:
+                self.record.mark_uncertain(key, account_id)
+            self.record.save()
+            self.task.info_set("今日已完成(含之前几次)", self.record.done_tasks(account_id))
+            failed = self.record.failed_tasks(account_id)
+            # 重试成功后失败记录清空了也要刷新这一栏，否则旧版 App 的信息面板一直显示开头那份待重试列表
+            self.task.info_set("今日待重试", list(failed) if failed else "无")
+        except Exception as e:
+            self.task.log_info(f"写日常记录失败: {e}")
 
     def run(self, repeat_times: int = 1):
         """按清单顺序执行全部任务项，异常在记录与截图后继续向外传播。"""
@@ -329,6 +386,7 @@ class DailyTaskRunner:
         self.final_summary["exception"] = str(e)
         self.final_summary["current_task"] = self.current_task_key or self.final_summary.get("current_task", "")
         if self.current_task_key:
+            self._record(self.current_task_key, "failed", self._tr("异常: {err}").format(err=e))
             self.set_task_failure(self._tr("异常: {err}").format(err=e), task_name=self.current_task_key)
 
         # 只有真正进入过轮次才归档；切号阶段失败时 task_status 还是上一轮的残留，补记会产生错误数据

@@ -2,6 +2,7 @@ import ast
 import re
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
@@ -10,12 +11,13 @@ methods = [
     n
     for n in node.body
     if isinstance(n, ast.FunctionDef)
-    and n.name in ("_ensure_activity_panel", "_claim_activity_panel_rewards", "free_time_layer")
+    and n.name in ("_ensure_activity_panel", "_claim_activity_panel_rewards", "_close_reward_popup", "free_time_layer")
 ]
 ns = {"re": re}
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), ns)
 ensure_panel = ns["_ensure_activity_panel"]
 claim_rewards = ns["_claim_activity_panel_rewards"]
+close_popup = ns["_close_reward_popup"]
 free_time_layer = ns["free_time_layer"]
 
 
@@ -44,9 +46,8 @@ class ActivityPanelRewardRegressionTest(unittest.TestCase):
 
         self.assertTrue(claim_rewards(task))
         self.assertEqual(3, task.wait_click_ocr.call_count)
-        self.assertEqual(2, task.wait_pop_up.call_count)
-        for call in task.wait_pop_up.call_args_list:
-            self.assertEqual({"time_out": 6, "count": 1}, call.kwargs)
+        self.assertEqual(2, task._close_reward_popup.call_count)
+        task.wait_pop_up.assert_not_called()
         claim_pattern = task.wait_click_ocr.call_args_list[0].kwargs["match"]
         self.assertIsNotNone(claim_pattern.fullmatch("一键领取"))
 
@@ -79,6 +80,51 @@ class ActivityPanelRewardRegressionTest(unittest.TestCase):
         task.wait_click_ocr.side_effect = click
         self.assertTrue(claim_rewards(task))
         self.assertTrue(state["claimed"])
+
+
+class RewardPopupTest(unittest.TestCase):
+    """实录 2026-10-21：升级动画后「获得道具」才出来，要等到并点掉提示文字，不能按 ESC。"""
+
+    def make_task(self, frames):
+        task = Mock()
+        frames = list(frames)
+
+        def wait_ocr(*, match, time_out, **kwargs):
+            task.waits.append(time_out)
+            names = frames.pop(0) if frames else []
+            return [SimpleNamespace(name=n) for n in names if any(p.search(n) for p in match)]
+
+        task.waits = []
+        task.wait_ocr.side_effect = wait_ocr
+        return task
+
+    def test_late_popup_is_closed_by_clicking_hint(self):
+        task = self.make_task([["获得道具", "活动层Lv.10", "点击空白处关闭"], []])
+        self.assertTrue(close_popup(task))
+        self.assertEqual("点击空白处关闭", task.click.call_args_list[0].args[0].name)
+        self.assertEqual(15, task.waits[0])
+        task.back.assert_not_called()
+
+    def test_truncated_hint_is_accepted(self):
+        task = self.make_task([["道具", "处关闭"], []])
+        self.assertTrue(close_popup(task))
+        self.assertEqual("处关闭", task.click.call_args_list[0].args[0].name)
+
+    def test_title_without_hint_clicks_bottom_blank(self):
+        task = self.make_task([["获得道具"], []])
+        self.assertTrue(close_popup(task))
+        task.click.assert_called_once_with(0.5, 0.9, after_sleep=1.5)
+
+    def test_no_popup_returns_without_clicking(self):
+        task = self.make_task([[]])
+        self.assertTrue(close_popup(task))
+        task.click.assert_not_called()
+
+    def test_stuck_popup_reports_failure(self):
+        task = self.make_task([["获得道具", "点击空白处关闭"]] * 4)
+        self.assertFalse(close_popup(task))
+        self.assertEqual(4, task.click.call_count)
+        task.log_warning.assert_called_once()
 
 
 if __name__ == "__main__":
