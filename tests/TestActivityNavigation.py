@@ -1,5 +1,6 @@
 import ast
 import re
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
@@ -12,6 +13,15 @@ def method(path, name):
     ns = {"re": re}
     exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), ns)
     return ns[name]
+
+
+def loading_method():
+    path = "src/tasks/daily/daily_activity_mixin.py"
+    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
+    node = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_wait_free_layer_loading")
+    ns = {"re": re, "time": time, "LAYER_LOADING_GRACE": 40}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), path, "exec"), ns)
+    return ns["_wait_free_layer_loading"]
 
 
 class ActivityNavigationTest(unittest.TestCase):
@@ -158,6 +168,7 @@ class ActivityNavigationTest(unittest.TestCase):
             with self.subTest(labels=labels):
                 task = Mock()
                 task.is_free_layer.return_value = False
+                task._wait_free_layer_loading.return_value = False
                 task.ocr.side_effect = lambda labels=labels, **kw: [label for label in labels if label in kw["match"]]
 
                 self.assertIs(False, enter(task))
@@ -174,6 +185,43 @@ class ActivityNavigationTest(unittest.TestCase):
         self.assertIs(True, enter(task))
         task.wait_click_ocr.assert_called_once()
         task.screenshot.assert_not_called()
+
+    def test_entry_waits_out_black_loading_screen(self):
+        """实录 2026-10-22：进活动层黑屏 20 多秒，主页标识和 HUD 都读不到时继续等加载，HUD 出来就算进去了。"""
+        enter = method("src/tasks/daily/daily_activity_mixin.py", "_enter_free_time_layer")
+        task = Mock()
+        task.is_free_layer.return_value = False
+        task.ocr.return_value = []
+        task._wait_free_layer_loading.return_value = True
+
+        self.assertIs(True, enter(task))
+        task.wait_click_ocr.assert_called_once()
+        task.screenshot.assert_not_called()
+
+    def test_loading_wait_keeps_waiting_through_black_frames(self):
+        wait = loading_method()
+        task = Mock()
+        task._is_loading_frame.return_value = True  # 黑屏：OCR 读不到字
+        task.is_free_layer.side_effect = [False, False, True]
+        self.assertIs(True, wait(task, grace=60))
+        self.assertEqual(3, task.is_free_layer.call_count)
+        task.log_info.assert_called_once()
+
+    def test_loading_wait_stops_on_non_loading_page(self):
+        """画面已经不是加载页（比如别的界面）就只看一眼 HUD，不再干等。"""
+        wait = loading_method()
+        task = Mock()
+        task._is_loading_frame.return_value = False
+        task.is_free_layer.return_value = False
+        self.assertIs(False, wait(task, grace=60))
+        task.is_free_layer.assert_called_once_with(time_out=2)
+
+    def test_loading_wait_is_bounded(self):
+        wait = loading_method()
+        task = Mock()
+        task._is_loading_frame.return_value = True
+        task.is_free_layer.return_value = False
+        self.assertIs(False, wait(task, grace=0))
 
     def test_failed_activity_entry_does_not_prevent_guild_task(self):
         """Verify failed activity entry does not prevent guild task."""

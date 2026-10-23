@@ -50,6 +50,7 @@ def build_plan(stub, results):
             stub.calls.append(key)
             value = results.get(key)
             if isinstance(value, BaseException):
+                stub.config["_raised"] = True
                 raise value
             return value
 
@@ -111,6 +112,10 @@ class TestSummaryReport(unittest.TestCase):
 
     def test_exception_report(self):
         stub = StubTask(dict(ALL_ON))
+        # 任务异常后回主页也失败，整轮才会异常结束
+        stub.ensure_main = lambda **kw: (
+            (_ for _ in ()).throw(RuntimeError("回不到主页")) if stub.config.get("_raised") else None
+        )
         runner = DailyTaskRunner(stub, build_plan(stub, {"自动刷体力": RuntimeError("卡在加载界面")}))
         with self.assertRaises(RuntimeError):
             runner.run()

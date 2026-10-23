@@ -153,6 +153,34 @@ class FoodAlreadyDoneTest(unittest.TestCase):
         self.assertIs(True, result)
         self.assertEqual(1, task.wait_click_ocr.call_count)
         task.skip_dialogs.assert_not_called()
+        task._skip_active_food_buff.assert_called_once_with(next_match="确认邀请", stay_match="下一步")
+
+    def test_cancel_back_on_dish_page_counts_as_done(self):
+        """实录 2026-10-21：取消「已有 xx 生效中」后回到选择菜品页，右下角仍是「下一步」，算已吃过。"""
+        task = Mock()
+        task.box.center = "center"
+        task.box.bottom_right = "bottom_right"
+        state = {"dialog": "当前已有章鱼小丸子生效中，是否确认更换?"}
+
+        def read(*, match, box=None, **kwargs):
+            if isinstance(match, re.Pattern):
+                return [object()] if match.search(state["dialog"]) else []
+            if match == "下一步" and box == "bottom_right":
+                return [object()]
+            return []
+
+        def cancel(**kwargs):
+            state["dialog"] = ""
+            return True
+
+        task.ocr.side_effect = read
+        task.wait_until.side_effect = lambda predicate, **kwargs: bool(predicate())
+        task.wait_click_ocr.side_effect = cancel
+        run = method("_skip_active_food_buff")
+        self.assertIs(True, run(task, next_match="确认邀请", stay_match="下一步"))
+        state["dialog"] = "当前已有章鱼小丸子生效中，是否确认更换?"
+        task.screenshot.reset_mock()
+        self.assertIs(False, run(task, next_match="确认邀请"))
 
     def test_only_identified_duplicate_food_dialog_is_cancelled(self):
         """Verify only identified duplicate food dialog is cancelled."""

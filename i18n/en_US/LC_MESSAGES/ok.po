@@ -384,3 +384,299 @@ msgstr "Needs review: reward popup not confirmed after click"
 
 msgid "待核查：领取按钮持续出现"
 msgstr "Needs review: claim button keeps appearing"
+
+msgid "输入"
+msgstr "Input"
+
+msgid "会话鼠标驱动"
+msgstr "Session Mouse Driver"
+
+msgid "鼠标输入方式，对所有任务生效"
+msgstr "How mouse input is sent; applies to all tasks"
+
+msgid "在 RDP 会话里用 Interception 驱动产生真实鼠标点击（能过新手引导、不受窗口激活影响）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
+msgstr "Inside an RDP session, use the Interception driver to send real mouse clicks (works with tutorials and is not affected by window activation); falls back to PostMessage automatically when no device can be bound. When off, PostMessage is always used"
+
+msgid "调试"
+msgstr "Debug"
+
+msgid "调试截图"
+msgstr "Debug Screenshots"
+
+msgid "排查问题用的全局开关，对所有任务生效"
+msgstr "Global troubleshooting switches; apply to all tasks"
+
+msgid "把每个任务各阶段的截图保存到 screenshots/任务名/日期/ 下，每个任务最多保留 400 张；关掉就不存"
+msgstr "Save screenshots of each stage under screenshots/<task>/<date>/, keeping at most 400 per task; nothing is saved when off"
+
+msgid "阵容与助战"
+msgstr "Lineup & Support"
+
+msgid "编队名"
+msgstr "Preset Name"
+
+msgid "借好友助战"
+msgstr "Borrow Friend Support"
+
+msgid "助战角色"
+msgstr "Support Doll"
+
+msgid "助战最低椎数"
+msgstr "Minimum Support Neural Upgrades"
+
+msgid "找不到就借战力最高"
+msgstr "Fall Back to Highest Power"
+
+msgid "沿用全局"
+msgstr "Use Global"
+
+msgid "开"
+msgstr "On"
+
+msgid "关"
+msgstr "Off"
+
+msgid "所有会进部署界面的任务共用。优先级：内置默认 → 这里的全局值 → 下面各场景单独的「××编队 / ××助战」"
+msgstr "Shared by every task that enters the deployment screen. Priority: built-in defaults → these global values → the per-scene \"… squad / … support\" settings below"
+
+msgid "体力"
+msgstr "Stamina"
+
+msgid "自动使用体力药"
+msgstr "Auto Restore Stamina"
+
+msgid "体力不足时怎么办，对推图和一键日常等所有任务生效"
+msgstr "What to do when stamina runs out; applies to stage push, dailies and all other tasks"
+
+msgid "体力不足弹出「情报拼图补充」时，只用调度室储存和情报拼图道具（含接入密钥）恢复，每次用 1 份，绝不使用坍塌晶条\n关闭时：推图遇到体力不足直接停止；一键日常刷体力则当作刷完，继续后面的任务"
+msgstr "When the stamina refill dialog appears, restore only with dispatch-room storage and intel puzzle items (including access keys), one at a time; Collapse Crystals are never used\nWhen off: stage push stops on low stamina; the daily stamina run counts as finished and continues with the next task"
+
+msgid "默认编队：下面各场景没单独填编队时都用它（游戏里可自定义名字，默认 编队1）。留空就不切编队，只补满空位"
+msgstr "Default preset, used by every scene below that has no preset of its own (renamable in game, default 编队1). Leave empty to keep the current preset and only fill empty slots"
+
+msgid "默认借不借好友助战：各场景「助战」选「沿用全局」时按这里"
+msgstr "Whether to borrow a friend support by default; used when a scene's support option is \"Use Global\""
+
+msgid "要借的助战角色名，须与游戏内显示一致，如 威玛西娜"
+msgstr "Name of the support doll to borrow, exactly as shown in game, e.g. 威玛西娜"
+
+msgid "卡片左上角蓝圈里的椎数至少要多少，默认 6"
+msgstr "Minimum neural upgrade count shown in the blue circle on the card, default 6"
+
+msgid "没有椎数达标的指定角色时，切到「全部」按战力从高到低借第一个"
+msgstr "If the chosen doll is not available with enough upgrades, switch to \"All\" and borrow the highest-power one"
+
+msgid "推图编队"
+msgstr "Stage Push Preset"
+
+msgid "推图任务用的编队，留空沿用默认编队"
+msgstr "Preset used by the stage push task; leave empty to use the default preset"
+
+msgid "推图助战"
+msgstr "Stage Push Support"
+
+msgid "推图任务借不借好友助战，「沿用全局」按上面的「借好友助战」"
+msgstr "Whether the stage push task borrows a friend support; \"Use Global\" follows \"Borrow Friend Support\" above"
+
+msgid "竞技场编队"
+msgstr "Arena Preset"
+
+msgid "一键日常「竞技场」（实兵演习）用的编队，留空沿用默认编队"
+msgstr "Preset used by Dailies \"Arena\" (live-fire exercise); leave empty to use the default preset"
+
+msgid "体力本编队"
+msgstr "Stamina Stage Preset"
+
+msgid "一键日常「自动刷体力」手动挑战用的编队，留空沿用默认编队"
+msgstr "Preset used by manual challenges in Dailies \"Auto Stamina\"; leave empty to use the default preset"
+
+msgid "班组编队"
+msgstr "Squad Preset"
+
+msgid "一键日常「班组」要务用的编队，留空沿用默认编队"
+msgstr "Preset used by Dailies \"Squad\" tasks; leave empty to use the default preset"
+
+msgid "尘烟前哨战编队"
+msgstr "Dust Smoke Outpost Preset"
+
+msgid "一键日常「班组」里的尘烟前线·前哨战（借助战时选战力最高的人形）用的编队，留空沿用默认编队"
+msgstr "Preset used by the Dust Smoke Outpost battle under Dailies \"Squad\" (borrows the highest-power support); leave empty to use the default preset"
+
+msgid "尘烟前哨战助战"
+msgstr "Dust Smoke Outpost Support"
+
+msgid "一键日常「班组」里的尘烟前线·前哨战（借助战时选战力最高的人形）借不借好友助战，「沿用全局」按上面的「借好友助战」"
+msgstr "Whether the Dust Smoke Outpost battle under Dailies \"Squad\" (borrows the highest-power support) borrows a friend support; \"Use Global\" follows \"Borrow Friend Support\" above"
+
+msgid "活动编队"
+msgstr "Event Preset"
+
+msgid "一键日常「活动自律」用的编队，留空沿用默认编队"
+msgstr "Preset used by Dailies \"Event Auto\"; leave empty to use the default preset"
+
+msgid "扩编实练编队"
+msgstr "Expansion Drill Preset"
+
+msgid "周常「扩编实练」特殊增强关卡用的编队，留空沿用默认编队"
+msgstr "Preset used by special enhancement stages of the weekly \"Expansion Drill\"; leave empty to use the default preset"
+
+msgid "停在任意关卡页面或章节选择页启动即可，先回章节起点从左到右推完未通关的关卡，推完自动进下一章"
+msgstr "Start from any stage map or the chapter list. Returns to the start of the chapter, clears every uncleared stage from left to right, then moves on to the next chapter"
+
+msgid "战斗内点击自动"
+msgstr "Click Auto in Battle"
+
+msgid "推完继续下一章"
+msgstr "Continue to Next Chapter"
+
+msgid "进入战斗后若检测到「行动结束」，自动点击右上角的自动战斗按钮\n默认关闭，依赖游戏内全局自动（设置→其他→自动战斗设置）；未开全局自动时再打开"
+msgstr "When \"End Turn\" is detected in battle, click the auto-battle button at the top right\nOff by default and relies on the in-game global auto setting (Settings → Other → Auto Battle); turn this on only if global auto is disabled"
+
+msgid "本章能推的都推完（或剩下的都没解锁）后，回章节选择页进入下一章继续推\n下一章没解锁（带锁、点了没反应）就正常结束"
+msgstr "After everything clearable in this chapter is done (or the rest is locked), go back to the chapter list and continue with the next chapter\nStops normally if the next chapter is locked"
+
+msgid "尘烟买第3次"
+msgstr "Buy 3rd Dust Smoke Run"
+
+msgid "尘烟前线两次免费次数用完后，花 50 坍塌晶条买 1 次参战机会再打一场（每天限 1 次）"
+msgstr "After the two free Dust Smoke runs, spend 50 Collapse Crystals on one extra run (once per day)"
+
+msgid "调试工具"
+msgstr "Debug Tool"
+
+msgid "按配置点一个文字 / 按 ESC / 截图，供远程调试用"
+msgstr "Click a text, press ESC or take a screenshot as configured, for remote debugging"
+
+msgid "先回主页"
+msgstr "Return to Main First"
+
+msgid "点击文字"
+msgstr "Click Text"
+
+msgid "点击坐标"
+msgstr "Click Position"
+
+msgid "按ESC次数"
+msgstr "ESC Presses"
+
+msgid "按键"
+msgstr "Keys"
+
+msgid "截图并OCR"
+msgstr "Screenshot and OCR"
+
+msgid "先执行 ensure_main 回到游戏主页再做后面的动作"
+msgstr "Run ensure_main to return to the main screen before the other actions"
+
+msgid "非空时用 OCR 找到这个文字并点击（支持正则），找不到就报错"
+msgstr "When set, find this text with OCR and click it (regex supported); fails if not found"
+
+msgid "非空时点击这个相对坐标，格式 x,y（0~1），如 0.3,0.5"
+msgstr "When set, click this relative position, format x,y (0~1), e.g. 0.3,0.5"
+
+msgid "点击之后再按几次 ESC"
+msgstr "How many times to press ESC after clicking"
+
+msgid "最后按这些键，逗号分隔，键:秒 表示按住多久，如 f2 或 w:1.5,e"
+msgstr "Finally press these keys, comma separated; key:seconds holds the key, e.g. f2 or w:1.5,e"
+
+msgid "把当前画面全部 OCR 一遍，文字写进日志，截图存到 screenshots/调试工具/"
+msgstr "OCR the whole screen, write the text to the log and save the screenshot under screenshots/调试工具/"
+msgid "用 Interception 驱动产生真实鼠标点击（能过新手引导、活动层等只认真实输入的界面）；绑定不到设备时自动退回 PostMessage。关掉则始终用 PostMessage"
+msgstr "Use the Interception driver for real mouse clicks (needed for tutorials, the Free Time layer and other screens that only accept real input); falls back to PostMessage when no device can be bound. When off, always use PostMessage"
+
+msgid "自动识别：远程桌面用会话鼠标，本机桌面用 PostMessage（不动你的光标）；\n远程桌面：只在 RDP 会话里用该会话的 RDP 鼠标；\n本机桌面：用机器上的真实鼠标点击，跑的时候会接管光标，别同时用鼠标。\n设的环境和实际不符时退回 PostMessage，不往别的桌面点。改了下一次点击就生效"
+msgstr "Auto detect: session mouse on Remote Desktop, PostMessage on the local desktop (your cursor is not touched);\nRemote Desktop: use the RDP mouse of this session, only inside an RDP session;\nLocal desktop: click with the machine's real mouse, which takes over the cursor while running, so do not use the mouse at the same time.\nIf the setting does not match the actual environment, PostMessage is used and nothing is clicked on another desktop. Changes apply from the next click"
+
+msgid "远程桌面用哪台 Interception 鼠标（10~19），自动 = 按本会话实际收到的标记识别"
+msgstr "Which Interception mouse (10~19) to use on Remote Desktop; Auto = detect from the marker this session actually receives"
+
+msgid "本机桌面用哪台 Interception 鼠标（10~19），自动 = 本机桌面收到标记的第一台"
+msgstr "Which Interception mouse (10~19) to use on the local desktop; Auto = the first one whose marker reaches the local desktop"
+
+msgid "运行环境"
+msgstr "Environment"
+
+msgid "远程桌面鼠标设备"
+msgstr "Remote Desktop mouse device"
+
+msgid "本机桌面鼠标设备"
+msgstr "Local desktop mouse device"
+
+msgid "自动识别"
+msgstr "Auto detect"
+
+msgid "远程桌面"
+msgstr "Remote Desktop"
+
+msgid "本机桌面"
+msgstr "Local desktop"
+
+msgid "自动"
+msgstr "Auto"
+
+msgid "普通"
+msgstr "Normal"
+
+msgid "困难"
+msgstr "Hard"
+
+msgid "普通OCR"
+msgstr "Plain OCR"
+
+msgid "除杂色OCR1"
+msgstr "Filtered OCR 1"
+
+msgid "除杂色OCR2"
+msgstr "Filtered OCR 2"
+
+msgid "难度"
+msgstr "Difficulty"
+
+msgid "英雄难度"
+msgstr "Hero difficulty"
+
+msgid "领取章节奖励"
+msgstr "Claim chapter rewards"
+
+msgid "普通OCR：不做任何图像预处理，直接识别关卡名称\n适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨"
+msgstr "Plain OCR: read stage names without any image preprocessing\nUse when: the stage cards stand out clearly from a non-white background and the text is easy to read"
+
+msgid "除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别"
+msgstr "Filtered OCR 1 (pure white): mask out everything that is not pure white before reading\nUse when: stage card text is pure white and a busy background gets in the way"
+
+msgid "除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时"
+msgstr "Filtered OCR 2 (white and light grey): keep white and light-grey areas before reading\nUse when: stage card text is white or light grey, or neither plain OCR nor filtered OCR 1 can read it"
+
+msgid "推普通还是困难。困难和普通是两套章节进度：本章困难还没解锁时，回章节选择页切到困难，从困难当前推到的章节开始推"
+msgstr "Push Normal or Hard. They have separate chapter progress: if Hard is not unlocked for this chapter yet, go back to chapter select, switch to Hard and start from the chapter Hard has reached"
+
+msgid "11.0 及之后的章节开启游戏的「英雄难度」再推（没打过的关也直接按英雄难度打），关掉则确保游戏里也是关的\n英雄难度下敌人等级按指挥官等级匹配、额外附加不利效果，更容易打输；11.0 之前的章节没有英雄难度，照常推"
+msgstr "From chapter 11.0 on, turn on the in-game Hero difficulty before pushing (uncleared stages are fought on Hero as well); when off, make sure it is off in the game too\nOn Hero, enemy levels match the commander level and extra debuffs apply, so losses are more likely; chapters before 11.0 have no Hero difficulty and are pushed as usual"
+
+msgid "每章（活动每个页签）推完后，点地图左下角的「可领取」把收集数奖励领掉\n还有「未完成」的档位会通知出来：多半是漏了关卡或有关卡没三星通关"
+msgstr "After each chapter (each tab of an event) is cleared, click \"Claimable\" at the bottom left of the map to collect the collection rewards\nTiers still marked \"Incomplete\" are reported: usually a stage was missed or not cleared with three stars"
+
+msgid "拖动"
+msgstr "Drag"
+
+msgid "非空时按住从 x1,y1 拖到 x2,y2（相对坐标 0~1），如 0.85,0.5,0.25,0.5"
+msgstr "When set, press and drag from x1,y1 to x2,y2 (relative 0~1), e.g. 0.85,0.5,0.25,0.5"
+
+msgid "往期活动推图"
+msgstr "Past Events"
+
+msgid "从主页、作战页或活动列表启动：进第一个完成度不到 100% 的往期活动推图，推完回列表找下一个；停在活动地图上启动就先推当前这个"
+msgstr "Start from the home screen, the combat screen or the event list: enter the first past event below 100% and push it, then go back to the list for the next one; when started on an event map, push that event first"
+
+msgid "推完继续下一个活动"
+msgstr "Continue with the next event"
+
+msgid "当前活动推完（或剩下的关都推不动）后，回往期活动列表进下一个完成度不到 100% 的活动继续推"
+msgstr "When the current event is cleared (or the remaining stages cannot be pushed), go back to the past event list and continue with the next event below 100%"
+
+msgid "看心智回溯"
+msgstr "Watch Mind Replay"
+
+msgid "活动「剧情」页签左边有「心智回溯」（第 8 期起）时，把能看的剧情一条条播放（跳过）领抽卡资源\n开着「推完继续下一个活动」时，推完还会把列表上右上角带「!」（奖励没领完）的活动逐个进去领章节奖励和心智回溯"
+msgstr "When the event Story tab has \"Mind Replay\" on the left (from the 8th event on), play (skip) each available story to collect gacha currency\nWith \"Continue with the next event\" on, after pushing it also visits every event marked \"!\" in the list (rewards left) to claim chapter rewards and Mind Replay"

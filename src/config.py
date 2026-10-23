@@ -1,5 +1,11 @@
 import os
 
+from src.core.debug_config import debug_option
+from src.core.gf_interaction import GfInteraction
+from src.core.input_config import input_option
+from src.core.lineup_config import lineup_option
+from src.core.stamina_config import stamina_option
+
 version = "dev"
 # 不需要修改version, Github Action打包会自动修改
 
@@ -16,7 +22,9 @@ config = {
     "windows": {  # Windows游戏请填写此设置
         "exe": ["GF2_Exilium.exe"],  # 新版统一使用 list
         "hwnd_class": "UnityWndClass",
-        "interaction": "Genshin",  # 或 EfInteraction，根据项目
+        # 列表：Qt「捕获」页可以在两者之间切换（默认第一项）。GfInteraction 鼠标走 Interception 会话鼠标，绑不到时自动退回
+        # PostMessage，见 src/core/gf_interaction.py；必须写成列表，写成单个类时 Qt「捕获」页的输入方式列表会报 len(type)
+        "interaction": [GfInteraction, "Genshin"],
         "capture_method": ["WGC", "BitBlt_RenderFull"],
         # Windows版本支持的话, 优先使用WGC, 否则使用BitBlt_Full. 支持的capture有 BitBlt, WGC, BitBlt_RenderFull, DXGI
         "check_hdr": True,  # 当用户开启AutoHDR时候提示用户, 但不禁止使用
@@ -66,13 +74,21 @@ config = {
         ["src.tasks.DailyTask", "DailyTask"],
         ["src.tasks.WeeklyTask", "WeeklyTask"],
         ["src.tasks.ClearMapTask", "ClearMapTask"],
+        ["src.tasks.EventMapTask", "EventMapTask"],
         ["src.tasks.TestStartGame", "TestStartGame"],
         ["src.tasks.TestTask", "TestTask"],
+        ["src.tasks.DebugTask", "DebugTask"],
         ["ok", "DiagnosisTask"],
     ],
     "trigger_tasks": [  # 循环触发的任务
         ["src.tasks.TemplateMonitorTask", "TemplateMonitorTask"],
     ],
+    "global_configs": [
+        lineup_option,
+        stamina_option,
+        input_option,
+        debug_option,
+    ],  # 全局配置：设置页里的「阵容与助战」「体力」「输入」「调试」
     "custom_tabs": [  # 自定义界面页
         ["src.gui.AccountConfigTab", "AccountConfigTab"],
         ["src.gui.ImportantNoticesTab", "ImportantNoticesTab"],
