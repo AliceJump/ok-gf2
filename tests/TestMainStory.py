@@ -36,6 +36,7 @@ def make_task(right=(), top_right=()):
     )
     task.find_one.return_value = None
     task._handle_restart_required.return_value = False
+    task._handle_init_failed.return_value = False
     task._confirm_battle_result.return_value = False
 
     def ocr(*a, box=None, match=None, **kw):
