@@ -198,10 +198,12 @@ class DailyTask(
     def run(self):
         if not self.config.get("已确认启用游戏内全局自动功能"):
             self.confirm_auto_battle_up()
+        self.start_watchdog()
         try:
             self.daily_runner = DailyTaskRunner(self, self.build_task_plan())
             self.daily_runner.run()
         finally:
+            self.stop_watchdog()
             # 无论正常结束还是异常中断，都尝试落地汇总，便于事后排查
             self.run_daily_finally()
 

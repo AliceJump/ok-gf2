@@ -76,6 +76,7 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 - **尘烟前线**：自动完成尘烟玩法
 - **要务**：自动完成要务任务
 - **[周常任务](docs/周常任务.md)**：自动完成每周例行任务
+- **[输入方式](docs/输入方式.md)**：RDP 会话里用 Interception 会话鼠标做真实点击，PostMessage 只作退路
 - **诊断**：框架内置诊断任务的简单封装
 
 ### 触发任务（后台运行）
