@@ -21,6 +21,13 @@ def load_methods(path, class_name):
         "win32api": win32api,
         "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
     }
+    # 模块级的正则常量和工具函数（如 chenyan_not_open_re、power_of）也一起带上；import 依赖游戏运行时，不执行
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.FunctionDef)):
+            try:
+                exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), namespace)
+            except Exception:
+                pass
     methods = [
         n
         for n in cls.body
@@ -681,6 +688,7 @@ class ChenyanAssistTest(unittest.TestCase):
             box=SimpleNamespace(bottom="bottom"),
             info_set=lambda *args: None,
             skip_dialogs=lambda **kwargs: None,
+            debug_shot=lambda *args, **kwargs: None,
         )
         with self.assertRaisesRegex(RuntimeError, "作战|战斗"):
             base["auto_battle"](task)
