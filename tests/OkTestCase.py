@@ -35,6 +35,16 @@ def _wait_for_ocr_init(executor, timeout=60):
         raise RuntimeError("OCR 初始化超时，测试不能安全继续")
 
 
+def _release_failed_setup(test_class):
+    """Release the shared OK instance when setUpClass cannot complete."""
+    global _pending
+    if test_class._setup_complete:
+        return
+    _pending -= 1
+    if _pending <= 0:
+        ok_test.destroy_ok()
+
+
 class OkTestCase(TaskTestCase):
     def __init_subclass__(cls, **kwargs):
         # 测试模块在 unittest 真正 run 之前就已全部导入，所以这里能数到全部子类。
@@ -44,8 +54,11 @@ class OkTestCase(TaskTestCase):
 
     @classmethod
     def setUpClass(cls):
+        cls._setup_complete = False
+        cls.addClassCleanup(_release_failed_setup, cls)
         super().setUpClass()
         _wait_for_ocr_init(ok_test.ok.task_executor)
+        cls._setup_complete = True
 
     @classmethod
     def tearDownClass(cls):
