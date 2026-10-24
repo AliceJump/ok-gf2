@@ -33,54 +33,22 @@ class InteractionSafetyTest(unittest.TestCase):
         GenshinInteraction.send_key_up(obj, "alt")
         obj.post_interaction.send_key_up.assert_called_once_with("alt")
 
-    def test_background_scroll_uses_real_wheel_and_restores_cursor(self):
-        """Unity list wheel input needs the game in the real foreground."""
-        import win32api
-
+    def test_background_scroll_routes_to_shared_foreground_helper(self):
         obj = self.make_interaction()
         obj.hwnd_window.hwnd = 77
-        obj.do_scroll = Mock()
-        events = []
-
-        def in_window(hwnd, callback, *args):
-            events.append(("foreground", hwnd))
-            callback(*args)
-            events.append("restore_focus")
-
-        with (
-            patch("src.interaction.Mouse.run_in_window", side_effect=in_window),
-            patch.object(win32api, "GetCursorPos", return_value=(800, 400)),
-            patch.object(win32api, "SetCursorPos", side_effect=lambda pos: events.append(("cursor", pos))),
-        ):
+        with patch("src.interaction.foreground_scroll.scroll_in_foreground") as scroll:
             GenshinInteraction.scroll(obj, 100, 200, -3)
-        obj.do_scroll.assert_called_once_with(100, 200, -3)
+        scroll.assert_called_once_with(77, 100, 200, -3)
         obj.post_interaction.scroll.assert_not_called()
-        self.assertEqual(("foreground", 77), events[0])
-        self.assertEqual(("cursor", (800, 400)), events[-1])
 
-    def test_failed_foreground_activation_never_sends_wheel(self):
+    def test_foreground_helper_error_propagates(self):
         obj = self.make_interaction()
         obj.hwnd_window.hwnd = 77
-        obj.do_scroll = Mock()
-        with patch("src.interaction.Mouse.run_in_window", return_value=False):
-            with self.assertRaisesRegex(RuntimeError, "前台"):
-                GenshinInteraction.scroll(obj, 100, 200, -3)
-        obj.do_scroll.assert_not_called()
-
-    def test_wheel_failure_restores_cursor_and_propagates(self):
-        import win32api
-
-        obj = self.make_interaction()
-        obj.hwnd_window.hwnd = 77
-        obj.do_scroll = Mock(side_effect=RuntimeError("wheel failed"))
         with (
-            patch("src.interaction.Mouse.run_in_window", side_effect=lambda hwnd, callback, *args: callback(*args)),
-            patch.object(win32api, "GetCursorPos", return_value=(800, 400)),
-            patch.object(win32api, "SetCursorPos") as cursor,
+            patch("src.interaction.foreground_scroll.scroll_in_foreground", side_effect=RuntimeError("wheel failed")),
             self.assertRaisesRegex(RuntimeError, "wheel failed"),
         ):
             GenshinInteraction.scroll(obj, 100, 200, -3)
-        cursor.assert_called_once_with((800, 400))
 
     def test_key_release_error_survives_cleanup_failure(self):
         """Keep the original release error when window cleanup also fails."""
