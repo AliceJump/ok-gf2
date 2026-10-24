@@ -152,6 +152,7 @@ class TestClearMapRecognition(unittest.TestCase):
             device_manager=SimpleNamespace(supported_ratio=16 / 9),
         )
         self.task = ClearMapTask(executor, None)
+        self.task._map_recognizer = MapRecognizer(engine=Mock())
         self.task.sleep = Mock()
 
     def test_legacy_ocr_options_are_retired(self):
@@ -178,7 +179,39 @@ class TestClearMapRecognition(unittest.TestCase):
         first = Box(500, 300, 100, 30, name="SF-1-1")
         self.task.wait_stable_map_names = Mock(return_value=[first, Box(700, 300, 100, 30, name="SF-1-12")])
         self.assertEqual(self.task.wait_stable_map_by_name("before_one_SF-1-1"), [first])
-        self.task.wait_stable_map_names.assert_called_once_with()
+        self.task.wait_stable_map_names.assert_called_once_with(raise_if_not_found=False)
+
+    def test_prepare_finishes_before_stability_timeout_starts(self):
+        """冷启动加载模型发生在 wait_until 开始计时之前。"""
+        events = []
+        self.task._map_recognizer = Mock()
+        self.task._map_recognizer.prepare.side_effect = lambda: events.append("prepared")
+
+        def wait(condition, **kwargs):
+            events.append(("wait", kwargs["time_out"]))
+            return ([],)
+
+        self.task.wait_until = wait
+        self.assertEqual(self.task.wait_stable_map_names(), [])
+        self.assertEqual(events, ["prepared", ("wait", 15)])
+
+    def test_optional_reclick_timeout_is_skipped_with_warning(self):
+        """附带重试的稳定等待超时不能终止已完成战斗的主流程。"""
+        self.task.wait_until = Mock(return_value=None)
+        self.task.log_warning = Mock()
+        self.task.click = Mock()
+        self.task.back = Mock()
+        self.assertEqual(self.task.wait_stable_map_by_name("SF-1-1"), [])
+        self.task.log_warning.assert_called_once()
+        self.task.click.assert_not_called()
+        self.task.back.assert_not_called()
+
+    def test_optional_reclick_does_not_swallow_ocr_errors(self):
+        """只有稳定性超时可忽略，模型或截图异常仍应向上传播。"""
+        self.task.find_map_names = Mock(side_effect=RuntimeError("OCR failed"))
+        self.task.wait_until = lambda condition, **kwargs: condition()
+        with self.assertRaisesRegex(RuntimeError, "OCR failed"):
+            self.task.wait_stable_map_by_name("SF-1-1")
 
     def wait_with_frames(self, frames):
         self.task.find_map_names = Mock(side_effect=frames)

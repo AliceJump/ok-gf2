@@ -52,6 +52,10 @@ class MapRecognizer:
     def __init__(self, engine=None):
         self._engine = engine
 
+    def prepare(self):
+        """提前加载识别模型，使初始化耗时不占用页面稳定等待时间。"""
+        return self.engine
+
     @property
     def engine(self):
         if self._engine is None:
