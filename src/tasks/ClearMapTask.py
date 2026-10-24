@@ -1,10 +1,8 @@
-import re
-
 from ok import Logger
 
 from src.core.BaseGfTask import BaseGfTask, map_re
 from src.data.FeatureList import FeatureList as fL
-from src.image.hsv_config import HSVRange as hR
+from src.tasks.map_recognition import MapRecognizer, extract_map_name, stable_map_names
 
 logger = Logger.get_logger(__name__)
 
@@ -14,29 +12,60 @@ class ClearMapTask(BaseGfTask):
         super().__init__(*args, **kwargs)
         self.name = "推图"
         self.description = "从要推的图的最左边开始"
-        self.default_config.update(
-            {
-                "普通OCR": True,
-                "除杂色OCR1": True,
-                "除杂色OCR2": True,
-            }
-        )
-        self.config_description.update(
-            {
-                "普通OCR": (
-                    "普通OCR：不做任何图像预处理，直接识别关卡名称\n"
-                    "适用场景：背景和关卡卡片颜色与白色差异明显，文字清晰可辨"
-                ),
-                "除杂色OCR1": (
-                    "除杂色OCR1（标准白色）：过滤掉非纯白色区域后再识别\n"
-                    "适用场景：关卡卡片文字为标准白色，背景较复杂干扰识别"
-                ),
-                "除杂色OCR2": (
-                    "除杂色OCR2（宽松白灰色）：同时保留白色与浅灰色区域后再识别\n"
-                    "适用场景：关卡卡片文字为白色或浅灰色，或普通OCR/除杂色OCR1均无法识别时"
-                ),
-            }
-        )
+        self._map_recognizer = MapRecognizer()
+
+    def find_map_names(self):
+        boxes = self._map_recognizer.recognize(self.frame)
+        self.draw_boxes("map_names", boxes, color="green")
+        self.log_debug(f"关卡编号: {boxes}")
+        return boxes
+
+    def wait_stable_map_names(self, *, raise_if_not_found=True):
+        """等待连续两帧稳定；可选重试超时返回 None，主流程则报错。"""
+        self._map_recognizer.prepare()
+        previous = None
+
+        def stable():
+            nonlocal previous
+            self.sleep(0.15)
+            if self.frame is None:
+                previous = None
+                return None
+            current = self.find_map_names()
+            if previous is not None and stable_map_names(previous, current, 8 / 1920 * self.width):
+                # 空列表也必须连续确认，不能将识别抖动误判为推图结束。
+                return (current,)
+            previous = current
+            return None
+
+        result = self.wait_until(stable, time_out=15)
+        if result is None:
+            if raise_if_not_found:
+                raise RuntimeError("关卡页面仍在移动或编号识别不稳定，请等待地图静止后重试")
+            return None
+        return result[0]
+
+    def wait_stable_map_by_name(self, name):
+        """等待地图编号及位置稳定，再按完整编号选择重试目标。"""
+        canonical = extract_map_name(name)
+        if canonical is None:
+            return []
+        boxes = self.wait_stable_map_names(raise_if_not_found=False)
+        if boxes is None:
+            self.log_warning("地图编号或位置未稳定，跳过本次关卡重试")
+            return []
+        return [box for box in boxes if box.name == canonical]
+
+    def find_boxes(self, boxes, match=None, boundary=None):
+        # auto_battle / skip_dialogs 的地图结束判定也走同一套高分辨率识别。
+        patterns = match if isinstance(match, list) else [match]
+        if not any(pattern is map_re for pattern in patterns):
+            return super().find_boxes(boxes, match=match, boundary=boundary)
+        other_patterns = [pattern for pattern in patterns if pattern is not map_re]
+        result = super().find_boxes(boxes, match=other_patterns, boundary=boundary) if other_patterns else []
+        if result:
+            return result
+        return super().find_boxes(self.find_map_names(), boundary=boundary)
 
     def run(self):
         count = 0
@@ -46,45 +75,26 @@ class ClearMapTask(BaseGfTask):
         last_failed_flag = False  # 标记上次循环是否进入过 if not text 分支
         map_ocr_box = self.box_of_screen(x=0, y=100 / 1080, to_x=1.0, to_y=980 / 1080)
 
-        # 根据用户配置动态组合要使用的帧处理器，保持顺序：普通OCR → 除杂色OCR1 → 除杂色OCR2
-        # 至少保留一个，若全部关闭则回退到全部开启
-        processors = []
-        if self.config.get("普通OCR", True):
-            processors.append(None)  # None 表示不做预处理，直接识别
-        if self.config.get("除杂色OCR1", True):
-            processors.append(self.make_hsv_isolator(hR.WHITE))  # 标准白色过滤
-        if self.config.get("除杂色OCR2", True):
-            processors.append(self.make_hsv_isolator(hR.WHITE_GRAY))  # 宽松白灰色过滤
-        if not processors:
-            processors = [None, self.make_hsv_isolator(hR.WHITE), self.make_hsv_isolator(hR.WHITE_GRAY)]
-
         while True:
             last_clicked = None
             self.sleep(2)
-            # 根据上次是否失败，选择 OCR 匹配规则
+            # 先确认地图静止，再按完整编号重试或枚举关卡。
             self.next_frame()
+            maps = self.wait_stable_map_names()
             map_name_groups = []
             if last_failed_flag and last_failed_name:
-                maps = []
-                pattern = re.compile(re.escape(last_failed_name))
+                canonical = extract_map_name(last_failed_name)
+                retry_maps = [box for box in maps if canonical is not None and box.name == canonical]
 
-                for p in processors:
-                    maps = self.ocr(match=pattern, log=True, frame_processor=p)
-                    if maps:
-                        break
-
-                if maps:
-                    maps = [maps[0]]  # 只保留第一个，避免重复点击
+                if retry_maps:
+                    maps = [retry_maps[0]]  # 只保留第一个，避免重复点击
                     maps[0].name = "before_one_" + maps[0].name
-                    maps[0].x = int(maps[0].x - 80 / 256 * self.width)  # 往左扩展一些识别区域，增加找到的概率
+                    maps[0].x = max(0, int(maps[0].x - 80 / 256 * self.width))
                     map_name_groups = [{maps[0].name}]
-                else:
-                    map_name_groups = []
                 last_failed_flag = False
-            else:
-                maps = []
-                for p in processors:
-                    maps.extend(self.ocr(match=map_re, log=True, frame_processor=p))
+
+            # 重试目标暂时缺失时，仍按完整地图枚举，不能把筛选为空当成推图完成。
+            if not map_name_groups:
                 maps.extend(self.find_feature(feature_name=fL.not_clear_one, box=map_ocr_box))
                 now_icon_y_offset = 0.489 - 0.380
                 now_icon = [self.wait_feature(feature=fL.now_icon, box=map_ocr_box, time_out=1)]
@@ -99,7 +109,10 @@ class ClearMapTask(BaseGfTask):
                     maps, x_threshold=40 / 1920 * self.width, y_threshold=40 / 1080 * self.height
                 )
 
-            maps = sorted(maps, key=lambda obj: obj.x)
+            # 关卡框和名称组必须一起排序，否则已点击判定会关联到另一个关卡。
+            ordered = sorted(zip(maps, map_name_groups, strict=True), key=lambda item: item[0].x)
+            maps = [box for box, _ in ordered]
+            map_name_groups = [names for _, names in ordered]
             self.log_debug(f"maps: {maps}")
 
             if len(maps) == 0:
@@ -161,7 +174,8 @@ class ClearMapTask(BaseGfTask):
 
                     if last_clicked:
                         self.log_debug(f"重新点击上一次关卡: {last_clicked.name}")
-                        if self.wait_click_ocr(match=last_clicked.name, time_out=3, log=True, after_sleep=1):
+                        if boxes := self.wait_stable_map_by_name(last_clicked.name):
+                            self.click(boxes, after_sleep=1)
                             self.back(after_sleep=2)
                 else:
                     self.back(after_sleep=2)
