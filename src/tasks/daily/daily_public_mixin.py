@@ -3,10 +3,39 @@
 import re
 import time
 
+import cv2
+
+# 主页左下角一排小图标（设置 / 链接 / 消息 / 自主循环），「自主循环」是第 4 个，指挥官 50 级解锁，没解锁时那里是空的。
+# 实录 2026-10-23（2560x1440）：四个图标中心 x≈0.060/0.113/0.163/0.213，y≈0.896；
+# 图标框里白色像素占比 0.07~0.11，图标右边的空地是 0。
+AUTO_LOOP_ICON_XY = (0.2125, 0.896)
+AUTO_LOOP_ICON_BOX = (0.195, 0.865, 0.23, 0.93)
+AUTO_LOOP_ICON_MIN_WHITE = 0.03
+AUTO_LOOP_TIMEOUT = 30 * 60  # 循环队列里有体力本、竞技场等多项，给足时间
+auto_loop_end_re = re.compile("循环结束")
+# 循环途中的弹窗只点这些安全的确认；涉及花钱/坍塌晶条/更换已生效菜品的一律不点
+auto_loop_unsafe_re = re.compile("晶条|购买|充值|更换")
+
+
+def white_ratio(frame, box):
+    """box 里白色（亮、低饱和）像素的占比，用来判断主页左下角那个图标在不在。"""
+    region = frame[box.y : box.y + box.height, box.x : box.x + box.width]
+    if region.size == 0:
+        return 0.0
+    hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+    return float(((hsv[..., 2] > 200) & (hsv[..., 1] < 60)).mean())
+
 
 class DailyPublicMixin:
     def gongongqu(self):
         self.info_set("current_task", "gongongqu")
+        self._auto_loop_done = False
+        if self.config.get("自主循环"):
+            if self.auto_loop():
+                self._auto_loop_done = True
+                return
+            # 没解锁 / 没跑完：照手动流程派遣，之后的体力本和竞技场也照常手动打
+            self.ensure_main()
         if result := self.wait_ocr(match=re.compile("委托"), box=self.box._claim, raise_if_not_found=True, log=True):
             self.click_box_by_match_position(result, "委托", after_sleep=2)
             start_time = time.time()
@@ -20,12 +49,11 @@ class DailyPublicMixin:
                 buttons = self.find_feature(feature_name="ggq_can_button", box=self.box.left)
                 if buttons and len(buttons) >= 2:
                     break
-            if not self.config.get("自主循环"):
-                if buttons:
-                    self.click(buttons[0])
-                if self.wait_ocr(match=["最小"], time_out=4, settle_time=2, log=True):
-                    self.wait_click_ocr(match=["确认"], after_sleep=2.5, raise_if_not_found=True)
-                self.back(after_sleep=2)
+            if buttons:
+                self.click(buttons[0])
+            if self.wait_ocr(match=["最小"], time_out=4, settle_time=2, log=True):
+                self.wait_click_ocr(match=["确认"], after_sleep=2.5, raise_if_not_found=True)
+            self.back(after_sleep=2)
 
             if buttons and len(buttons) >= 2:
                 self.click(buttons[1], after_sleep=2)
@@ -38,88 +66,66 @@ class DailyPublicMixin:
                 self.wait_click_ocr(
                     match=[re.compile("再次派[遣造]")], box=self.box.bottom, after_sleep=2, raise_if_not_found=False
                 )
-            if self.config.get("自主循环"):
-                self.auto_loop()
 
-    def _auto_loop_step_with_retry(
-        self, step_num, match, need_confirm=False, box=None, time_out=5, after_sleep=2, **kwargs
-    ):
-        """
-        点击OCR匹配元素，等待点击特征在 3s 内消失。
-        若特征未消失则重试，最多尝试 3 次。
-        Args:
-            step_num (int): 步骤编号
-            match (str or list): OCR匹配内容
-            box (Box): OCR匹配范围
-            time_out (int): OCR匹配超时时间
-            after_sleep (int): 点击后等待时间
-            **kwargs: 其他参数，传递给 wait_click_ocr
-        Returns:
-            bool: 是否成功点击
-        """
-        for attempt in range(3):
-            result = self.wait_click_ocr(match=match, box=box, time_out=time_out, after_sleep=0, log=True, **kwargs)
-            if not result:
-                self.log_info(f"自主循环步骤{step_num}未完成，退出循环", notify=True)
-                return False
-            # 等待最多 3s，检测点击特征是否消失
-            start = time.time()
-            while time.time() - start < 3:
-                self.next_frame()
-                if not self.ocr(box=box, match=match):
-                    self.sleep(after_sleep)
-                    return result
-                if need_confirm and self.ocr(box=self.box.center, match="确认"):
-                    return result
-
-                self.sleep(0.3)
-            if attempt < 2:
-                self.log_info(f"自主循环步骤{step_num}点击后特征未消失，重试 ({attempt + 2}/3)", notify=True)
-        self.log_info(f"自主循环步骤{step_num}未完成，退出循环", notify=True)
-        return False
+    def has_auto_loop_icon(self):
+        """主页左下角第 4 个图标（自主循环）在不在。"""
+        self.next_frame()
+        ratio = white_ratio(self.frame, self.box_of_screen(*AUTO_LOOP_ICON_BOX))
+        self.log_info(f"主页左下角自主循环图标白色占比 {ratio:.3f}")
+        return ratio >= AUTO_LOOP_ICON_MIN_WHITE
 
     def auto_loop(self):
-        # 步骤 1: 点击"自主循环"，带重试
-        if not self._auto_loop_step_with_retry(
-            step_num=1,
-            match=[re.compile("自主循环")],
-            box=self.box.bottom_left,
-            time_out=5,
-            after_sleep=2,
-        ):
-            return
-
-        # 步骤 2: 点击"开始循环"，带重试
-        if not self._auto_loop_step_with_retry(
-            step_num=2,
-            match="开始循环",
-            box=self.box.bottom_left,
-            need_confirm=True,
-            time_out=5,
-            after_sleep=2,
-        ):
-            return
-
-        # 步骤 3: 点击"确认"，带重试
-        self._auto_loop_step_with_retry(
-            step_num=3,
-            match=["确认"],
-            box=self.box.center,
-            settle_time=2,
-            after_sleep=2,
-        )
-        # 步骤 4: 等待"循环结束"出现并点击（仅作为一次识别完成的角色，不需要重试）
-        if not self.wait_click_ocr(
-            match=re.compile("循环结束"), time_out=600, box=self.box.top, after_sleep=2, log=True
-        ):
-            self.log_info("自主循环步骤4未完成，退出循环", notify=True)
-            return
-
-        # 步骤 5: 点击"确认"，带重试
-        if not self._auto_loop_step_with_retry(
-            step_num=5, match=["确认"], settle_time=2, after_sleep=2, box=self.box.bottom
-        ):
-            return
+        """
+        游戏内「自主循环」（指挥官 50 级解锁）：主页左下角图标 → 循环页「开始循环」→ 等「循环结束」→ 确认。
+        循环队列在游戏里自己配（调度室、体力本、竞技场等），吃完饭再跑。
+        返回 True = 循环跑完；False = 没解锁或没跑完，调用方退回手动流程。
+        """
+        self.info_set("current_task", "自主循环")
+        if not self.has_auto_loop_icon():
+            self.log_info("主页左下角没有自主循环图标（50 级解锁），按手动流程跑日常", notify=True)
+            return False
+        self.click_relative(*AUTO_LOOP_ICON_XY, after_sleep=2)
+        start = self.wait_ocr(match="开始循环", box=self.box.bottom_left, time_out=8, raise_if_not_found=False)
+        if not start:
+            self.log_info("点了左下角图标但没看到「开始循环」，按手动流程跑日常", notify=True)
+            self.screenshot("auto_loop_no_page")
+            return False
+        self.debug_shot("auto_loop_page")
+        self.click(start, after_sleep=2)
+        deadline = time.time() + AUTO_LOOP_TIMEOUT
+        started = time.time()
+        last_log = 0
+        while time.time() < deadline:
+            self.next_frame()
+            if end := self.ocr(match=auto_loop_end_re, log=True):
+                self.debug_shot("auto_loop_end", end)
+                self.log_info(f"自主循环结束，用时 {int(time.time() - started)} 秒", notify=True)
+                self.sleep(2)
+                self.wait_click_ocr(
+                    match=["确认"], box=self.box.bottom, time_out=5, after_sleep=2, raise_if_not_found=False
+                )
+                self.ensure_main()
+                return True
+            if confirm := self.ocr(match=["确认"], box=self.box.center):
+                texts = "".join(b.name for b in self.ocr(box=self.box.center) or [])
+                if auto_loop_unsafe_re.search(texts):
+                    self.log_info(f"自主循环弹窗涉及消耗资源，不点确认，停止：{texts}", notify=True)
+                    self.screenshot("auto_loop_unsafe")
+                    self.wait_click_ocr(match=["取消"], box=self.box.center, time_out=2, raise_if_not_found=False)
+                    return False
+                self.log_info(f"自主循环弹窗点确认：{texts}")
+                self.debug_shot("auto_loop_confirm", confirm)
+                self.click(confirm, after_sleep=2)
+                continue
+            if time.time() - last_log > 60:
+                # 循环途中画面一直在变但脚本不点东西，定时记一笔，免得看门狗当成卡死
+                last_log = time.time()
+                self.log_info(f"自主循环进行中（{int(time.time() - started)} 秒）")
+                self.debug_shot("auto_loop_running")
+            self.sleep(3)
+        self.log_info(f"自主循环 {AUTO_LOOP_TIMEOUT // 60} 分钟还没结束，退回手动流程", notify=True)
+        self.screenshot("auto_loop_timeout")
+        return False
 
     def _shop_category_content(self):
         """用连续两帧稳定的商品文字确认内容，排除页签、价格和倒计时。"""
