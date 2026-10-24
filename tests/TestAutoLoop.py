@@ -11,7 +11,7 @@ import numpy as np
 
 from src.tasks.daily import daily_public_mixin
 from src.tasks.daily.daily_battle_mixin import DailyBattleMixin
-from src.tasks.daily.daily_public_mixin import DailyPublicMixin, white_ratio
+from src.tasks.daily.daily_public_mixin import DailyPublicMixin, loop_covers, loop_item_name, white_ratio, yellow_ratio
 
 
 def box(name):
@@ -28,6 +28,7 @@ def make_task(icon=True, page=True, screens=()):
         task.frame[90:95, 20:22] = 255
     task.box_of_screen.return_value = SimpleNamespace(x=19, y=86, width=4, height=7)
     task.has_auto_loop_icon = lambda: DailyPublicMixin.has_auto_loop_icon(task)
+    task.read_loop_queue.return_value = {"调度室", "实兵演习"}
     task.wait_ocr.side_effect = lambda match=None, **kw: [box("开始循环")] if match == "开始循环" and page else []
     frames = iter(screens)
     current = {}
@@ -87,17 +88,46 @@ class AutoLoopTest(unittest.TestCase):
         self.assertFalse(DailyPublicMixin.auto_loop(task))
         self.assertEqual(len(task.click.call_args_list), 1)  # 只点了「开始循环」
 
-    def test_gongongqu_still_dispatches_after_loop(self):
-        """循环跑完或没解锁，都照手动流程再走一遍委托。"""
-        for loop_result in (True, False):
+    def test_loop_records_queue_only_when_finished(self):
+        task = make_task(screens=[{}, {"full": ["循环结束"]}])
+        self.assertTrue(DailyPublicMixin.auto_loop(task))
+        self.assertEqual(task._auto_loop_items, {"调度室", "实兵演习"})
+        task = make_task(screens=[{}, {"center": ["是否消耗坍塌晶条", "确认", "取消"]}])
+        task._auto_loop_items = None
+        self.assertFalse(DailyPublicMixin.auto_loop(task))
+        self.assertIsNone(task._auto_loop_items)
+
+    def test_yellow_badge_and_names(self):
+        frame = np.zeros((10, 10, 3), np.uint8)
+        frame[:, :5] = (0, 220, 255)  # BGR 亮黄
+        self.assertAlmostEqual(yellow_ratio(frame, 0, 0, 10, 10), 0.5)
+        self.assertEqual(loop_item_name("实兵演"), "实兵演习")
+        self.assertEqual(loop_item_name("开始循环"), None)
+        self.assertEqual(loop_item_name("20"), None)
+
+    def test_loop_covers(self):
+        task = SimpleNamespace(_auto_loop_items=None)
+        self.assertFalse(loop_covers(task, "体力"))
+        task._auto_loop_items = {"实兵演习"}
+        self.assertTrue(loop_covers(task, "体力"))  # 体力默认被循环用掉
+        self.assertTrue(loop_covers(task, "实兵演习"))
+        self.assertFalse(loop_covers(task, "调度室"))
+        self.assertFalse(loop_covers(Mock(), "体力"))  # 没跑过循环（Mock 属性不是集合）
+
+    def test_gongongqu_skips_dispatch_only_when_queue_has_dispatch(self):
+        for items, dispatched in (({"调度室"}, False), ({"实兵演习"}, True), (None, True)):
             task = Mock()
             task.config = {"自主循环": True}
-            task.auto_loop.return_value = loop_result
+
+            def run_loop(items=items, task=task):
+                task._auto_loop_items = items
+                return items is not None
+
+            task.auto_loop.side_effect = run_loop
             task.box = SimpleNamespace(_claim="claim", left="l", top="t", bottom="b")
             task.wait_ocr.return_value = []
             DailyPublicMixin.gongongqu(task)
-            task.auto_loop.assert_called_once()
-            task.wait_ocr.assert_called()
+            self.assertEqual(task.wait_ocr.called, dispatched, items)
 
     def test_gongongqu_without_loop_config(self):
         task = Mock()
@@ -107,15 +137,31 @@ class AutoLoopTest(unittest.TestCase):
         DailyPublicMixin.gongongqu(task)
         task.auto_loop.assert_not_called()
 
-    def test_battle_and_arena_not_skipped_by_loop_config(self):
-        """循环之后体力本 / 竞技场照常执行，由剩余体力 / 次数决定打不打。"""
+    def test_battle_and_arena_follow_loop_queue(self):
+        task = Mock()
+        task._auto_loop_items = {"实兵演习"}
+        DailyBattleMixin.battle(task)  # 循环跑完：体力默认用掉
+        DailyBattleMixin.arena(task)
+        task.set_lineup_kind.assert_not_called()
         for method in (DailyBattleMixin.battle, DailyBattleMixin.arena):
             task = Mock()
-            task.config = {"自主循环": True}
+            task._auto_loop_items = None  # 循环没跑完 / 没解锁
             task.wait_click_ocr.side_effect = StopIteration  # 进了正常流程就停
             with self.assertRaises(StopIteration):
                 method(task)
             task.set_lineup_kind.assert_called_once()
+
+    def test_guild_skips_only_covered_parts(self):
+        task = Mock()
+        task._auto_loop_items = {"每日要务", "班组奖励"}
+        task.box = SimpleNamespace(_group="g", bottom_right="br")
+        task.wait_ocr.return_value = [SimpleNamespace(name="班组")]
+        task.chenyan.return_value = True
+        DailyBattleMixin.guild(task)
+        task.chenyan.assert_called_once()  # 尘烟前线没在列队里，照常打
+        matches = [c.kwargs.get("match") for c in task.wait_click_ocr.call_args_list]
+        self.assertNotIn(["要务"], matches)
+        self.assertNotIn(["补给"], matches)
 
 
 if __name__ == "__main__":
