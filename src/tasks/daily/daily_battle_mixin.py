@@ -147,7 +147,22 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def arena_remaining(self):
-        return int(self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re)[0].name.split("/")[0])
+        """读右上角剩余挑战次数。
+
+        实录 2026-10-25：首次升段进竞技场会晚几秒弹「您已晋升至职业·三」，盖住计数，原来直接 [0] 越界；
+        按一次 ESC 能关掉弹窗、留在演习页（回主页的 ESC 就是这样关掉的），关掉后再读。
+        """
+        promoted = re.compile(r"晋\s*升\s*至|首\s*次\s*晋\s*升")
+        for _ in range(3):
+            if boxes := self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re):
+                return int(boxes[0].name.split("/")[0])
+            if self.ocr(match=promoted):
+                self.log_info("竞技场弹出段位晋升提示，按 ESC 关掉")
+                self.back(after_sleep=2)
+            else:
+                self.sleep(1)
+        self.screenshot("arena_remaining_missing")
+        raise Exception("没读到竞技场剩余次数")
 
     def challenge_arena_opponent(self):
         challenged = 0
