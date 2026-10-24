@@ -87,31 +87,35 @@ class AutoLoopTest(unittest.TestCase):
         self.assertFalse(DailyPublicMixin.auto_loop(task))
         self.assertEqual(len(task.click.call_args_list), 1)  # 只点了「开始循环」
 
-    def test_gongongqu_skips_dispatch_when_loop_done(self):
-        task = Mock()
-        task.config = {"自主循环": True}
-        task.auto_loop.return_value = True
-        DailyPublicMixin.gongongqu(task)
-        self.assertTrue(task._auto_loop_done)
-        task.wait_ocr.assert_not_called()
+    def test_gongongqu_still_dispatches_after_loop(self):
+        """循环跑完或没解锁，都照手动流程再走一遍委托。"""
+        for loop_result in (True, False):
+            task = Mock()
+            task.config = {"自主循环": True}
+            task.auto_loop.return_value = loop_result
+            task.box = SimpleNamespace(_claim="claim", left="l", top="t", bottom="b")
+            task.wait_ocr.return_value = []
+            DailyPublicMixin.gongongqu(task)
+            task.auto_loop.assert_called_once()
+            task.wait_ocr.assert_called()
 
-    def test_gongongqu_manual_when_loop_unavailable(self):
+    def test_gongongqu_without_loop_config(self):
         task = Mock()
-        task.config = {"自主循环": True}
-        task.auto_loop.return_value = False
+        task.config = {"自主循环": False}
         task.box = SimpleNamespace(_claim="claim", left="l", top="t", bottom="b")
         task.wait_ocr.return_value = []
         DailyPublicMixin.gongongqu(task)
-        self.assertFalse(task._auto_loop_done)
-        task.wait_ocr.assert_called()
+        task.auto_loop.assert_not_called()
 
-    def test_battle_and_arena_skip_only_after_loop(self):
+    def test_battle_and_arena_not_skipped_by_loop_config(self):
+        """循环之后体力本 / 竞技场照常执行，由剩余体力 / 次数决定打不打。"""
         for method in (DailyBattleMixin.battle, DailyBattleMixin.arena):
             task = Mock()
-            task._auto_loop_done = True
-            method(task)
-            task.ensure_main.assert_called_once()
-            task.set_lineup_kind.assert_not_called()
+            task.config = {"自主循环": True}
+            task.wait_click_ocr.side_effect = StopIteration  # 进了正常流程就停
+            with self.assertRaises(StopIteration):
+                method(task)
+            task.set_lineup_kind.assert_called_once()
 
 
 if __name__ == "__main__":

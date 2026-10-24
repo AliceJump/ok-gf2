@@ -29,12 +29,10 @@ def white_ratio(frame, box):
 class DailyPublicMixin:
     def gongongqu(self):
         self.info_set("current_task", "gongongqu")
-        self._auto_loop_done = False
         if self.config.get("自主循环"):
-            if self.auto_loop():
-                self._auto_loop_done = True
-                return
-            # 没解锁 / 没跑完：照手动流程派遣，之后的体力本和竞技场也照常手动打
+            # 游戏的循环只做队列里配好的几项；跑完（或没解锁）都照手动流程再走一遍委托，
+            # 之后的体力本、竞技场等也照常执行，各自按剩余体力 / 次数判断还有没有要做的
+            self.auto_loop()
             self.ensure_main()
         if result := self.wait_ocr(match=re.compile("委托"), box=self.box._claim, raise_if_not_found=True, log=True):
             self.click_box_by_match_position(result, "委托", after_sleep=2)
@@ -78,7 +76,7 @@ class DailyPublicMixin:
         """
         游戏内「自主循环」（指挥官 50 级解锁）：主页左下角图标 → 循环页「开始循环」→ 等「循环结束」→ 确认。
         循环队列在游戏里自己配（调度室、体力本、竞技场等），吃完饭再跑。
-        返回 True = 循环跑完；False = 没解锁或没跑完，调用方退回手动流程。
+        返回 True = 循环跑完；False = 没解锁或没跑完。
         """
         self.info_set("current_task", "自主循环")
         if not self.has_auto_loop_icon():
@@ -123,7 +121,7 @@ class DailyPublicMixin:
                 self.log_info(f"自主循环进行中（{int(time.time() - started)} 秒）")
                 self.debug_shot("auto_loop_running")
             self.sleep(3)
-        self.log_info(f"自主循环 {AUTO_LOOP_TIMEOUT // 60} 分钟还没结束，退回手动流程", notify=True)
+        self.log_info(f"自主循环 {AUTO_LOOP_TIMEOUT // 60} 分钟还没结束，接着跑手动流程", notify=True)
         self.screenshot("auto_loop_timeout")
         return False
 
