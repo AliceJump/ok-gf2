@@ -176,8 +176,9 @@ class TestClearMapRecognition(unittest.TestCase):
 
     def test_reclick_is_exact_and_normalizes_retry_prefix(self):
         first = Box(500, 300, 100, 30, name="SF-1-1")
-        self.task.find_map_names = Mock(return_value=[first, Box(700, 300, 100, 30, name="SF-1-12")])
-        self.assertEqual(self.task.find_map_by_name("before_one_SF-1-1"), [first])
+        self.task.wait_stable_map_names = Mock(return_value=[first, Box(700, 300, 100, 30, name="SF-1-12")])
+        self.assertEqual(self.task.wait_stable_map_by_name("before_one_SF-1-1"), [first])
+        self.task.wait_stable_map_names.assert_called_once_with()
 
     def wait_with_frames(self, frames):
         self.task.find_map_names = Mock(side_effect=frames)
@@ -223,6 +224,46 @@ class TestClearMapRecognition(unittest.TestCase):
         with self.assertRaises(StopIteration):
             self.task.run()
         self.assertEqual([call.args[0].name for call in self.task.click.call_args_list], ["SA-1-1", "SA-1-2"])
+
+    def run_stage_then_reclick(self, retry_frames):
+        """保留真实稳定性判断，只替换抓帧、战斗与点击设备。"""
+        initial = Box(500, 300, 100, 30, name="SF-1-1")
+        challenge = Box(1400, 500, 100, 30, name="挑战")
+        self.task.find_map_names = Mock(side_effect=[[initial], [initial], *retry_frames])
+
+        def wait(condition, **kwargs):
+            for _ in range(10):
+                if result := condition():
+                    return result
+            return None
+
+        self.task.wait_until = wait
+        self.task.next_frame = Mock()
+        self.task.find_feature = Mock(return_value=[])
+        self.task.wait_feature = Mock(return_value=None)
+        self.task.wait_ocr = Mock(return_value=[Box(1400, 400, 100, 30, name="特殊奖励"), challenge])
+        self.task.auto_battle = Mock()
+        self.task.log_debug = Mock()
+        self.task.click = Mock()
+        self.task.back = Mock()
+        with self.assertRaises(StopIteration):
+            self.task.run()
+        self.task.auto_battle.assert_called_once_with(end_match=map_re, has_dialog=True)
+
+    def test_post_battle_reclick_waits_until_target_stops_moving(self):
+        """同一编号仍在滑动时不可提前点击首次识别到的位置。"""
+        retry_frames = [[Box(x, 300, 100, 30, name="SF-1-1")] for x in (600, 700, 850, 850)]
+        self.run_stage_then_reclick(retry_frames)
+        clicked = [call.args[0] for call in self.task.click.call_args_list]
+        self.assertEqual([box[0].x if isinstance(box, list) else box.x for box in clicked], [500, 1400, 850])
+        self.task.back.assert_called_once_with(after_sleep=2)
+
+    def test_missing_stable_retry_target_does_not_click_or_back(self):
+        """相似编号不能替代缺失的目标，找不到时也不能执行返回。"""
+        other = [Box(800, 300, 100, 30, name="SF-1-12")]
+        self.run_stage_then_reclick([other, other])
+        self.assertEqual(self.task.click.call_count, 2)
+        self.task.back.assert_not_called()
 
 
 if __name__ == "__main__":
