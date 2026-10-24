@@ -25,12 +25,27 @@ from ok.test.TaskTestCase import TaskTestCase
 _pending = 0
 
 
+def _wait_for_ocr_init(executor, timeout=60):
+    """Keep screenshot tests out of the OCR backend's native initialization race."""
+    thread = getattr(executor, "_ocr_init_thread", None)
+    if thread is None:
+        return
+    thread.join(timeout=timeout)
+    if thread.is_alive():
+        raise RuntimeError("OCR 初始化超时，测试不能安全继续")
+
+
 class OkTestCase(TaskTestCase):
     def __init_subclass__(cls, **kwargs):
         # 测试模块在 unittest 真正 run 之前就已全部导入，所以这里能数到全部子类。
         global _pending
         super().__init_subclass__(**kwargs)
         _pending += 1
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _wait_for_ocr_init(ok_test.ok.task_executor)
 
     @classmethod
     def tearDownClass(cls):
