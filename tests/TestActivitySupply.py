@@ -41,6 +41,9 @@ class SupplyScreen:
     _claim_supply_activity = namespace["_claim_supply_activity"]
     _scroll_supply_menu = namespace["_scroll_supply_menu"]
 
+    def is_adb(self):
+        return False
+
     def __init__(self, entries=None, remaining=None):
         """Model init."""
         self.entries = entries if entries is not None else {2: "情报补给", 4: "战前补给"}

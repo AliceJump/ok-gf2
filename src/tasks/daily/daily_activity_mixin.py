@@ -78,8 +78,16 @@ class DailyActivityMixin:
         return False
 
     def _scroll_supply_menu(self, count):
-        """临时切前台并将鼠标放在补给侧栏滚动，输入后恢复窗口和鼠标。"""
+        """ADB 滑动补给侧栏；PC 临时切前台滚动后恢复窗口和鼠标。"""
         self.sleep(0.01)
+        if self.is_adb():
+            # 三格滚轮对应一页；回顶的 30 格需要多次下拖，不能只滑一页。
+            for _ in range((abs(count) + 2) // 3):
+                self.swipe_relative(
+                    0.12, 0.40 if count > 0 else 0.72, 0.12, 0.72 if count > 0 else 0.40, duration=0.3
+                )
+                self.sleep(0.6)
+            return
         interaction = getattr(self.executor, "interaction", None)
         scroll = getattr(interaction, "scroll", None)
         if not callable(scroll):

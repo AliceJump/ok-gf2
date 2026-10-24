@@ -103,6 +103,30 @@ class SupplyScrollTest(unittest.TestCase):
     setUp = ChenyanScrollTest.setUp
     assert_restored = ChenyanScrollTest.assert_restored
 
+    def test_adb_supply_swipes_in_wheel_direction_without_desktop_input(self):
+        self.task.is_adb.return_value = True
+        for count, start, end in ((-3, 0.72, 0.40), (3, 0.40, 0.72)):
+            with self.subTest(count=count):
+                self.task.swipe_relative.reset_mock()
+                DailyActivityMixin._scroll_supply_menu(self.task, count)
+                self.task.swipe_relative.assert_called_once_with(0.12, start, 0.12, end, duration=0.3)
+                self.assertEqual(self.desktop.events, [])
+                self.assert_restored()
+
+    def test_adb_supply_reset_reaches_top_from_multiple_pages(self):
+        self.task.is_adb.return_value = True
+        page = [8]
+
+        def swipe(x1, y1, x2, y2, **kwargs):
+            page[0] = max(0, page[0] - 1) if y2 > y1 else page[0] + 1
+
+        self.task.swipe_relative.side_effect = swipe
+        DailyActivityMixin._scroll_supply_menu(self.task, 30)
+        self.assertEqual(page[0], 0)
+        self.assertEqual(self.task.swipe_relative.call_count, 10)
+        self.assertEqual(self.desktop.events, [])
+        self.assertEqual(self.task.sleep.call_args.args, (0.6,))
+
     def test_supply_scroll_uses_sidebar_coordinates_and_restores(self):
         DailyActivityMixin._scroll_supply_menu(self.task, -3)
         self.assertEqual(
