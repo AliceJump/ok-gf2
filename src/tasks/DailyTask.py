@@ -62,7 +62,7 @@ class DailyTask(
 
         """
         auto_loop_skip_list = ["体力本", "自动刷体力", "刷钱本", "竞技场"]
-        auto_loop_skip_dict = dict.fromkeys(auto_loop_skip_list, "开启自主循环后会跳过该项")
+        auto_loop_skip_dict = dict.fromkeys(auto_loop_skip_list, "自主循环跑完后会跳过该项")
         self.config_description.update(
             auto_loop_skip_dict
             | {
@@ -87,8 +87,11 @@ class DailyTask(
                 "活动自律": ('自动进入限时开启活动并挑战物资关卡\n关卡名称在"当前物资关卡名称"中配置'),
                 "活动层": "自动完成活动层中的喝水、吃饭和奖励领取流程",
                 "活动层浇花": "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥",
-                "公共区/调度室": "自动完成公共区委托的派遣与领取",
-                "自主循环": ("开启后公共区将启动游戏内自主循环模式\n同时跳过：体力本、自动刷体力、刷钱本、竞技场"),
+                "公共区/调度室": "自动完成公共区委托的派遣与领取；开了「自主循环」且已解锁时改用游戏内自主循环",
+                "自主循环": (
+                    "吃完饭后点主页左下角的自主循环图标（指挥官 50 级解锁）→「开始循环」，由游戏按循环队列完成调度室、体力本、竞技场等\n"
+                    "循环跑完就跳过：体力本、自动刷体力、刷钱本、竞技场；没有图标（未解锁）或没跑完则照手动流程做"
+                ),
                 "购买免费礼包": "自动购买商城中的免费礼包",
                 "商店心愿单购买": ("自动在各商店（家具/班组/调度/讯段/心智/人形堆栈）中\n一键购买心愿单商品"),
                 "尘烟": "需开启班组项",
@@ -206,6 +209,7 @@ class DailyTask(
         if not self.config.get("已确认启用游戏内全局自动功能"):
             self.confirm_auto_battle_up()
         self._zilv_locked = False
+        self._auto_loop_done = False  # 游戏内自主循环跑完后，体力本 / 竞技场不再手动打
         self.reset_lineup(None)
         self.start_watchdog()
         try:
