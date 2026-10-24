@@ -8,6 +8,7 @@ import win32gui
 
 from src.core.BaseGfTask import stamina_re
 from src.core.lineup_config import preset_name_for_kind, support_enabled_for_kind
+from src.tasks.daily.daily_public_mixin import loop_covers
 
 OUTPOST_KIND = "尘烟前哨战"
 power_re = re.compile(r"^\d{3,6}$")
@@ -78,6 +79,9 @@ class DailyBattleMixin:
         raise Exception(f"战役推进里切不到「{tab}」页签，看 campaign_tab 截图")
 
     def battle(self):
+        if loop_covers(self, "体力"):
+            self.log_info("自主循环已经消耗体力，跳过体力本 / 刷钱本")
+            return
         self.info_set("current_task", "battle")
         self.set_lineup_kind("体力本")
         self.wait_click_ocr(
@@ -115,6 +119,9 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def arena(self):
+        if loop_covers(self, "实兵演习"):
+            self.log_info("自主循环已经打过实兵演习，跳过竞技场")
+            return
         self.info_set("current_task", "arena")
         self.set_lineup_kind("竞技场")
         self.wait_click_ocr(
@@ -191,32 +198,40 @@ class DailyBattleMixin:
         self.set_lineup_kind("班组")
         if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
             self.click_box_by_match_position(result, "班组", after_sleep=2)
-            self.wait_click_ocr(match=["要务"], box=self.box.bottom_right, after_sleep=0.5, settle_time=2)
-            result = self.wait_ocr(
-                match=["开始作战", "每日要务已完成"], box=self.box.bottom_right, raise_if_not_found=True, log=True
-            )
-            if result[0].name == "开始作战":
-                self.click(result)
-                self.auto_battle()
-                self.wait_ocr(
-                    match=["开始作战", "每日要务已完成", "要务"], box=self.box.bottom_right, raise_if_not_found=True
-                )
+            if loop_covers(self, "每日要务"):
+                self.log_info("自主循环已经打过每日要务，跳过")
             else:
-                self.log_info("每日要务已完成")
-            self.back()
-            self.sleep(1)
-            if self.chenyan() is False:
+                self.wait_click_ocr(match=["要务"], box=self.box.bottom_right, after_sleep=0.5, settle_time=2)
+                result = self.wait_ocr(
+                    match=["开始作战", "每日要务已完成"], box=self.box.bottom_right, raise_if_not_found=True, log=True
+                )
+                if result[0].name == "开始作战":
+                    self.click(result)
+                    self.auto_battle()
+                    self.wait_ocr(
+                        match=["开始作战", "每日要务已完成", "要务"], box=self.box.bottom_right, raise_if_not_found=True
+                    )
+                else:
+                    self.log_info("每日要务已完成")
+                self.back()
+                self.sleep(1)
+            if loop_covers(self, "尘烟前线"):
+                self.log_info("自主循环已经打过尘烟前线，跳过")
+            elif self.chenyan() is False:
                 self.ensure_main()
                 return False
 
-            self.wait_click_ocr(match=["补给"], box=self.box.bottom_right, after_sleep=0.5)
-            if result := self.wait_ocr(
-                match=["领取全部"], box=self.box.bottom_right, time_out=4, raise_if_not_found=False
-            ):
-                self.click_box(result)
-                self.wait_pop_up(count=1)
-            self.back()
-            self.sleep(1)
+            if loop_covers(self, "班组奖励"):
+                self.log_info("自主循环已经领过班组奖励，跳过补给领取")
+            else:
+                self.wait_click_ocr(match=["补给"], box=self.box.bottom_right, after_sleep=0.5)
+                if result := self.wait_ocr(
+                    match=["领取全部"], box=self.box.bottom_right, time_out=4, raise_if_not_found=False
+                ):
+                    self.click_box(result)
+                    self.wait_pop_up(count=1)
+                self.back()
+                self.sleep(1)
         self.ensure_main()
 
     def chenyan(self):
