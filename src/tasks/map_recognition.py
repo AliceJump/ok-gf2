@@ -34,18 +34,25 @@ def same_map_location(first, second, tolerance=12):
 
 
 def stable_map_names(previous, current, tolerance):
-    """两个画面的编号集合与位置均一致，才允许使用当前坐标。"""
+    """两个画面的编号和位置需一一对应，才允许使用当前坐标。"""
     if len(previous) != len(current):
         return False
-    return all(
-        any(
-            old.name == box.name
-            and abs(old.x + old.width / 2 - box.x - box.width / 2) <= tolerance
-            and abs(old.y + old.height / 2 - box.y - box.height / 2) <= tolerance
-            for old in previous
+    unmatched = list(previous)
+    for box in current:
+        index = next(
+            (
+                i
+                for i, old in enumerate(unmatched)
+                if old.name == box.name
+                and abs(old.x + old.width / 2 - box.x - box.width / 2) <= tolerance
+                and abs(old.y + old.height / 2 - box.y - box.height / 2) <= tolerance
+            ),
+            None,
         )
-        for box in current
-    )
+        if index is None:
+            return False
+        del unmatched[index]
+    return True
 
 
 class MapRecognizer:

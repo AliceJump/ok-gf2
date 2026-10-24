@@ -84,17 +84,17 @@ class ClearMapTask(BaseGfTask):
             map_name_groups = []
             if last_failed_flag and last_failed_name:
                 canonical = extract_map_name(last_failed_name)
-                maps = [box for box in maps if canonical is not None and box.name == canonical]
+                retry_maps = [box for box in maps if canonical is not None and box.name == canonical]
 
-                if maps:
-                    maps = [maps[0]]  # 只保留第一个，避免重复点击
+                if retry_maps:
+                    maps = [retry_maps[0]]  # 只保留第一个，避免重复点击
                     maps[0].name = "before_one_" + maps[0].name
                     maps[0].x = max(0, int(maps[0].x - 80 / 256 * self.width))
                     map_name_groups = [{maps[0].name}]
-                else:
-                    map_name_groups = []
                 last_failed_flag = False
-            else:
+
+            # 重试目标暂时缺失时，仍按完整地图枚举，不能把筛选为空当成推图完成。
+            if not map_name_groups:
                 maps.extend(self.find_feature(feature_name=fL.not_clear_one, box=map_ocr_box))
                 now_icon_y_offset = 0.489 - 0.380
                 now_icon = [self.wait_feature(feature=fL.now_icon, box=map_ocr_box, time_out=1)]
