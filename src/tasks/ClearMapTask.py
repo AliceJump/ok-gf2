@@ -41,11 +41,12 @@ class ClearMapTask(BaseGfTask):
             raise RuntimeError("关卡页面仍在移动或编号识别不稳定，请等待地图静止后重试")
         return result[0]
 
-    def find_map_by_name(self, name):
+    def wait_stable_map_by_name(self, name):
+        """等待地图编号及位置稳定，再按完整编号选择重试目标。"""
         canonical = extract_map_name(name)
         if canonical is None:
             return []
-        return [box for box in self.find_map_names() if box.name == canonical]
+        return [box for box in self.wait_stable_map_names() if box.name == canonical]
 
     def find_boxes(self, boxes, match=None, boundary=None):
         # auto_battle / skip_dialogs 的地图结束判定也走同一套高分辨率识别。
@@ -165,9 +166,7 @@ class ClearMapTask(BaseGfTask):
 
                     if last_clicked:
                         self.log_debug(f"重新点击上一次关卡: {last_clicked.name}")
-                        if boxes := self.wait_until(
-                            lambda name=last_clicked.name: self.find_map_by_name(name), time_out=3
-                        ):
+                        if boxes := self.wait_stable_map_by_name(last_clicked.name):
                             self.click(boxes, after_sleep=1)
                             self.back(after_sleep=2)
                 else:
