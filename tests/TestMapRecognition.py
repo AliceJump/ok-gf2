@@ -82,6 +82,17 @@ class TestMapRecognizer(unittest.TestCase):
         )
         self.assertEqual([box.name for box in recognizer.recognize(self.frame)], ["SA-1-12", "SZ-1-5"])
 
+    def test_filtered_prefix_extension_cannot_invent_a_digit(self):
+        """低置信度不等于截断，过滤结果不能擅自给合法编号补位。"""
+        recognizer, _ = self.recognizer([detected("SA-1-2", confidence=0.75)], [detected("SA-1-23")])
+        self.assertEqual([box.name for box in recognizer.recognize(self.frame)], ["SA-1-2"])
+
+    def test_720p_confident_original_survives_longer_filtered_prefix(self):
+        """低分辨率的补识别也不能覆盖原图的高置信度编号。"""
+        recognizer, _ = self.recognizer([detected("SA-1-2")], [detected("SA-1-23")])
+        boxes = recognizer.recognize(np.zeros((720, 1280, 3), dtype=np.uint8))
+        self.assertEqual([box.name for box in boxes], ["SA-1-2"])
+
     def test_star_and_name_boxes_at_same_location_do_not_duplicate(self):
         recognizer, _ = self.recognizer(
             [detected("***KA-1-5", x=200, width=220, confidence=0.75)],
@@ -130,6 +141,12 @@ class TestMapRecognizer(unittest.TestCase):
 
 
 class TestMapStability(unittest.TestCase):
+    def test_two_current_boxes_cannot_reuse_one_previous_box(self):
+        """两个重复 OCR 框不能掩盖另一个旧框消失的事实。"""
+        previous = [Box(500, 300, 100, 30, name="SA-1-1"), Box(900, 300, 100, 30, name="SA-1-1")]
+        current = [Box(500, 293, 100, 30, name="SA-1-1"), Box(500, 307, 100, 30, name="SA-1-1")]
+        self.assertFalse(stable_map_names(previous, current, 8))
+
     def test_moving_or_changed_labels_are_not_stable(self):
         first = [Box(500, 300, 100, 30, name="SA-1-1")]
         for second in [[], [Box(540, 300, 100, 30, name="SA-1-1")], [Box(500, 300, 100, 30, name="SA-1-2")]]:
@@ -297,6 +314,28 @@ class TestClearMapRecognition(unittest.TestCase):
         self.run_stage_then_reclick([other, other])
         self.assertEqual(self.task.click.call_count, 2)
         self.task.back.assert_not_called()
+
+    def test_failed_target_disappearing_does_not_report_map_complete(self):
+        """已完成一关后，丢失失败目标仍需继续枚举其他可见关卡。"""
+        first = [Box(500, 300, 100, 30, name="SA-1-1")]
+        failed = [Box(900, 300, 100, 30, name="SA-1-2")]
+        other = [Box(1200, 300, 100, 30, name="SA-1-3")]
+        self.task.wait_stable_map_names = Mock(side_effect=[first, first, failed, other, StopIteration])
+        self.task.next_frame = Mock()
+        self.task.find_feature = Mock(return_value=[])
+        self.task.wait_feature = Mock(return_value=None)
+        reward = Box(1400, 400, 100, 30, name="特殊奖励")
+        self.task.wait_ocr = Mock(side_effect=[[reward, Box(1400, 500, 100, 30, name="挑战")], [reward], []])
+        self.task.auto_battle = Mock()
+        self.task.log_debug = Mock()
+        self.task.log_info = Mock()
+        self.task.click = Mock()
+        self.task.back = Mock()
+        with self.assertRaises(StopIteration):
+            self.task.run()
+        clicked = [call.args[0] for call in self.task.click.call_args_list]
+        self.assertEqual(clicked[-1].name, "SA-1-3")
+        self.task.log_info.assert_not_called()
 
 
 if __name__ == "__main__":
