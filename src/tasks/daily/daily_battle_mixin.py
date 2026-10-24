@@ -78,7 +78,7 @@ class DailyBattleMixin:
         raise Exception(f"战役推进里切不到「{tab}」页签，看 campaign_tab 截图")
 
     def battle(self):
-        if self.config.get("自主循环"):
+        if getattr(self, "_auto_loop_done", False):  # 游戏内自主循环已经打过体力本 / 竞技场
             self.ensure_main()
             return
         self.info_set("current_task", "battle")
@@ -118,7 +118,7 @@ class DailyBattleMixin:
         self.ensure_main()
 
     def arena(self):
-        if self.config.get("自主循环"):
+        if getattr(self, "_auto_loop_done", False):  # 游戏内自主循环已经打过体力本 / 竞技场
             self.ensure_main()
             return
         self.info_set("current_task", "arena")
