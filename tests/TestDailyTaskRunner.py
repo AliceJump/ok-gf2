@@ -29,6 +29,8 @@ class StubTask:
     def log_info(self, message, notify=False, **kwargs):
         self.logs.append((message, notify))
 
+    log_warning = log_info
+
     def info_set(self, key, value):
         self.infos[key] = value
 
@@ -112,16 +114,15 @@ class TestDailyTaskRunner(unittest.TestCase):
         self.assertEqual(runner.final_summary["status"], "部分失败")
         self.assertTrue(any(msg.startswith("以下任务未完成或失败:") for msg, _ in stub.logs))
 
-    def test_exception_stops_run_and_propagates(self):
+    def test_exception_marks_failure_and_continues(self):
         stub = StubTask(dict(ALL_ON))
         runner = DailyTaskRunner(stub, build_plan(stub, {"邮件": RuntimeError("boom")}))
-        with self.assertRaises(RuntimeError):
-            runner.run()
-        self.assertEqual(self.executed(stub), ["社区每日", "ensure_main", "邮件"])
-        self.assertEqual(runner.final_summary["status"], "异常结束")
-        self.assertEqual(runner.final_summary["exception"], "boom")
-        self.assertIn("DailyTask_Exception", stub.screenshots)
-        self.assertIn("邮件", runner.failure_details.get("", {}))
+        runner.run()
+        self.assertEqual(self.executed(stub), ["社区每日", "ensure_main", "邮件", "自动刷体力", "竞技场"])
+        self.assertEqual(runner.final_summary["status"], "部分失败")
+        self.assertEqual(runner.task_status["failed"], ["邮件"])
+        self.assertIn("boom", runner.failure_details[""]["邮件"])
+        self.assertIn("DailyTask_FailTask_邮件", stub.screenshots)
 
     def test_predicate_overrides_default_switch(self):
         stub = StubTask({"社区每日": False, "邮件": False, "自动刷体力": False, "竞技场": False})

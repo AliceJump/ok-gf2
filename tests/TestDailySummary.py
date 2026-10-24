@@ -12,6 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from ok.task.exceptions import CaptureException
+
 from src.tasks.daily_summary import (
     build_summary_lines,
     create_task_summary_report,
@@ -33,6 +35,8 @@ class StubTask:
 
     def log_info(self, message, notify=False, **kwargs):
         self.logs.append((message, notify))
+
+    log_warning = log_info
 
     def info_set(self, key, value):
         pass
@@ -111,8 +115,8 @@ class TestSummaryReport(unittest.TestCase):
 
     def test_exception_report(self):
         stub = StubTask(dict(ALL_ON))
-        runner = DailyTaskRunner(stub, build_plan(stub, {"自动刷体力": RuntimeError("卡在加载界面")}))
-        with self.assertRaises(RuntimeError):
+        runner = DailyTaskRunner(stub, build_plan(stub, {"自动刷体力": CaptureException("卡在加载界面")}))
+        with self.assertRaises(CaptureException):
             runner.run()
         path = create_task_summary_report(stub, self.tmp, runner.final_summary)
 
@@ -122,6 +126,17 @@ class TestSummaryReport(unittest.TestCase):
         self.assertIn("卡在加载界面", content)
         # 异常发生时已执行的成功任务仍应被记录
         self.assertIn("邮件", content)
+
+    def test_item_exception_report_preserves_failure_and_later_success(self):
+        stub = StubTask(dict(ALL_ON))
+        runner = DailyTaskRunner(stub, build_plan(stub, {"自动刷体力": RuntimeError("滚动失败")}))
+        runner.run()
+        path = create_task_summary_report(stub, self.tmp, runner.final_summary)
+        content = self.read_report(path)
+        self.assertIn("执行状态: 部分失败", content)
+        self.assertIn("滚动失败", content)
+        self.assertEqual(stub.calls, ["邮件", "自动刷体力", "竞技场"])
+        self.assertIn("竞技场", runner.task_status["success"])
 
     def test_skipped_tasks_are_recorded(self):
         stub = StubTask({"邮件": True, "自动刷体力": False, "竞技场": False})

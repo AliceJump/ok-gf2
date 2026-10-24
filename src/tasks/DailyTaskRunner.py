@@ -13,7 +13,8 @@
 沿用 ok-gf2 原有约定的部分：
 - 每个任务项执行前调用 ``ensure_main(recheck_time=2, time_out=90)``。
 - ``ensure_main`` 作为任务项时不做开关判定，恒执行。
-- 任务函数返回 ``False`` 记为失败并继续后续任务；抛出异常则中断并向外传播。
+- 任务函数返回 ``False`` 或发生普通异常，记为失败并继续后续任务。
+- 停止/结束信号、截图设备及热键错误，以及回到主页失败，仍中断并向外传播。
 
 多账户：``iter_multi_account_context`` 由 ``AccountMixin`` 提供（见 ``src/tasks/AccountMixin.py``），
 登录切换逻辑 ``login_flow()`` 需由 ok-gf2 自行实现。任务类没接该 mixin 时，编排器退化为单轮执行。
@@ -22,6 +23,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+
+from ok.task.exceptions import CaptureException, FinishedException, HotkeyConfigException, TaskDisabledException
+
+_STOP_EXCEPTIONS = (TaskDisabledException, FinishedException, CaptureException, HotkeyConfigException)
 
 TaskItem = tuple[str, Callable[[], object]]
 # 可选的第三元素：开关谓词。提供时替代默认的 config.get(key) 判断（例如多开关 OR 逻辑）。
@@ -227,13 +232,29 @@ class DailyTaskRunner:
         self.final_summary["current_task"] = key
         self.task.log_info(self._tr("开始任务: {key}").format(key=self._tr(key)))
         self.task.ensure_main(**self.ensure_main_kwargs)
-        result = func()
+        try:
+            result = func()
+        except _STOP_EXCEPTIONS:
+            raise
+        except Exception as error:
+            if key in ALWAYS_RUN_KEYS:
+                raise
+            self.set_task_failure(self._tr("异常: {err}").format(err=error), task_name=key)
+            self.task.log_warning(
+                self._tr("任务 {key} 异常，记录失败后继续后续任务: {err}").format(key=self._tr(key), err=error)
+            )
+            result = False
 
         if result is False:
             self.task_status["failed"].append(key)
             self.set_task_failure(self._tr("任务返回 False"), task_name=key)
             if key not in self.failure_screenshot_tasks:
-                self.task.screenshot(f"DailyTask_FailTask_{key}")
+                try:
+                    self.task.screenshot(f"DailyTask_FailTask_{key}")
+                except _STOP_EXCEPTIONS:
+                    raise
+                except Exception as error:
+                    self.task.log_warning(f"任务 {key} 失败截图保存失败: {error}")
             self.task.log_info(self._tr("任务 {key} 执行失败").format(key=self._tr(key)), notify=True)
             self.current_task_key = None
             self.final_summary["current_task"] = ""
@@ -255,7 +276,7 @@ class DailyTaskRunner:
         return True
 
     def run(self, repeat_times: int = 1):
-        """按清单顺序执行全部任务项，异常在记录与截图后继续向外传播。"""
+        """按清单继续执行失败项之后的任务；无法恢复主页或设备故障时终止。"""
         self.task.log_info(self._tr("开始执行日常任务..."), notify=True)
         self.final_summary["status"] = "运行中"
         try:

@@ -54,8 +54,8 @@ def run(self):
 1. 每个任务项执行前都会调用 `ensure_main(recheck_time=2, time_out=90)`。
 2. 执行函数返回 `False` → 记入 `failed`，**继续**执行后续任务，并对该任务名截一张失败截图
    （`DailyTask_FailTask_<任务名>`）。
-3. 执行函数抛异常 → 记录现场、截 `DailyTask_Exception`、写 `final_summary`，然后**向外传播**，
-   后续任务不再执行。这与改造前 `run()` 的行为一致，不要改成「吞掉异常继续跑」。
+3. 普通任务项抛异常 → 保留异常原因、截图并记入 `failed`，继续后续任务；失败截图保存异常也只记录警告。
+   用户停止、执行结束、截图设备异常、热键配置异常仍向外传播；每项前的 `ensure_main` 恢复失败也必须中止，避免在错误页面继续操作。
 4. 开关关闭 → 记入 `skipped`，不执行。
 5. 全部跑完后：有 failed 则记「部分失败」，否则「完成」，并 `notify=True` 推送日志。
 6. `publish_info` 默认 `False`——默认不往 UI info 写「已完成/已失败/已跳过/未处理的任务列表」四项，
@@ -150,7 +150,7 @@ ok-script 2.0.5 的 click 系列**都没有 `alt` 参数**，ok-gf2 在 `BaseGfT
 ```
 
 `TestDailyTaskRunner` 覆盖：全成功顺序、`ensure_main` 参数、开关跳过、返回 False 记失败并继续、
-异常中断并传播、谓词覆盖开关、`publish_info` 开关。
+普通异常记失败并继续、控制与设备异常传播、恢复主页失败中止、谓词覆盖开关、`publish_info` 开关。
 
 `TestDailySummary` 覆盖：成功/失败/异常/跳过四种报告的字段内容、旧文件清理、同秒冲突后缀、
 缺 `tr` 时的兜底。
