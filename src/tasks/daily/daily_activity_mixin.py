@@ -546,6 +546,7 @@ class DailyActivityMixin:
                 and len(self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)) >= 5
             )
 
+        level_up = re.compile(r"等\s*级\s*提\s*升|(?:空\s*白\s*)?处\s*关\s*闭$")
         for attempt in range(3):
             if not self.wait_click_ocr(
                 match=re.compile(r"^\s*确\s*认\s*$"),
@@ -558,8 +559,37 @@ class DailyActivityMixin:
                     return True
             elif self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
                 return True
+            # 实录 2026-10-25：喝水的经验让活动层升到 Lv.12，结果页关掉后弹「活动层等级提升」盖住 HUD，
+            # 底部「点击空白处关闭」点掉就回到活动层；原来只会重找「确认」，三次后误报喝水失败。
+            if popup := self.ocr(match=level_up):
+                hints = [b for b in popup if "关" in getattr(b, "name", "")]
+                self.log_info("饮品结果后弹出「活动层等级提升」，点空白处关闭")
+                if hints:
+                    self.click(hints[0], after_sleep=1.5)
+                else:
+                    self.click(0.5, 0.95, after_sleep=1.5)
+                if self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
+                    return True
             self.log_warning(f"饮品加成确认后未返回活动层，重试 {attempt + 1}/3")
         self.screenshot("drink_result_blocked")
+        return False
+
+    def _select_regular_food_tab(self):
+        """进烹饪页后确认停在左侧第三个「常规菜品」页签（每日首次免费），不在就切过去。
+
+        实录 2026-10-25：另一个账号进来默认是第一个「自研烹饪」页签，没有食材（「暂无可选择食材」），
+        点「下一步」不会出「确认邀请」，吃饭被判失败；第二个「创意烹调」也是「暂无可选择菜谱」。
+        """
+        title = re.compile(r"常\s*规\s*菜\s*品")
+        title_box = self.box_of_screen(0.18, 0.13, 0.6, 0.22)
+        if self.wait_ocr(match=title, box=title_box, time_out=3, raise_if_not_found=False):
+            return True
+        self.log_info("烹饪页不在「常规菜品」页签，切到左侧第三个页签")
+        self.click_relative(0.148, 0.415, after_sleep=1)
+        if self.wait_ocr(match=title, box=title_box, time_out=3, raise_if_not_found=False):
+            return True
+        self.ocr(log=True)
+        self.screenshot("food_regular_tab_missing")
         return False
 
     def do_food_flow(
@@ -625,6 +655,9 @@ class DailyActivityMixin:
                     self.log_info("茶歇一刻 1/1：今日喝水已完成，跳过重复制作")
                     return True
                 self.click_with_key("alt", result)
+                if main_btn == "下一步" and not self._select_regular_food_tab():
+                    self.back(after_sleep=2)
+                    return "button"
             else:
                 self.screenshot(f"food_entry_missing_{entry_match.pattern}")
                 return "entry"

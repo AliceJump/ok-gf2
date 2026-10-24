@@ -8,9 +8,13 @@ from types import SimpleNamespace
 
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
 task_class = next(n for n in ast.parse(source.read_text(encoding="utf-8")).body if isinstance(n, ast.ClassDef))
-method = next(n for n in task_class.body if isinstance(n, ast.FunctionDef) and n.name == "do_food_flow")
+methods = [
+    n
+    for n in task_class.body
+    if isinstance(n, ast.FunctionDef) and n.name in {"do_food_flow", "_select_regular_food_tab"}
+]
 namespace = {"re": re}
-exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
 
 class FoodScreen:
@@ -31,6 +35,8 @@ class FoodScreen:
         self.extra_present = True
         self.entry_present = True
         self.main_present = True
+        self.regular_tab = True
+        self.tab_checks = 0
         self.clicks = []
         self.unsafe_clicks = []
         self.screenshots = []
@@ -48,6 +54,11 @@ class FoodScreen:
         self.clicks.append("取消")
         self.state = "menu"
         return True
+
+    def _select_regular_food_tab(self):
+        """烹饪页页签切换由 RegularTabTest 单独覆盖，这里只记录调用。"""
+        self.tab_checks += 1
+        return self.regular_tab
 
     def log_info(self, *args, **kwargs):
         """忽略运行日志。"""
@@ -191,6 +202,22 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual(["下一步"], task.clicks)
         self.assertFalse(task.dialogs_skipped)
 
+    def test_cooking_page_checks_regular_tab_before_next(self):
+        """吃饭进烹饪页先确认「常规菜品」页签；喝水不检查。"""
+        task = FoodScreen(overwrite=False)
+        self.assertIs(True, task.run())
+        self.assertEqual(1, task.tab_checks)
+        drink = FoodScreen(drink=True)
+        drink.run()
+        self.assertEqual(0, drink.tab_checks)
+
+    def test_missing_regular_tab_backs_out_without_next(self):
+        """切不到「常规菜品」时不点「下一步」（自研页没食材，点了也不会出「确认邀请」）。"""
+        task = FoodScreen(overwrite=False)
+        task.regular_tab = False
+        self.assertEqual("button", task.run())
+        self.assertEqual([], task.clicks)
+
     def test_drinking_still_completes(self):
         """饮品流程继续使用原有确认顺序。"""
         task = FoodScreen(drink=True)
@@ -206,6 +233,56 @@ class FoodFlowTest(unittest.TestCase):
                 task.main_present = stage != "button"
                 self.assertEqual(stage, task.run())
                 self.assertEqual([], task.clicks)
+
+
+class RegularTabScreen:
+    _select_regular_food_tab = namespace["_select_regular_food_tab"]
+
+    def __init__(self, tab):
+        """tab：当前页签标题（实录 2026-10-25 默认是「自研烹饪」）。"""
+        self.tab = tab
+        self.clicked = []
+        self.screenshots = []
+
+    def box_of_screen(self, *bounds):
+        return bounds
+
+    def wait_ocr(self, *, match, **kwargs):
+        return [self.tab] if match.search(self.tab) else []
+
+    def click_relative(self, x, y, **kwargs):
+        """左侧第三个页签在 (0.148, 0.415)。"""
+        self.clicked.append((x, y))
+        if abs(y - 0.415) < 0.03:
+            self.tab = "常规菜品"
+
+    def ocr(self, **kwargs):
+        return []
+
+    def log_info(self, *args, **kwargs):
+        pass
+
+    def screenshot(self, name):
+        self.screenshots.append(name)
+
+
+class RegularTabTest(unittest.TestCase):
+    def test_already_on_regular_tab_clicks_nothing(self):
+        task = RegularTabScreen("常规菜品")
+        self.assertTrue(task._select_regular_food_tab())
+        self.assertEqual([], task.clicked)
+
+    def test_switches_from_empty_self_made_tab(self):
+        """实录 2026-10-25：默认停在「自研烹饪」（暂无可选择食材），切到第三个页签。"""
+        task = RegularTabScreen("自研烹饪")
+        self.assertTrue(task._select_regular_food_tab())
+        self.assertEqual([(0.148, 0.415)], task.clicked)
+
+    def test_switch_failure_is_reported(self):
+        task = RegularTabScreen("自研烹饪")
+        task.click_relative = lambda *args, **kwargs: None
+        self.assertFalse(task._select_regular_food_tab())
+        self.assertEqual(["food_regular_tab_missing"], task.screenshots)
 
 
 if __name__ == "__main__":
