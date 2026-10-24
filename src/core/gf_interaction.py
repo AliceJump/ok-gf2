@@ -130,10 +130,8 @@ class GfInteraction(GenshinInteraction):
         self.session_mouse.release()
 
     def scroll(self, x, y, scroll_amount):
-        if not self._use_session_mouse(x, y):
-            return super().scroll(x, y, scroll_amount)
-        self._ensure_front()
-        self.session_mouse.wheel(*self._abs(x, y), scroll_amount)
+        """滚轮统一临时切前台，结束后恢复窗口和鼠标，包括会话鼠标模式。"""
+        return super().scroll(x, y, scroll_amount)
 
     # ---- 键盘 ----
     def send_key_up(self, key):

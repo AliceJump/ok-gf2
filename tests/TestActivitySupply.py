@@ -5,7 +5,7 @@ import re
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
 task_class = next(
@@ -31,79 +31,7 @@ namespace = {
     "re": re,
     "pop_ups": ["点击空白处关闭"],
 }
-current_screen = [None]
-
-
-def foreground_window():
-    screen = current_screen[0]
-    return screen.hwnd.hwnd if screen.foreground else 99
-
-
-def set_foreground_window(hwnd):
-    screen = current_screen[0]
-    if hwnd == screen.hwnd.hwnd:
-        if not screen.foreground:
-            screen.activations += 1
-        screen.foreground = True
-    else:
-        if screen.foreground:
-            screen.restores += 1
-        screen.foreground = False
-
-
-namespace["win32gui"] = SimpleNamespace(
-    ClientToScreen=lambda hwnd, point: point,
-    GetForegroundWindow=foreground_window,
-    SetForegroundWindow=set_foreground_window,
-    IsWindow=lambda hwnd: True,
-)
-namespace["win32api"] = SimpleNamespace(
-    GetCursorPos=lambda: current_screen[0].physical_mouse,
-    SetCursorPos=lambda point: current_screen[0].move_to(point),
-)
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
-
-
-screens = {}
-
-
-def run_in_window(hwnd, func, *args, **kwargs):
-    """模拟后台滚动前后的窗口状态恢复。"""
-    screen = screens[hwnd]
-    previous = screen.foreground
-    active_and_send_mouse_delta(hwnd)
-    try:
-        return func(*args, **kwargs)
-    finally:
-        screen.foreground = previous
-        if not previous:
-            screen.restores += 1
-
-
-def active_and_send_mouse_delta(hwnd, **kwargs):
-    """记录模拟窗口激活，不发送系统输入。"""
-    screen = screens[hwnd]
-    if not screen.foreground:
-        screen.activations += 1
-        screen.foreground = True
-
-
-def run_at_window_pos(hwnd, func, x, y, sleep_time=0.5):
-    """临时移动模拟鼠标并保证恢复原位置。"""
-    screen = screens[hwnd]
-    previous = screen.physical_mouse
-    screen.physical_mouse = (x, y)
-    try:
-        return func()
-    finally:
-        screen.physical_mouse = previous
-
-
-namespace.update(
-    run_in_window=run_in_window,
-    run_at_window_pos=run_at_window_pos,
-    active_and_send_mouse_delta=active_and_send_mouse_delta,
-)
 
 
 class SupplyScreen:
@@ -113,6 +41,9 @@ class SupplyScreen:
     _claim_supply_activity = namespace["_claim_supply_activity"]
     _scroll_supply_menu = namespace["_scroll_supply_menu"]
 
+    def is_adb(self):
+        return False
+
     def __init__(self, entries=None, remaining=None):
         """Model init."""
         self.entries = entries if entries is not None else {2: "情报补给", 4: "战前补给"}
@@ -121,8 +52,6 @@ class SupplyScreen:
         self.menu_page = 5  # The game remembers where the user last scrolled.
         self.width, self.height = 2560, 1600
         self.hwnd = SimpleNamespace(hwnd=id(self))
-        screens[self.hwnd.hwnd] = self
-        current_screen[0] = self
         self.foreground = False
         self.activations = 0
         self.restores = 0
@@ -148,7 +77,22 @@ class SupplyScreen:
         self._ensure_supply_menu = Mock(return_value=True)
         self.sleep = Mock()
         self.ensure_main = Mock()
-        self.executor = SimpleNamespace(interaction=SimpleNamespace(do_scroll=self.do_scroll))
+        self.executor = SimpleNamespace(interaction=SimpleNamespace(scroll=self.scroll))
+
+    def scroll(self, x, y, count):
+        """Model the public backend; native behavior is tested in TestForegroundScroll."""
+        previous_foreground, previous_cursor = self.foreground, self.physical_mouse
+        if not previous_foreground:
+            self.activations += 1
+        self.foreground = True
+        self.move_to((x, y))
+        try:
+            self.do_scroll(x, y, count)
+        finally:
+            self.move_to(previous_cursor)
+            self.foreground = previous_foreground
+            if not previous_foreground:
+                self.restores += 1
 
     def do_scroll(self, x, y, count):
         self.scroll_relative(x / self.width, y / self.height, count)
@@ -449,95 +393,6 @@ class SupplyMenuVerificationTest(unittest.TestCase):
         for menu, home in (([], []), (["活动"], []), (["新手"], []), (["情报补给"], ["招募", "活动层"])):
             with self.subTest(menu=menu, home=home):
                 self.assertFalse(self.check_menu(menu, home)[0])
-
-
-class ForegroundSupplyScrollTest(unittest.TestCase):
-    def make_task(self, width=1920, height=1080, foreground=99):
-        task = SimpleNamespace(
-            width=width,
-            height=height,
-            hwnd=SimpleNamespace(hwnd=123),
-            sleep=Mock(),
-            scroll_relative=Mock(),
-            log_warning=Mock(),
-            executor=SimpleNamespace(interaction=SimpleNamespace(do_scroll=Mock())),
-        )
-        state = {"foreground": foreground, "cursor": (1500, 800)}
-        gui, api = Mock(), Mock()
-        gui.GetForegroundWindow.side_effect = lambda: state["foreground"]
-        gui.SetForegroundWindow.side_effect = lambda hwnd: state.update(foreground=hwnd)
-        gui.ClientToScreen.side_effect = lambda hwnd, point: (point[0] + 50, point[1] + 80)
-        gui.IsWindow.return_value = True
-        api.GetCursorPos.side_effect = lambda: state["cursor"]
-        api.SetCursorPos.side_effect = lambda point: state.update(cursor=point)
-        return task, state, gui, api
-
-    def test_real_wheel_targets_supply_sidebar_at_16_by_9_sizes(self):
-        for width, height in ((1920, 1080), (2560, 1440), (3840, 2160)):
-            with self.subTest(size=(width, height)):
-                task, state, gui, api = self.make_task(width, height)
-                expected = (int(width * 0.12) + 50, int(height * 0.60) + 80)
-                observed = []
-                task.executor.interaction.do_scroll.side_effect = lambda x, y, count: observed.append(
-                    (x, y, count, state["foreground"], state["cursor"])
-                )
-                with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
-                    namespace["_scroll_supply_menu"](task, -3)
-                self.assertEqual([(int(width * 0.12), int(height * 0.60), -3, 123, expected)], observed)
-                self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
-
-    def test_failed_foreground_activation_does_not_send_wheel(self):
-        task, state, gui, api = self.make_task()
-        gui.SetForegroundWindow.side_effect = lambda hwnd: None
-        with patch.dict(namespace, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "前台"):
-            namespace["_scroll_supply_menu"](task, -3)
-        task.executor.interaction.do_scroll.assert_not_called()
-        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
-
-    def test_foreground_activation_error_reports_focus_failure_and_restores_cursor(self):
-        task, state, gui, api = self.make_task()
-
-        class Win32Error(Exception):
-            pass
-
-        gui.error = Win32Error
-        gui.SetForegroundWindow.side_effect = Win32Error("foreground locked")
-        with (
-            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
-            self.assertRaisesRegex(RuntimeError, "游戏未进入前台"),
-        ):
-            namespace["_scroll_supply_menu"](task, -3)
-        task.executor.interaction.do_scroll.assert_not_called()
-        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
-
-    def test_wheel_failure_restores_window_and_cursor(self):
-        task, state, gui, api = self.make_task()
-        task.executor.interaction.do_scroll.side_effect = RuntimeError("wheel failed")
-        with (
-            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
-            self.assertRaisesRegex(RuntimeError, "wheel failed"),
-        ):
-            namespace["_scroll_supply_menu"](task, -3)
-        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
-
-    def test_already_foreground_keeps_game_active(self):
-        task, state, gui, api = self.make_task(foreground=123)
-        with patch.dict(namespace, {"win32gui": gui, "win32api": api}):
-            namespace["_scroll_supply_menu"](task, 30)
-        task.executor.interaction.do_scroll.assert_called_once_with(int(task.width * 0.12), int(task.height * 0.60), 30)
-        gui.SetForegroundWindow.assert_not_called()
-        self.assertEqual({"foreground": 123, "cursor": (1500, 800)}, state)
-
-    def test_missing_real_wheel_backend_fails_before_activation(self):
-        task, state, gui, api = self.make_task()
-        task.executor.interaction = SimpleNamespace()
-        with (
-            patch.dict(namespace, {"win32gui": gui, "win32api": api}),
-            self.assertRaisesRegex(RuntimeError, "真实滚轮"),
-        ):
-            namespace["_scroll_supply_menu"](task, -3)
-        gui.SetForegroundWindow.assert_not_called()
-        self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
 
 
 class NativeHoverTest(unittest.TestCase):
