@@ -30,8 +30,42 @@ class InteractionSafetyTest(unittest.TestCase):
     def test_background_key_up_posts_release_before_deactivation(self):
         """Release the modifier through the background interaction."""
         obj = self.make_interaction()
+        events = []
+        obj.post_interaction.send_key_up.side_effect = lambda key: events.append(("key_up", key))
+        obj.deactivate.side_effect = lambda: events.append("deactivate")
+        GenshinInteraction.send_key_up(obj, "alt")
+        self.assertEqual([("key_up", "alt"), "deactivate"], events)
+
+    def test_foreground_key_up_keeps_game_active(self):
+        """Releasing Alt must not disable subsequent drink-page input."""
+        obj = self.make_interaction()
+        obj.hwnd_window.is_foreground = lambda: True
         GenshinInteraction.send_key_up(obj, "alt")
         obj.post_interaction.send_key_up.assert_called_once_with("alt")
+        obj.deactivate.assert_not_called()
+
+    def test_key_up_respects_foreground_switch_during_release(self):
+        """Do not send inactive after the user brings the game to the foreground."""
+        obj = self.make_interaction()
+
+        def release(key):
+            obj.hwnd_window.is_foreground = lambda: True
+
+        obj.post_interaction.send_key_up.side_effect = release
+        GenshinInteraction.send_key_up(obj, "alt")
+        obj.post_interaction.send_key_up.assert_called_once_with("alt")
+        obj.deactivate.assert_not_called()
+
+    def test_foreground_release_failure_does_not_deactivate_game(self):
+        """Keep the original release error without deactivating the foreground game."""
+        obj = self.make_interaction()
+        obj.hwnd_window.is_foreground = lambda: True
+        original_error = RuntimeError("release failed")
+        obj.post_interaction.send_key_up.side_effect = original_error
+        with self.assertRaises(RuntimeError) as raised:
+            GenshinInteraction.send_key_up(obj, "alt")
+        self.assertIs(original_error, raised.exception)
+        obj.deactivate.assert_not_called()
 
     def test_background_scroll_uses_real_wheel_and_restores_cursor(self):
         """Unity list wheel input needs the game in the real foreground."""
