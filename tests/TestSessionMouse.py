@@ -409,6 +409,51 @@ class GfInteractionTest(unittest.TestCase):
         it.post_interaction.send_key_up.assert_called_once_with("alt")
         self.assertEqual(it.calls, [("deactivate",)])
 
+    def test_failed_background_key_up_still_deactivates(self):
+        it = make_interaction(foreground=False)
+        error = RuntimeError("release failed")
+        it.post_interaction.send_key_up.side_effect = error
+        with self.assertRaises(RuntimeError) as raised:
+            it.send_key_up("alt")
+        self.assertIs(raised.exception, error)
+        self.assertEqual(it.calls, [("deactivate",)])
+
+    def test_failed_foreground_key_up_keeps_game_active(self):
+        it = make_interaction(foreground=True)
+        error = RuntimeError("release failed")
+        it.post_interaction.send_key_up.side_effect = error
+        with self.assertRaises(RuntimeError) as raised:
+            it.send_key_up("alt")
+        self.assertIs(raised.exception, error)
+        self.assertEqual(it.calls, [])
+
+    def test_background_cleanup_error_does_not_hide_release_error(self):
+        it = make_interaction(foreground=False)
+        error = RuntimeError("release failed")
+        it.post_interaction.send_key_up.side_effect = error
+        it.deactivate = Mock(side_effect=OSError("closed window"))
+        with self.assertRaises(RuntimeError) as raised:
+            it.send_key_up("alt")
+        self.assertIs(raised.exception, error)
+        it.deactivate.assert_called_once_with()
+
+    def test_background_cleanup_error_does_not_fail_successful_release(self):
+        it = make_interaction(foreground=False)
+        it.deactivate = Mock(side_effect=OSError("closed window"))
+        it.send_key_up("alt")
+        it.post_interaction.send_key_up.assert_called_once_with("alt")
+        it.deactivate.assert_called_once_with()
+
+    def test_foreground_check_error_does_not_hide_release_error(self):
+        it = make_interaction(foreground=False)
+        error = RuntimeError("release failed")
+        it.post_interaction.send_key_up.side_effect = error
+        it.hwnd_window.is_foreground.side_effect = OSError("closed window")
+        with self.assertRaises(RuntimeError) as raised:
+            it.send_key_up("alt")
+        self.assertIs(raised.exception, error)
+        it.hwnd_window.is_foreground.assert_called_once_with()
+
     def test_destroy_closes_device(self):
         it = make_interaction()
         it.on_destroy()
