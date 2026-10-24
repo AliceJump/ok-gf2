@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from src.tasks.daily.daily_public_mixin import loop_covers
+
 
 def load_methods(path, class_name):
     """Load production methods without initializing the game runtime."""
@@ -20,6 +22,7 @@ def load_methods(path, class_name):
         "cv2": cv2,
         "win32api": win32api,
         "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
+        "loop_covers": loop_covers,
     }
     # 模块级的正则常量和工具函数（如 chenyan_not_open_re、power_of）也一起带上；import 依赖游戏运行时，不执行
     for node in tree.body:
