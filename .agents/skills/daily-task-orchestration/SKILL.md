@@ -145,12 +145,16 @@ ok-script 2.0.5 的 click 系列**都没有 `alt` 参数**，ok-gf2 在 `BaseGfT
 
 ```powershell
 & ".\.venv\Scripts\python.exe" -m unittest tests.TestDailyTaskRunner -v
+& ".\.venv\Scripts\python.exe" -m unittest tests.TestDailyRecovery -v
 & ".\.venv\Scripts\python.exe" -m unittest tests.TestDailySummary -v
 & ".\.venv\Scripts\python.exe" -m unittest tests.TestMultiAccount -v
 ```
 
 `TestDailyTaskRunner` 覆盖：全成功顺序、`ensure_main` 参数、开关跳过、返回 False 记失败并继续、
-普通异常记失败并继续、控制与设备异常传播、恢复主页失败中止、谓词覆盖开关、`publish_info` 开关。
+普通异常记失败并继续、谓词覆盖开关、`publish_info` 开关。
+
+`TestDailyRecovery` 覆盖：补给异常后继续并保留失败原因、返回 False 后继续、实际补给流程异常后的主页恢复、
+多轮失败汇总、失败截图保存异常、控制与设备异常传播、显式返回主页及任务前主页恢复失败中止。
 
 `TestDailySummary` 覆盖：成功/失败/异常/跳过四种报告的字段内容、旧文件清理、同秒冲突后缀、
 缺 `tr` 时的兜底。
