@@ -61,11 +61,8 @@ class DailyTask(
         输入框和选择框配置
 
         """
-        auto_loop_skip_list = ["体力本", "自动刷体力", "刷钱本", "竞技场"]
-        auto_loop_skip_dict = dict.fromkeys(auto_loop_skip_list, "自主循环跑完后会跳过该项")
         self.config_description.update(
-            auto_loop_skip_dict
-            | {
+            {
                 "已确认启用游戏内全局自动功能": (
                     "运行前必须先在游戏内开启全局自动战斗\n（设置 → 其他 → 自动战斗设置），开启后勾选本项"
                 ),
@@ -90,7 +87,7 @@ class DailyTask(
                 "公共区/调度室": "自动完成公共区委托的派遣与领取；开了「自主循环」且已解锁时改用游戏内自主循环",
                 "自主循环": (
                     "吃完饭后点主页左下角的自主循环图标（指挥官 50 级解锁）→「开始循环」，由游戏按循环队列完成调度室、体力本、竞技场等\n"
-                    "循环跑完就跳过：体力本、自动刷体力、刷钱本、竞技场；没有图标（未解锁）或没跑完则照手动流程做"
+                    "循环跑完后其余日常照常全部执行（委托、体力本、竞技场等按剩余体力 / 次数判断）；没有图标（未解锁）就只走手动流程"
                 ),
                 "购买免费礼包": "自动购买商城中的免费礼包",
                 "商店心愿单购买": ("自动在各商店（家具/班组/调度/讯段/心智/人形堆栈）中\n一键购买心愿单商品"),
@@ -164,7 +161,6 @@ class DailyTask(
                 "活动自律": ["当前物资关卡名称"],
                 "活动层": ["喝水", "吃饭", "活动层浇花"],
                 "公共区/调度室": ["自主循环"],
-                "自主循环跳过项": ["自动刷体力", "刷钱本", "竞技场"],
                 "购买免费礼包": ["商店心愿单购买"],
                 "自动刷体力": ["体力本"],
                 "班组": ["尘烟", "尘烟买第3次"],
@@ -172,7 +168,7 @@ class DailyTask(
         )
         for group, keys in self.default_config_group.items():
             if group not in self.default_config:
-                # 「自主循环跳过项」这种只用来分组、不是真实开关的名字，不能写成 sub_configs：
+                # 只用来分组、不是真实开关的名字不能写成 sub_configs：
                 # 框架会把它当成父开关去读值（读到 None），子项全部判成隐藏，Web 接口里就看不到「自动刷体力」「竞技场」了
                 continue
             self.config_type.update({group: {"sub_configs": {True: keys}}})
@@ -209,7 +205,6 @@ class DailyTask(
         if not self.config.get("已确认启用游戏内全局自动功能"):
             self.confirm_auto_battle_up()
         self._zilv_locked = False
-        self._auto_loop_done = False  # 游戏内自主循环跑完后，体力本 / 竞技场不再手动打
         self.reset_lineup(None)
         self.start_watchdog()
         try:
