@@ -83,7 +83,7 @@ class TestGuildSupply(unittest.TestCase):
                             245,
                         )
 
-                    def ocr(*, match, **kwargs):
+                    def ocr(*, match, pending=pending, **kwargs):
                         if match == ["分配中", "已分配"]:
                             return ["分配中"]
                         return ["领取全部"] if pending and match == "领取全部" else []
