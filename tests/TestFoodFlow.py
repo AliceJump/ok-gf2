@@ -13,9 +13,7 @@ namespace = {"re": re}
 exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
 base_source = source.parents[2] / "core/BaseGfTask.py"
 base_tree = ast.parse(base_source.read_text(encoding="utf-8"))
-base_methods = [
-    n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "_confirm_meal_result"
-]
+base_methods = [n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "_confirm_meal_result"]
 exec(compile(ast.Module(body=base_methods, type_ignores=[]), str(base_source), "exec"), namespace)
 
 

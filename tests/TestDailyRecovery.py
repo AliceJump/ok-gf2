@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 from ok.task.exceptions import CaptureException, FinishedException, HotkeyConfigException, TaskDisabledException
 
+from src.core.BaseGfTask import BaseGfTask
 from src.tasks.daily.daily_activity_mixin import DailyActivityMixin
 from src.tasks.DailyTaskRunner import DailyTaskRunner
-from src.core.BaseGfTask import BaseGfTask
 from tests.TestFoodFlow import FoodScreen
 
 
@@ -44,6 +44,7 @@ class Task:
 class DailyRecoveryTest(unittest.TestCase):
     def test_meal_result_left_by_failed_item_recovers_home_before_next_item(self):
         """真实主页恢复须关闭用餐结果页，再允许下一项执行。"""
+
         class MealRecoveryTask(Task, FoodScreen):
             ensure_main = BaseGfTask.ensure_main
             is_main = BaseGfTask.is_main
@@ -81,14 +82,14 @@ class DailyRecoveryTest(unittest.TestCase):
                 task = MealRecoveryTask()
                 calls = []
 
-                def meal():
+                def meal(task=task, raises=raises):
                     task.state = "result"
                     task.result_clicks_dropped = 1
                     if raises:
                         raise RuntimeError("用餐确认未关闭")
                     return False
 
-                def rewards():
+                def rewards(task=task, calls=calls):
                     self.assertEqual("home", task.state)
                     calls.append("领任务")
                     return True
