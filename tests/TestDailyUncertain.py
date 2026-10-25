@@ -17,6 +17,8 @@ class Task:
     def log_info(self, text, **kwargs):
         self.logs.append(text)
 
+    log_warning = log_info
+
     def info_set(self, key, value):
         self.infos[key] = value
 
@@ -62,14 +64,15 @@ class UncertainSummaryTest(unittest.TestCase):
         self.assertEqual(["后续任务"], runner.task_status["failed"])
         self.assertEqual(["巡录"], runner.task_status["uncertain"])
 
-    def test_exception_still_propagates(self):
+    def test_item_exception_preserves_uncertainty_and_failure(self):
         task = Task()
 
         def fail():
             raise RuntimeError("broken")
 
         runner = DailyTaskRunner(task, [("巡录", lambda: "待核查"), ("后续任务", fail)])
-        with self.assertRaisesRegex(RuntimeError, "broken"):
-            runner.run()
-        self.assertEqual("异常结束", runner.final_summary["status"])
+        runner.run()
+        self.assertEqual("部分失败", runner.final_summary["status"])
+        self.assertEqual(["后续任务"], runner.task_status["failed"])
+        self.assertIn("broken", runner.failure_details[""]["后续任务"])
         self.assertEqual(["巡录"], runner.final_summary["per_round"][0]["uncertain"])
