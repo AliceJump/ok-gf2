@@ -204,6 +204,27 @@ class ShoppingTest(unittest.TestCase):
         self.assertEqual("待核查", task.shopping())
         self.assertEqual("已领取", task.status["每日礼包"])
 
+    def test_repeated_run_clears_previous_limited_success_on_early_exit(self):
+        """本轮未检查限时礼包时不能沿用上轮成功状态。"""
+        for failure in ["gift_category", "daily_claim", "limited_category"]:
+            with self.subTest(failure=failure):
+                task = ClaimShopScreen()
+                self.assertIsNone(task.shopping())
+                self.assertNotIn("待核查", task.status["限时礼包"])
+                if failure == "gift_category":
+                    task.dropped = task.category_clicks + 100
+                elif failure == "daily_claim":
+                    task.claimed = False
+                    task.purchase_dropped = 100
+                else:
+                    task.limited_dropped = task.limited_clicks + 100
+                self.assertEqual("待核查", task.shopping())
+                self.assertIn("待核查", task.status["限时礼包"])
+                if failure == "limited_category":
+                    self.assertEqual("已领取", task.status["每日礼包"])
+                else:
+                    self.assertIn("待核查", task.status["每日礼包"])
+
     def test_missing_daily_product_does_not_mean_already_claimed(self):
         task = ShopScreen(dropped=0)
         original = task.ocr

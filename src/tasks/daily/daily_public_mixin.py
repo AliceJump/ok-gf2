@@ -230,6 +230,7 @@ class DailyPublicMixin:
         """确认礼包商品区切换后领取免费物品；缺少证据则保留待核查结果。"""
         self.info_set("current_task", "shopping")
         self.info_set("每日礼包", "检查中")
+        self.info_set("限时礼包", "待核查：未确认限时礼包页面")
         self.wait_click_ocr(match=["商城"], box=self.box.bottom_right, after_sleep=1.5, raise_if_not_found=True)
         for _ in range(3):
             self.wait_click_ocr(
@@ -250,6 +251,7 @@ class DailyPublicMixin:
         else:
             self.info_set("免费礼包", "待核查：未确认礼包页面")
             self.info_set("每日礼包", "待核查：未确认礼包页面")
+            self.info_set("限时礼包", "待核查：未确认礼包页面")
             self.log_warning("未确认礼包商品内容切换，跳过免费礼包并继续后续任务")
             self.ensure_main()
             return "待核查"
@@ -259,6 +261,7 @@ class DailyPublicMixin:
         previous = self.wait_until(self._shop_category_content, time_out=2, settle_time=0)
         if not self._switch_shop_category(["臻品礼包", "限时礼包"], previous):
             self.info_set("免费礼包", "待核查：未确认限时礼包页面")
+            self.info_set("限时礼包", "待核查：未确认限时礼包页面")
             self.ensure_main()
             return "待核查"
         if not self._claim_shop_free_item(status_key="限时礼包"):
