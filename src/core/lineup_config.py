@@ -31,6 +31,7 @@ SCOPES = [
     {"name": "尘烟前哨战", "support": True, "desc": "一键日常「班组」里的尘烟前线·前哨战（借助战时选战力最高的人形）"},
     {"name": "活动", "support": False, "desc": "一键日常「活动自律」"},
     {"name": "扩编实练", "support": False, "desc": "周常「扩编实练」特殊增强关卡"},
+    {"name": "首领挑战", "support": False, "desc": "周常「首领挑战」常规挑战（没到最高层级时手动打）"},
 ]
 SCOPE_BY_NAME = {s["name"]: s for s in SCOPES}
 DEFAULT_SCOPE = "推图"
