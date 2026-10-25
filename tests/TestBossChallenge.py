@@ -29,23 +29,30 @@ class BossPage:
     _boss_ticket_enough = namespace["_boss_ticket_enough"]
     _boss_battle = namespace["_boss_battle"]
 
-    def __init__(self, level=4, tickets=3, levels_per_win=1, lose=False, level_text=True):
+    def __init__(self, level=4, tickets=3, levels_per_win=1, lose=False, level_text=True, start_works=True):
         self.level = level
         self.tickets = tickets
         self.levels_per_win = levels_per_win
         self.lose = lose
         self.level_text = level_text
+        self.start_works = start_works
+        self.in_deploy = False
         self.battles = 0
         self.zilv = 0
         self.kinds = []
         self.logs = []
         self.home = False
+        self.shots = []
 
     def wait_click_ocr(self, *, match, **kwargs):
+        if match == "开始作战":
+            self.in_deploy = self.start_works
         return True
 
     def wait_ocr(self, *, match, **kwargs):
         if match is namespace["boss_level_re"]:
+            if self.in_deploy:
+                return []
             return [SimpleNamespace(name=f"当前层级{self.level}/9")] if self.level_text else []
         if match is namespace["boss_cost_re"]:
             return [SimpleNamespace(name=f"消耗{self.tickets}/1")]
@@ -56,6 +63,7 @@ class BossPage:
 
     def auto_battle(self, **kwargs):
         """打一场消耗一张挑战权限；打输时按 BattleLost 的文字抛出。"""
+        self.in_deploy = False
         self.tickets -= 1
         self.battles += 1
         if self.lose:
@@ -71,8 +79,8 @@ class BossPage:
     def ensure_main(self, **kwargs):
         self.home = True
 
-    def screenshot(self, *args, **kwargs):
-        pass
+    def screenshot(self, name=None, **kwargs):
+        self.shots.append(name)
 
     def info_set(self, *args):
         pass
@@ -122,6 +130,13 @@ class BossChallengeTest(unittest.TestCase):
         self.assertEqual(1, page.battles)
         self.assertEqual(0, page.zilv)
         self.assertEqual(["首领挑战", None], page.kinds)
+
+    def test_start_without_response_does_not_wait_for_battle(self):
+        """实录 2026-10-25：权限没认出来时点「开始作战」没反应，原来进自动战斗干等 120 秒后报错。"""
+        page = BossPage(level=4, tickets=1, start_works=False).run()
+        self.assertEqual((0, 0), (page.battles, page.zilv))
+        self.assertEqual(["boss_start_no_response"], page.shots)
+        self.assertTrue(page.home)
 
     def test_unreadable_level_falls_back_to_zilv(self):
         page = BossPage(level_text=False).run()
