@@ -80,7 +80,8 @@ class WeeklyTask(BaseGfTask):
 
         实录 2026-10-25：持有 0 时点「开始作战」「自律」都没有任何反应，原来会白点一圈再当成完成。
         """
-        if result := self.wait_ocr(match=boss_cost_re, box="bottom_right", time_out=2):
+        # 实录 2026-10-25：只在右下角裁剪区里找时「消耗」和「0/1」中间隔着权限图标，认不成一个框；全屏能认成「消耗0/1」
+        if result := self.wait_ocr(match=boss_cost_re, time_out=2):
             have, need = map(int, boss_cost_re.search(result[0].name).groups())
             if have < need:
                 self.log_info(f"首领挑战的挑战权限不够（消耗 {have}/{need}），跳过", notify=True)
@@ -91,6 +92,11 @@ class WeeklyTask(BaseGfTask):
         """点「开始作战」进部署界面自动打一场，打完回到首领挑战页；没进战斗或打输返回 False。"""
         if not self.wait_click_ocr(match="开始作战", box="bottom_right", time_out=5, after_sleep=2):
             self.log_info("首领挑战没找到「开始作战」，跳过")
+            return False
+        if self.wait_ocr(match=boss_level_re, box="left", time_out=3):
+            # 挑战权限不够等情况下点「开始作战」没有任何反应，别再进自动战斗干等 2 分钟
+            self.screenshot("boss_start_no_response")
+            self.log_info("点了「开始作战」还停在首领挑战页，跳过", notify=True)
             return False
         # 部署界面按「首领挑战编队」切整备室编队并补满
         self.set_lineup_kind("首领挑战")
