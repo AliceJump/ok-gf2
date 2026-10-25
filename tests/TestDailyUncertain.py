@@ -63,9 +63,13 @@ class UncertainSummaryTest(unittest.TestCase):
         self.assertEqual(["巡录"], runner.task_status["uncertain"])
 
     def test_exception_still_propagates(self):
+        """任务异常后回不到主页时整轮异常结束，之前的待核查仍然记着。"""
         task = Task()
+        broken = []
+        task.ensure_main = lambda **kw: (_ for _ in ()).throw(RuntimeError("broken")) if broken else None
 
         def fail():
+            broken.append(True)
             raise RuntimeError("broken")
 
         runner = DailyTaskRunner(task, [("巡录", lambda: "待核查"), ("后续任务", fail)])

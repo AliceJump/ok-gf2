@@ -1,6 +1,7 @@
 """限时活动相关：活动自律（物资关卡）、活动层（喝水/吃饭/领奖）、活动列表识别。"""
 
 import re
+import time
 
 import win32api
 import win32gui
@@ -14,6 +15,19 @@ from src.tasks.daily.daily_common_mixin import (
 )
 
 activity_time_re = re.compile(r"^(\d+)\s*(?:天|days?)\s*(\d+)\s*(?:小时|hours?)", re.I)
+# 今天已经吃过/喝过时，点「下一步/制作」会弹「提示：当前已有 章鱼小丸子 生效中，是否确认更换?」
+# （实录截图 tests/fixtures/food_already_active_1280x768.png；菜名是橙色，OCR 可能把这句拆成几段）
+food_active_re = re.compile(r"生效中|是否确认更换|已有.{0,12}生效")
+
+# 活动层走路：各键连续按、中间不停。实录 2026-10-21：角色往旁边跑之后镜头会转到它身后，按键之间停 0.5 秒时
+# 镜头转多少每次不一样，后面的 w/d 方向就跟着变，同一组时长有时走到水吧、有时走到沙发边。连续按之后
+# 从出生点走的位置稳定，按此重新量过：喝水 d 0.4 偏左、0.8 偏右（停在 NPC 旁），0.6 正好；吃饭 s 0.55～0.78 都能出「美味烹调」。
+DRINK_ROUTE = "1.087-1.0-0.6"
+EAT_ROUTE = "0.65"
+# 旧默认值是按「中间停顿」量的，换成连续按键后已经不对；存着旧默认值的配置按新默认走
+LEGACY_ROUTES = {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)}
+# 进活动层时画面还是黑屏/加载页，在入口原有的 8+12 秒之外最多再等这么久
+LAYER_LOADING_GRACE = 40
 
 
 class DailyActivityMixin:
@@ -26,10 +40,20 @@ class DailyActivityMixin:
         """逐项领取补给，区分活动缺席与页面未确认并恢复主页。"""
         uncertain = False
         try:
-            self.wait_click_ocr(
-                match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False
-            )
-            if not self._ensure_supply_menu():
+            # 实录（tests/fixtures/activity_page_1280x768.png）：点「活动」后主页 UI 先淡出，约 5~9 秒活动页才出来，
+            # 等得太短会误报；真没打开再点一次「活动」，两次都确认不了才待核查
+            opened = False
+            for attempt in range(2):
+                self.wait_click_ocr(
+                    match=["活动"], box=self.box._activities, after_sleep=1, time_out=3, raise_if_not_found=False
+                )
+                opened = self._ensure_supply_menu()
+                if opened:
+                    break
+                if attempt == 0:
+                    self.log_info("点了「活动」还没确认活动列表打开，回主页再点一次", notify=False)
+                    self.ensure_main()
+            if not opened:
                 self.info_set("情报补给", "待核查：未确认活动列表打开")
                 self.info_set("战前补给", "待核查：未确认活动列表打开")
                 return "待核查"
@@ -45,8 +69,8 @@ class DailyActivityMixin:
         finally:
             self.ensure_main()
 
-    def _ensure_supply_menu(self):
-        """结合侧边列表与主页标识确认活动菜单打开。"""
+    def _ensure_supply_menu(self, time_out=12):
+        """结合侧边列表与主页标识确认活动菜单打开（活动页淡入要 5~9 秒）。"""
         menu_box = self.box_of_screen(0.035, 0.10, 0.23, 0.84)
 
         def opened():
@@ -59,7 +83,7 @@ class DailyActivityMixin:
             names = {re.sub(r"\s+", "", box.name) for box in menu}
             return not home and bool(names & {"情报补给", "战前补给"} or {"新手", "活动"} <= names)
 
-        if self.wait_until(opened, time_out=4, settle_time=0):
+        if self.wait_until(opened, time_out=time_out, settle_time=0):
             self.log_info("已确认活动列表打开")
             return True
         self.log_warning("未确认活动列表打开，跳过补给检查")
@@ -180,9 +204,31 @@ class DailyActivityMixin:
                 # 额外等待后重新确认主页，避免单次 OCR 漏读提前结束重试。
                 home = self.ocr(box=self.box.right, match=["整备室", "公共区", "活动层", "招募"])
                 if len(home) < 2:
+                    if self._wait_free_layer_loading():
+                        return True
                     break
         self.log_warning("活动层入口未成功打开，恢复主页后继续后续步骤")
         self.screenshot("activity_layer_entry_failed")
+        return False
+
+    def _wait_free_layer_loading(self, grace=LAYER_LOADING_GRACE):
+        """
+        点了入口、等过 HUD 也不在主页：画面还是黑屏或加载页就接着等 HUD，最多再等 grace 秒。
+
+        实录 2026-10-22：当天第一次进活动层，画面全黑 20 多秒（OCR 一个字都读不到）才出 HUD，
+        原来 8+12 秒就判失败；回主页按 ESC 才弹出「是否离开活动层」，说明其实已经进去了，喝水那一轮被整个跳过。
+        """
+        deadline = time.time() + grace
+        logged = False
+        while time.time() < deadline:
+            self.next_frame()
+            if not self._is_loading_frame(self.ocr()):
+                return self.is_free_layer(time_out=2)
+            if not logged:
+                self.log_info("进活动层还在黑屏/加载，继续等", notify=False)
+                logged = True
+            if self.is_free_layer(time_out=4):
+                return True
         return False
 
     def free_time_layer(self):
@@ -204,11 +250,14 @@ class DailyActivityMixin:
                         second_btn="确认",
                         skip_end_match=["饮品加成"],
                         need_extra_confirm=False,
+                        done_match=re.compile("今日已饮用"),
                     )
-                    if drink_result is not True:
+                    if drink_result == "done":
+                        self.log_info("今天已经喝过了，跳过喝水", notify=False)
+                    elif drink_result is not True:
                         if drink_result == "entry":
                             self.log_warning(
-                                "未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 1.087-1.0-0.8"
+                                f"未找到茶歇一刻入口，角色可能被挡住，请检查「喝水」按键时长，参考 {DRINK_ROUTE}"
                             )
                         elif drink_result == "button":
                             self.log_warning("喝水流程未完成：未找到制作按钮，请检查移动是否到位或界面是否已加载完成")
@@ -226,7 +275,9 @@ class DailyActivityMixin:
                         need_extra_confirm=True,
                         need_again_test=True,
                     )
-                    if eat_result is not True:
+                    if eat_result == "done":
+                        self.log_info("今天已经吃过了，跳过吃饭", notify=False)
+                    elif eat_result is not True:
                         self.log_warning("吃饭流程未完成，请检查移动是否到位或界面是否已加载完成")
                         completed = False
             else:
@@ -306,10 +357,32 @@ class DailyActivityMixin:
             ):
                 break
             claimed = True
-            self.wait_pop_up(time_out=6, count=1)
+            self._close_reward_popup()
         if claimed:
             self.log_info("活动层逸趣导算进度奖励已领取")
         return claimed
+
+    def _close_reward_popup(self, time_out=15):
+        """关闭领奖后的「获得道具」弹层：点底部「点击空白处关闭」，不按 ESC（会把 F2 面板一起关掉）。
+
+        实录 2026-10-21：领奖让活动层升到 Lv.10，「获得道具」要等约 12 秒升级动画才出来，
+        原来 wait_pop_up(time_out=6) 没等到就返回，弹层一直盖着栽培页签，浇灌被跳过。
+        """
+        hint = re.compile(r"(?:空\s*白\s*)?处\s*关\s*闭$")
+        title = re.compile(r"^获\s*得\s*道\s*具$")
+        wait = time_out
+        for _ in range(4):
+            found = self.wait_ocr(match=[hint, title], time_out=wait, raise_if_not_found=False)
+            if not found:
+                return True
+            hints = [b for b in found if hint.search(b.name)]
+            if hints:
+                self.click(hints[0], after_sleep=1.5)
+            else:
+                self.click(0.5, 0.9, after_sleep=1.5)
+            wait = 3
+        self.log_warning("「获得道具」弹层点了多次仍未关闭")
+        return False
 
     def _dismiss_activity_progress_dialog(self):
         """关闭遮住栽培页签的进度窗口，并确认它已消失。"""
@@ -334,6 +407,12 @@ class DailyActivityMixin:
         self._claim_activity_panel_rewards()
         if self._dismiss_activity_progress_dialog() is False:
             self.info_set("浇灌", "待核查：进度窗口未关闭")
+            return "待核查"
+        # 实录 2026-10-22：领奖升到 Lv.11 多弹了一层升级提示，关进度窗口的 ESC 把整个 F2 面板也关了，
+        # 画面只剩活动层背景，找不到栽培页签，浇灌被跳过（游戏里显示「今日未浇水」）。面板没了就重新打开
+        if not self._ensure_activity_panel():
+            self.info_set("浇灌", "已跳过：未识别到栽培入口")
+            self.log_info("关掉进度窗口后 F2 面板没能重新打开，跳过浇灌并继续后续任务")
             return "待核查"
         watering_match = re.compile(r"浇\s*灌")
         # F2 可能直接选中栽培页；优先识别内容，避免依赖选中页签的黑字。
@@ -410,15 +489,24 @@ class DailyActivityMixin:
         self.back(after_sleep=2)
         return completed
 
-    def _skip_active_food_buff(self, next_match=None):
-        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。"""
-        duplicate = re.compile(r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)|当前已有.+?生效中.*确认更换")
+    def _skip_active_food_buff(self, next_match=None, stay_match=None):
+        """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。
+
+        stay_match：取消后留在原页面时右下角的按钮。实录 2026-10-21：今天已经吃过时点「下一步」弹
+        「已有 xx 生效中」，点「取消」后回到选择菜品页（右下角仍是「下一步」），不会出现「确认邀请」。
+        """
+        # 只点「取消」，千万不能点确认（会把材料再花一遍）；后半段同 food_active_re，覆盖 OCR 把这句拆成几段的情况
+        duplicate = re.compile(
+            r"同名(?:菜品|饮品)已生效|覆盖已生效(?:菜品|饮品)|当前已有.+?生效中.*确认更换|生效中|是否确认更换|已有.{0,12}生效"
+        )
 
         def page_state():
             """页面状态判定：无重复弹窗且出现预期界面"""
             if self.ocr(match=duplicate, box=self.box.center):
                 return False
             if next_match is not None:
+                if stay_match is not None and self.ocr(match=stay_match, box=self.box.bottom_right):
+                    return True
                 return bool(self.ocr(match=next_match, box=self.box.center))
             return (
                 not self.ocr(match="饮品加成")
@@ -458,6 +546,7 @@ class DailyActivityMixin:
                 and len(self.ocr(match=["Esc", "P", "M", "F1", "F2", "F3", "F4"], box=self.box.top)) >= 5
             )
 
+        level_up = re.compile(r"等\s*级\s*提\s*升|(?:空\s*白\s*)?处\s*关\s*闭$")
         for attempt in range(3):
             if not self.wait_click_ocr(
                 match=re.compile(r"^\s*确\s*认\s*$"),
@@ -470,8 +559,37 @@ class DailyActivityMixin:
                     return True
             elif self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
                 return True
+            # 实录 2026-10-25：喝水的经验让活动层升到 Lv.12，结果页关掉后弹「活动层等级提升」盖住 HUD，
+            # 底部「点击空白处关闭」点掉就回到活动层；原来只会重找「确认」，三次后误报喝水失败。
+            if popup := self.ocr(match=level_up):
+                hints = [b for b in popup if "关" in getattr(b, "name", "")]
+                self.log_info("饮品结果后弹出「活动层等级提升」，点空白处关闭")
+                if hints:
+                    self.click(hints[0], after_sleep=1.5)
+                else:
+                    self.click(0.5, 0.95, after_sleep=1.5)
+                if self.wait_until(returned_to_layer, time_out=4, settle_time=0.3):
+                    return True
             self.log_warning(f"饮品加成确认后未返回活动层，重试 {attempt + 1}/3")
         self.screenshot("drink_result_blocked")
+        return False
+
+    def _select_regular_food_tab(self):
+        """进烹饪页后确认停在左侧第三个「常规菜品」页签（每日首次免费），不在就切过去。
+
+        实录 2026-10-25：另一个账号进来默认是第一个「自研烹饪」页签，没有食材（「暂无可选择食材」），
+        点「下一步」不会出「确认邀请」，吃饭被判失败；第二个「创意烹调」也是「暂无可选择菜谱」。
+        """
+        title = re.compile(r"常\s*规\s*菜\s*品")
+        title_box = self.box_of_screen(0.18, 0.13, 0.6, 0.22)
+        if self.wait_ocr(match=title, box=title_box, time_out=3, raise_if_not_found=False):
+            return True
+        self.log_info("烹饪页不在「常规菜品」页签，切到左侧第三个页签")
+        self.click_relative(0.148, 0.415, after_sleep=1)
+        if self.wait_ocr(match=title, box=title_box, time_out=3, raise_if_not_found=False):
+            return True
+        self.ocr(log=True)
+        self.screenshot("food_regular_tab_missing")
         return False
 
     def do_food_flow(
@@ -484,14 +602,27 @@ class DailyActivityMixin:
         skip_end_match,
         need_extra_confirm=False,
         need_again_test=False,
+        done_match=None,
     ):
-        """返回 True 表示流程完成；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。"""
+        """
+        返回 True 表示流程完成；'done' 表示今天已经做过（已跳过）；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。
+        done_match：进到界面后右下角出现这个字样（如喝水的「今日已饮用」）就说明今天做过了，直接退出。
+        """
         enter_func(after_sleep=1)
         times = 1
         if need_again_test:
             times = 2
         for attempt in range(times):
-            if result := self.wait_ocr(match=entry_match, time_out=3):
+            result = self.wait_ocr(match=entry_match, time_out=3)
+            if not result:
+                # 实录：走完站在了交互点旁边（图标已经显示）但提示文字没出来，往前/往后蹭一小步再看
+                for key, hold in (("w", 0.25), ("s", 0.4)):
+                    self.log_info(f"没看到「{entry_match.pattern}」提示，按 {key} {hold}s 微调位置再找", notify=False)
+                    self.press_keys_sequence([key], [hold], sleep_between=0)
+                    self.sleep(0.8)
+                    if result := self.wait_ocr(match=entry_match, time_out=2):
+                        break
+            if result:
                 drink_done = False
                 if main_btn == "制作":
                     for entry in result:
@@ -524,65 +655,54 @@ class DailyActivityMixin:
                     self.log_info("茶歇一刻 1/1：今日喝水已完成，跳过重复制作")
                     return True
                 self.click_with_key("alt", result)
+                if main_btn == "下一步" and not self._select_regular_food_tab():
+                    self.back(after_sleep=2)
+                    return "button"
             else:
+                self.screenshot(f"food_entry_missing_{entry_match.pattern}")
                 return "entry"
+            if done_match is not None and self.wait_ocr(
+                match=done_match, box=self.box.bottom_right, time_out=3, raise_if_not_found=False, log=True
+            ):
+                # 实录截图 tests/fixtures/drink_already_done_1280x768.jpg：右下角按钮变成「今日已饮用」
+                self.log_info(f"右下角显示「{done_match.pattern}」，今天已经做过，退出", notify=True)
+                self.screenshot("food_already_done")
+                self.back(after_sleep=2)
+                return "done"
             if self.wait_click_ocr(match=main_btn, box=self.box.bottom_right, time_out=10):
-                if need_extra_confirm:
-                    # 同名菜品已生效时，“下一步”先弹出覆盖确认，尚未进入邀请页。
-                    # 只处理带菜品覆盖文案的中央弹窗，避免误点其他“确认”。
-                    overwrite_match = re.compile(
-                        r"同名菜品已生效|覆\s*盖\s*已\s*生\s*效\s*菜\s*品|"
-                        r"当前已有.+?生效中.*确认更换"
-                    )
-                    dialog_box = self.box_of_screen(0.25, 0.25, 0.75, 0.75)
-                    if self.wait_ocr(match=overwrite_match, box=dialog_box, time_out=3, raise_if_not_found=False):
-                        if not self.wait_click_ocr(
-                            match=re.compile(r"^\s*确\s*认\s*$"),
-                            box=dialog_box,
-                            time_out=3,
-                            raise_if_not_found=False,
-                            after_sleep=0.5,
-                        ):
-                            return "confirm"
-                        if not self.wait_until(
-                            lambda: not self.ocr(match=overwrite_match, box=dialog_box),
-                            time_out=3,
-                            settle_time=0,
-                            raise_if_not_found=False,
-                        ):
-                            return "confirm"
+                if main_btn == "下一步":
+                    duplicate_result = self._skip_active_food_buff(next_match=second_btn, stay_match=main_btn)
                 else:
-                    duplicate_result = self._skip_active_food_buff(
-                        next_match=second_btn if main_btn == "下一步" else None
-                    )
-                    if duplicate_result is True:
-                        return True
-                    if duplicate_result is False:
-                        return "confirm"
-                    if main_btn == "制作":
-                        confirm_match = re.compile(r"^\s*确\s*认\s*$")
-                        if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
-                            if not self.ocr(match="制作", box=self.box.bottom_right):
-                                self.screenshot("food_make_unknown_page")
-                                return "confirm"
-                            if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
-                                # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
-                                if not self.wait_until(
-                                    lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
-                                ):
-                                    self.screenshot("food_make_retry_failed")
-                                    return "confirm"
-                            duplicate_result = self._skip_active_food_buff()
-                            if duplicate_result is True:
-                                return True
-                            if duplicate_result is False:
-                                return "confirm"
+                    duplicate_result = self._skip_active_food_buff()
+                if duplicate_result is True:
+                    return True
+                if duplicate_result is False:
+                    return "confirm"
+                if main_btn == "制作":
+                    confirm_match = re.compile(r"^\s*确\s*认\s*$")
+                    if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
+                        if not self.ocr(match="制作", box=self.box.bottom_right):
+                            self.screenshot("food_make_unknown_page")
+                            return "confirm"
+                        if not self.wait_click_ocr(match="制作", box=self.box.bottom_right, time_out=2):
+                            # 页面可能在重试前后推进；点击未命中时再确认一次结果页。
                             if not self.wait_until(
                                 lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
                             ):
-                                self.screenshot("food_make_not_advanced")
+                                self.screenshot("food_make_retry_failed")
                                 return "confirm"
+                        duplicate_result = self._skip_active_food_buff()
+                        if duplicate_result is True:
+                            return True
+                        if duplicate_result is False:
+                            return "confirm"
+                        if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
+                            self.screenshot("food_make_not_advanced")
+                            return "confirm"
                 if not self.wait_click_ocr(match=second_btn, time_out=3, after_sleep=2):
+                    # 实录：今天已经吃过饭时点「下一步」后不会出现「确认邀请」，留下画面文字和截图，好判断是不是"已完成"
+                    self.log_info(f"没找到「{second_btn}」，当前画面文字见下一行 OCR 日志", notify=False)
+                    self.ocr(log=True)
                     self.screenshot("food_second_button_missing")
                     return "confirm"
                 if need_extra_confirm:
@@ -606,21 +726,31 @@ class DailyActivityMixin:
                     return "button"
         return "button"
 
+    def _route(self, key):
+        value = str(self.config.get(key) or "").strip()
+        legacy, current = LEGACY_ROUTES[key]
+        if not value or value == legacy:
+            if value:
+                self.log_info(f"「{key}」还是旧默认值 {legacy}（按停顿走量的），改用连续按键的 {current}", notify=False)
+            return current
+        return value
+
     def go_drink(self, after_sleep=None):
-        down_times = parse_time_option(self.config.get("喝水"))
-        self.press_keys_sequence(["a", "w", "d"], down_times, sleep_between=0.5)
+        down_times = parse_time_option(self._route("喝水"))
+        self.press_keys_sequence(["a", "w", "d"], down_times, sleep_between=0)
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
     def go_eat(self, after_sleep=None):
-        down_time = float(self.config.get("吃饭"))
-        self.press_keys_sequence(["s", "d"], [down_time, 0], sleep_between=1)
+        down_time = float(self._route("吃饭"))
+        self.press_keys_sequence(["s"], [down_time], sleep_between=0)
         if after_sleep and after_sleep > 0:
             self.sleep(after_sleep)
 
     def activity(self):
         activity_wuzi_names = [name.strip() for name in str(self.config.get("当前物资关卡名称")).split("-")]
         self.info_set("current_task", "activity")
+        self.set_lineup_kind("活动")
         if to_activity_page := self.wait_click_ocr(
             match=["限时开启"], box=self.box.top_right, after_sleep=2, raise_if_not_found=False, time_out=4
         ):
