@@ -202,8 +202,9 @@ class ChenyanAssistTest(unittest.TestCase):
         """Verify ots14 precedes available weimaxi na across attributes."""
         task = AssistDevice(candidates=["威玛西娜", "OTs-14"])
         original_visible = task.visible
-        task.visible = lambda: (original_visible() + ["威玛西娜"]
-                                if task.page == "list" and task.attr == "物理" else original_visible())
+        task.visible = lambda: (
+            original_visible() + ["威玛西娜"] if task.page == "list" and task.attr == "物理" else original_visible()
+        )
         self.assertTrue(task.choose_chenyan(2))
         self.assertEqual("OTs-14", task.chosen)
         self.assertNotIn("威玛西娜", task.clicked)
@@ -212,8 +213,9 @@ class ChenyanAssistTest(unittest.TestCase):
         """Verify missing ots14 returns to original first choice."""
         task = AssistDevice(candidates=["威玛西娜"])
         original_visible = task.visible
-        task.visible = lambda: (original_visible() + ["威玛西娜"]
-                                if task.page == "list" and task.attr == "物理" else original_visible())
+        task.visible = lambda: (
+            original_visible() + ["威玛西娜"] if task.page == "list" and task.attr == "物理" else original_visible()
+        )
         self.assertTrue(task.choose_chenyan(2))
         self.assertEqual("威玛西娜", task.chosen)
 
@@ -313,8 +315,7 @@ class ChenyanAssistTest(unittest.TestCase):
 
                 task._scroll_chenyan_list = scroll
                 task.ocr = lambda *args, **kwargs: (
-                    [target] if page[0] == 2 else
-                    ([] if empty_ocr else [SimpleNamespace(name="春田", x=700, y=400)])
+                    [target] if page[0] == 2 else ([] if empty_ocr else [SimpleNamespace(name="春田", x=700, y=400)])
                 )
                 self.assertIs(target, task._find_chenyan_assist("妮基塔"))
                 self.assertEqual(2, page[0])
@@ -350,12 +351,12 @@ class ChenyanAssistTest(unittest.TestCase):
             with self.subTest(size=(width, height)):
                 task = AssistDevice()
                 task.frame = np.zeros((height, width, 3), dtype=np.uint8)
-                task.frame[int(height * 0.4):int(height * 0.6), int(width * 0.3):int(width * 0.5)] = 180
+                task.frame[int(height * 0.4) : int(height * 0.6), int(width * 0.3) : int(width * 0.5)] = 180
                 before = task._chenyan_list_snapshot()
                 self.assertEqual((144, 256, 3), before.shape)
-                task.frame[:int(height * 0.2)] = 255
+                task.frame[: int(height * 0.2)] = 255
                 np.testing.assert_array_equal(before, task._chenyan_list_snapshot())
-                task.frame[int(height * 0.4):int(height * 0.6), int(width * 0.3):int(width * 0.5)] = 50
+                task.frame[int(height * 0.4) : int(height * 0.6), int(width * 0.3) : int(width * 0.5)] = 50
                 self.assertGreater((cv2.absdiff(before, task._chenyan_list_snapshot()).max(axis=2) > 12).mean(), 0.005)
 
     def test_unreadable_attribute_keeps_burning_and_corrosion_distinct(self):
@@ -488,7 +489,10 @@ class ChenyanAssistTest(unittest.TestCase):
         task, state, gui, api = self.make_scroll_task()
         task.executor.interaction.do_scroll = Mock()
         task.sleep = lambda seconds: (_ for _ in ()).throw(RuntimeError("task stopped")) if seconds == 0.1 else None
-        with patch.dict(battle, {"win32gui": gui, "win32api": api}), self.assertRaisesRegex(RuntimeError, "task stopped"):
+        with (
+            patch.dict(battle, {"win32gui": gui, "win32api": api}),
+            self.assertRaisesRegex(RuntimeError, "task stopped"),
+        ):
             battle["_scroll_chenyan_list"](task, 1)
         task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
@@ -541,6 +545,7 @@ class ChenyanAssistTest(unittest.TestCase):
         task.executor.interaction.do_scroll.assert_called_once_with(int(task.width * 0.65), int(task.height * 0.60), -3)
         gui.SetForegroundWindow.assert_not_called()
         self.assertEqual({"foreground": 123, "cursor": (1500, 800)}, state)
+
     def test_stop_exception_propagates_before_mouse_input(self):
         """Verify stop exception propagates before mouse input."""
         task = AssistDevice()
@@ -580,6 +585,7 @@ class ChenyanAssistTest(unittest.TestCase):
             battle["_scroll_chenyan_list"](task, 1)
         gui.SetForegroundWindow.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
     def test_missing_join_on_list_does_not_back_out_of_list(self):
         """Verify missing join on list does not back out of list."""
         task = AssistDevice()
