@@ -61,7 +61,7 @@ class ShopScreen(DailyPublicMixin):
             if self.limited_clicks == 1 or self.limited_clicks > self.limited_dropped + 1:
                 self.page = "limited"
             return True
-        if "免费" in labels:
+        if matches(match, "免费"):
             self.free_clicks += 1
             self.free_categories.append(self.page)
         return False
@@ -70,7 +70,7 @@ class ShopScreen(DailyPublicMixin):
         """保留识别范围以验证商品区与页签分离。"""
         return bounds
 
-    def ocr(self, *, box):
+    def ocr(self, *, box, match=None):
         """返回当前分类商品，并混入不能作为内容证据的价格与计时。"""
         assert box[1] >= 0.2  # 顶部页签不能成为商品内容证据。
         names = {
@@ -78,7 +78,10 @@ class ShopScreen(DailyPublicMixin):
             "periodic": ["每日补给礼包", "每周补给礼包"],
             "limited": ["限时成长礼包", "限时武器礼包"],
         }.get(self.page, [])
-        return [SimpleNamespace(name=name) for name in [*names, "免费", "剩余1天", "￥6.00"]]
+        labels = [*names, "剩余1天", "￥6.00"]
+        if match is not None:
+            labels = [name for name in labels if matches(match, name)]
+        return [SimpleNamespace(name=name) for name in labels]
 
     def next_frame(self):
         """模型每次 OCR 都读取当前状态，无需设备抓帧。"""
@@ -97,8 +100,111 @@ class ShopScreen(DailyPublicMixin):
         self.page = "home"
 
 
+def matches(pattern, text):
+    if isinstance(pattern, list):
+        return any(matches(item, text) for item in pattern)
+    return bool(pattern.search(text)) if hasattr(pattern, "search") else pattern in text
+
+
+class ClaimShopScreen(ShopScreen):
+    """领取后自动切付费详情，点击成功与实际到账分别建模。"""
+
+    def __init__(self, purchase_dropped=0, entry_dropped=0, wrong_price=False):
+        super().__init__(dropped=0)
+        self.modal = None
+        self.claimed = False
+        self.purchase_dropped = purchase_dropped
+        self.entry_dropped = entry_dropped
+        self.wrong_price = wrong_price
+        self.purchases = 0
+        self.paid_purchases = 0
+        self.shots = []
+
+    def wait_click_ocr(self, *, match, **kwargs):
+        if matches(match, "免费"):
+            self.free_clicks += 1
+            if self.page != "periodic" or self.claimed:
+                return False
+            if self.entry_dropped:
+                self.entry_dropped -= 1
+            else:
+                self.modal = "paid" if self.wrong_price else "free"
+            return True
+        if matches(match, "购买"):
+            self.purchases += 1
+            if self.modal == "paid":
+                self.paid_purchases += 1
+            if self.purchase_dropped:
+                self.purchase_dropped -= 1
+            elif self.modal == "free":
+                self.modal = "reward"
+                self.claimed = True
+            return True
+        return super().wait_click_ocr(match=match, **kwargs)
+
+    def ocr(self, *, box=None, match=None):
+        if self.modal == "reward":
+            labels = ["获得道具", "点击空白处关闭"]
+        elif self.modal:
+            labels = ["免费" if self.modal == "free" else "$0.99"] if box and box[0] >= 0.7 else ["取消", "购买"]
+        else:
+            names = super().ocr(box=box)
+            labels = [item.name for item in names]
+            if self.page == "periodic" and not self.claimed:
+                labels.append("免费")
+        return [SimpleNamespace(name=text) for text in labels if match is None or matches(match, text)]
+
+    def wait_ocr(self, **kwargs):
+        return self.ocr(box=kwargs.get("box"), match=kwargs.get("match"))
+
+    def wait_pop_up(self, **kwargs):
+        if self.modal == "reward":
+            self.modal = "paid"
+
+    def back(self, **kwargs):
+        self.modal = "paid" if self.modal == "reward" else None
+
+    def sleep(self, *args):
+        pass
+
+    def screenshot(self, name):
+        self.shots.append(name)
+
+
 class ShoppingTest(unittest.TestCase):
     """验证免费搜索只发生在确认切换后的对应分类。"""
+
+    def test_dropped_free_purchase_retries_until_claimed(self):
+        task = ClaimShopScreen(purchase_dropped=1)
+        self.assertIsNone(task.shopping())
+        self.assertTrue(task.claimed)
+        self.assertEqual(2, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
+
+    def test_dropped_free_entry_retries_before_purchase(self):
+        task = ClaimShopScreen(entry_dropped=1)
+        task.shopping()
+        self.assertTrue(task.claimed)
+        self.assertEqual(1, task.purchases)
+
+    def test_persistent_free_purchase_failure_is_not_success(self):
+        task = ClaimShopScreen(purchase_dropped=100)
+        self.assertEqual("待核查", task.shopping())
+        self.assertFalse(task.claimed)
+        self.assertLessEqual(task.purchases, 3)
+        self.assertIn("未确认领取", task.status["免费礼包"])
+
+    def test_paid_dialog_never_authorizes_purchase(self):
+        task = ClaimShopScreen(wrong_price=True)
+        self.assertEqual("待核查", task.shopping())
+        self.assertEqual(0, task.purchases)
+
+    def test_successful_claim_does_not_retry_automatic_paid_tab(self):
+        task = ClaimShopScreen()
+        task.shopping()
+        self.assertTrue(task.claimed)
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
 
     def test_dropped_category_click_is_retried_before_free_item_search(self):
         """根入口点击丢失后可以恢复并按顺序处理两类礼包。"""

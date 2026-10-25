@@ -146,6 +146,55 @@ class DailyPublicMixin:
 
         return bool(self.wait_until(changed, time_out=2, settle_time=0))
 
+    def _claim_shop_free_item(self):
+        """免费详情确认后才购买，并验证返回商品列表且免费入口消失。"""
+        content_box = self.box_of_screen(0.20, 0.20, 0.96, 0.87)
+        price_box = self.box_of_screen(0.70, 0.23, 0.83, 0.32)
+        cancel_box = self.box_of_screen(0.28, 0.73, 0.48, 0.81)
+        purchase_box = self.box_of_screen(0.52, 0.73, 0.72, 0.81)
+        free_match = re.compile(r"^\s*免费\s*$")
+        for attempt in range(3):
+            if not self.wait_click_ocr(
+                match=free_match, box=content_box, time_out=3, after_sleep=0.5, raise_if_not_found=False
+            ):
+                # 页面稳定且没有可领取入口时才允许结束，空白/加载页不能算完成。
+                if self._shop_category_content() and not self.ocr(match=free_match, box=content_box):
+                    return True
+                continue
+            free_detail = bool(
+                self.wait_ocr(match=free_match, box=price_box, time_out=2, raise_if_not_found=False)
+                and self.ocr(match="取消", box=cancel_box)
+            )
+            # 领取后游戏会自动切到付费礼包详情，每次尝试都必须重查价格。
+            if (
+                free_detail
+                and self.wait_click_ocr(
+                    match=re.compile(r"^\s*(?:确认|购买)\s*$"),
+                    box=purchase_box,
+                    time_out=2,
+                    after_sleep=0.5,
+                    raise_if_not_found=False,
+                )
+                and self.wait_ocr(match=["获得道具", "点击空白处关闭"], time_out=3, raise_if_not_found=False)
+            ):
+                self.back(after_sleep=0.5)
+            if self.ocr(match="取消", box=cancel_box):
+                self.back(after_sleep=0.5)
+            if self.wait_until(
+                lambda: self._shop_category_content() and not self.ocr(match=free_match, box=content_box),
+                time_out=3,
+                settle_time=0.3,
+            ):
+                self.log_info("免费礼包领取已确认")
+                return True
+            self.log_warning(f"免费礼包未确认领取，重试 {attempt + 1}/3")
+        self.info_set("免费礼包", "待核查：未确认领取")
+        runner = getattr(self, "daily_runner", None)
+        if runner is not None:
+            runner.set_task_failure("免费礼包点击后未确认领取")
+        self.screenshot("shop_free_claim_unconfirmed")
+        return False
+
     def shopping(self):
         """确认礼包商品区切换后领取免费物品；缺少证据则保留待核查结果。"""
         self.info_set("current_task", "shopping")
@@ -171,24 +220,17 @@ class DailyPublicMixin:
             self.log_warning("未确认礼包商品内容切换，跳过免费礼包并继续后续任务")
             self.ensure_main()
             return "待核查"
-        if self.wait_click_ocr(match=["免费"], after_sleep=0.5, raise_if_not_found=False, time_out=1):
-            self.log_info("found free item to buy")
-            self.wait_click_ocr(match=["确认", "购买"], box=self.box.bottom, after_sleep=1.5, raise_if_not_found=True)
-            self.wait_pop_up(time_out=5, count=1)
-            self.back()
-            self.sleep(1)
+        if not self._claim_shop_free_item():
+            self.ensure_main()
+            return "待核查"
         previous = self.wait_until(self._shop_category_content, time_out=2, settle_time=0)
         if not self._switch_shop_category(["臻品礼包", "限时礼包"], previous):
             self.info_set("免费礼包", "待核查：未确认限时礼包页面")
             self.ensure_main()
             return "待核查"
-        if self.wait_click_ocr(match=["免费"], after_sleep=0.5, raise_if_not_found=False, time_out=1):
-            self.log_info("found free item to buy")
-            if self.wait_click_ocr(
-                match=["确认", "购买"], box=self.box.bottom, after_sleep=1.5, raise_if_not_found=True
-            ):
-                self.back()
-                self.sleep(1)
+        if not self._claim_shop_free_item():
+            self.ensure_main()
+            return "待核查"
         if self.config.get("商店心愿单购买"):
             self.buy_others()
         self.ensure_main()
