@@ -688,6 +688,7 @@ class ChenyanAssistTest(unittest.TestCase):
             box=SimpleNamespace(bottom="bottom"),
             info_set=lambda *args: None,
             skip_dialogs=lambda **kwargs: None,
+            debug_shot=lambda *args, **kwargs: None,
         )
         with self.assertRaisesRegex(RuntimeError, "作战|战斗"):
             base["auto_battle"](task)
