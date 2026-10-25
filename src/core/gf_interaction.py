@@ -51,7 +51,9 @@ class GfInteraction(GenshinInteraction):
         self.session_mouse = SessionMouseDevice(kind=kind, device=device)
         self.session_mouse_ok = self.session_mouse.open()
         if self.session_mouse_ok:
-            logger.info(f"鼠标输入：{reason}，Interception 鼠标（{self.session_mouse.device_path}），键盘仍走 PostMessage")
+            logger.info(
+                f"鼠标输入：{reason}，Interception 鼠标（{self.session_mouse.device_path}），键盘仍走 PostMessage"
+            )
         else:
             logger.warning(f"鼠标输入：{reason}，但绑定不到设备，退回 PostMessage（Genshin）")
 

@@ -334,7 +334,9 @@ class SessionMouseDevice:
         try:
             kind, self.session_id = self._identity_fn()
             if kind != self.kind:
-                raise SessionMouseError(f"要绑定{KIND_NAMES.get(self.kind)}的鼠标，但当前在{KIND_NAMES.get(kind, kind)}")
+                raise SessionMouseError(
+                    f"要绑定{KIND_NAMES.get(self.kind)}的鼠标，但当前在{KIND_NAMES.get(kind, kind)}"
+                )
             for index in [self.device] if self.device else MOUSE_CHANNELS:
                 candidate = None
                 try:
@@ -350,7 +352,9 @@ class SessionMouseDevice:
                         candidate.close()
             if not channels:
                 which = f"设备 {self.device}" if self.device else "设备"
-                raise SessionMouseError(f"没找到可用的 Interception {KIND_NAMES.get(self.kind)}鼠标{which}（驱动没装或设备号不对）")
+                raise SessionMouseError(
+                    f"没找到可用的 Interception {KIND_NAMES.get(self.kind)}鼠标{which}（驱动没装或设备号不对）"
+                )
             index = _identify_session(channels, self.kind)
             self.channel = channels.pop(index)
             logger.info(f"会话鼠标已绑定（光标没动过）：{self.device_path}")
