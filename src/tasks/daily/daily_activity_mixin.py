@@ -567,8 +567,9 @@ class DailyActivityMixin:
                         self.log_error("饮品加成确认失败：结果页未关闭")
                         return "confirm"
                     return True
-                self.wait_click_ocr(match="确认", time_out=3, box=self.box.bottom, after_sleep=1)
-                self.wait_pop_up(count=1)
+                if not self._confirm_meal_result():
+                    self.log_error("用餐效果确认失败：未返回活动层")
+                    return "confirm"
                 return True
             else:
                 if need_again_test and attempt == 0:
