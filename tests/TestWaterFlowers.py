@@ -11,9 +11,16 @@ methods = [
     n
     for n in node.body
     if isinstance(n, ast.FunctionDef)
-    and n.name in ("water_flowers", "_ensure_activity_panel", "free_time_layer", "do_food_flow")
+    and n.name in ("water_flowers", "_ensure_activity_panel", "free_time_layer", "do_food_flow", "_route", "go_drink", "go_eat")
 ]
-ns = {"re": re}
+DRINK_ROUTE, EAT_ROUTE = "1.087-1.0-0.6", "0.65"
+ns = {
+    "re": re,
+    "DRINK_ROUTE": DRINK_ROUTE,
+    "EAT_ROUTE": EAT_ROUTE,
+    "LEGACY_ROUTES": {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)},
+    "parse_time_option": lambda v: [float(x) for x in v.split("-")],
+}
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), ns)
 water_flowers = ns["water_flowers"]
 ensure_panel = ns["_ensure_activity_panel"]
@@ -243,6 +250,23 @@ class WaterFlowersTest(unittest.TestCase):
         self.assertTrue(water_flowers(task))
         self.assertEqual(["浇灌"], clicks)
 
+    def test_panel_closed_by_progress_esc_is_reopened(self):
+        """实录 2026-10-22：关进度窗口的 ESC 把 F2 面板一起关了，要重新打开面板再找栽培。"""
+        task, clicks = self.make_task()
+        opened = []
+        task._ensure_activity_panel.side_effect = lambda: opened.append(1) or ensure_panel(task)
+        self.assertIs(True, water_flowers(task))
+        self.assertEqual(2, len(opened))
+        self.assertEqual(["上栽培", "浇灌"], clicks)
+
+    def test_panel_not_reopened_skips_watering(self):
+        task = Mock()
+        task._ensure_activity_panel.side_effect = [True, False]
+        task._dismiss_activity_progress_dialog.return_value = True
+        self.assertEqual("待核查", water_flowers(task))
+        task.wait_click_ocr.assert_not_called()
+        task.info_set.assert_any_call("浇灌", "已跳过：未识别到栽培入口")
+
     def test_missing_tab_does_not_water(self):
         """Verify missing tab does not water."""
         task, clicks = self.make_task(missing_tab=True)
@@ -258,6 +282,8 @@ class FoodFlowResultTest(unittest.TestCase):
         task.box.bottom_right = "bottom_right"
         task.wait_ocr.return_value = [SimpleNamespace(name="entry")]
         task.wait_click_ocr.side_effect = [True, False]
+        task._skip_active_food_buff.return_value = None  # 没弹「已有 xx 生效中，是否确认更换」
+        task.ocr.return_value = []  # 没找到第二个按钮时会记录画面文字
         enter_func = Mock()
 
         result = do_food_flow(
@@ -339,7 +365,7 @@ class WaterIntegrationTest(unittest.TestCase):
         self.assertIs(False, ns["free_time_layer"](task))
         message = task.log_warning.call_args.args[0]
         self.assertIn("茶歇一刻", message)
-        self.assertIn("1.087-1.0-0.8", message)
+        self.assertIn("1.087-1.0-0.6", message)
 
     def test_missing_drink_button_does_not_blame_entry_or_duration(self):
         task = Mock()
@@ -351,4 +377,38 @@ class WaterIntegrationTest(unittest.TestCase):
         message = task.log_warning.call_args.args[0]
         self.assertIn("喝水", message)
         self.assertNotIn("茶歇一刻", message)
-        self.assertNotIn("1.087-1.0-0.8", message)
+        self.assertNotIn("1.087-1.0-0.6", message)
+
+
+class WalkRouteTest(unittest.TestCase):
+    """实录 2026-10-21：按键之间停顿时镜头会转到角色身后，走到的位置不稳定；改成连续按键并重新量时长。"""
+
+    def make_task(self, **config):
+        task = Mock()
+        task.config = config
+        task._route = lambda key: ns["_route"](task, key)
+        return task
+
+    def test_drink_keys_are_pressed_back_to_back(self):
+        task = self.make_task(喝水="1.087-1.0-0.6")
+        ns["go_drink"](task)
+        task.press_keys_sequence.assert_called_once_with(["a", "w", "d"], [1.087, 1.0, 0.6], sleep_between=0)
+
+    def test_eat_is_a_single_s_press(self):
+        task = self.make_task(吃饭="0.7")
+        ns["go_eat"](task)
+        task.press_keys_sequence.assert_called_once_with(["s"], [0.7], sleep_between=0)
+
+    def test_legacy_defaults_use_new_routes(self):
+        task = self.make_task(喝水="1.087-1.0-0.8", 吃饭="1.0")
+        ns["go_drink"](task)
+        ns["go_eat"](task)
+        self.assertEqual(task.press_keys_sequence.call_args_list[0].args[1], [1.087, 1.0, 0.6])
+        self.assertEqual(task.press_keys_sequence.call_args_list[1].args[1], [0.65])
+
+    def test_user_tuned_values_are_kept(self):
+        task = self.make_task(喝水="1.0-1.1-0.5", 吃饭="")
+        ns["go_drink"](task)
+        ns["go_eat"](task)
+        self.assertEqual(task.press_keys_sequence.call_args_list[0].args[1], [1.0, 1.1, 0.5])
+        self.assertEqual(task.press_keys_sequence.call_args_list[1].args[1], [0.65])
