@@ -221,12 +221,22 @@ class DailyBattleMixin:
             """记录失败原因并保留现场，向调用者返回明确失败。"""
             self.log_warning(f"尘烟未完成：{reason}")
             self.info_set("尘烟前线", f"待核查：{reason}")
+            runner = getattr(self, "daily_runner", None)
+            if runner is not None:
+                runner.set_task_failure(f"尘烟未完成：{reason}")
             self.screenshot("Chenyan_EntryOrTicketsFailed")
             return False
 
         end = self.wait_ocr(match=re.compile("前线"), box=self.box.bottom_right, time_out=5, log=True)
         if not end:
             return failed("未找到尘烟前线入口")
+        if closed := self.ocr(
+            match=re.compile(r"\d+\s*(?:天|小时|分钟|秒).*后\s*开\s*启"), box=self.box.bottom_right
+        ):
+            reason = f"未开放：{closed[0].name}，已跳过"
+            self.info_set("尘烟前线", reason)
+            self.log_info(f"尘烟前线{reason}，继续班组补给")
+            return True
         self.click(end, after_sleep=1)
         # 页面切换和后台截图可能延迟；先确认尘烟页，避免把其他页面的数字当成次数。
         if not self.wait_ocr(match="攻坚战", box=self.box.top_right, time_out=10, log=True):
