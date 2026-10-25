@@ -52,20 +52,10 @@ def install_input_safety_patch():
                 logger.warning("松开按键后停用游戏窗口失败", exc_info=True)
 
     def scroll(self, x, y, scroll_amount):
-        """Send a real wheel event while the game owns the foreground."""
-        from src.interaction.Mouse import run_in_window
+        """Temporarily foreground for real wheel input and restore focus/cursor."""
+        from src.interaction.foreground_scroll import scroll_in_foreground
 
-        position = win32api.GetCursorPos()
-        try:
-            result = run_in_window(self.hwnd_window.hwnd, self.do_scroll, x, y, scroll_amount)
-            if result is False:
-                raise RuntimeError("游戏窗口未能进入前台，未发送滚轮输入")
-            return result
-        finally:
-            try:
-                win32api.SetCursorPos(position)
-            except Exception:
-                logger.warning("滚轮输入后恢复鼠标位置失败", exc_info=True)
+        return scroll_in_foreground(self.hwnd_window.hwnd, x, y, scroll_amount)
 
     def move_mouse_relative(self, dx, dy):
         """Move the real mouse only after confirming that the game is foreground."""

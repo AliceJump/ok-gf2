@@ -2,9 +2,6 @@
 
 import re
 
-import win32api
-import win32gui
-
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
 from src.tasks.daily.daily_common_mixin import (
     chapter_suffix_re,
@@ -81,46 +78,23 @@ class DailyActivityMixin:
         return False
 
     def _scroll_supply_menu(self, count):
-        """在游戏前台用真实滚轮滚动补给侧栏。"""
+        """ADB 滑动补给侧栏；PC 临时切前台滚动后恢复窗口和鼠标。"""
         self.sleep(0.01)
+        if self.is_adb():
+            # 三格滚轮对应一页；回顶的 30 格需要多次下拖，不能只滑一页。
+            for _ in range((abs(count) + 2) // 3):
+                self.swipe_relative(
+                    0.12, 0.40 if count > 0 else 0.72, 0.12, 0.72 if count > 0 else 0.40, duration=0.3
+                )
+                self.sleep(0.6)
+            return
         interaction = getattr(self.executor, "interaction", None)
-        if not callable(getattr(interaction, "do_scroll", None)):
-            raise RuntimeError("当前输入后端不支持补给列表真实滚轮")
-        hwnd = self.hwnd.hwnd
-        if not win32gui.IsWindow(hwnd):
-            raise RuntimeError("补给列表滚动失败：游戏窗口无效")
-        previous_window = win32gui.GetForegroundWindow()
-        previous_cursor = win32api.GetCursorPos()
-        try:
-            if previous_window != hwnd:
-                try:
-                    win32gui.SetForegroundWindow(hwnd)
-                except win32gui.error as error:
-                    raise RuntimeError("补给列表滚动失败：游戏未进入前台") from error
-                self.sleep(0.05)
-            if win32gui.GetForegroundWindow() != hwnd:
-                raise RuntimeError("补给列表滚动失败：游戏未进入前台")
-            x, y = int(self.width * 0.12), int(self.height * 0.60)
-            win32api.SetCursorPos(win32gui.ClientToScreen(hwnd, (x, y)))
-            self.sleep(0.1)
-            if win32gui.GetForegroundWindow() != hwnd:
-                raise RuntimeError("补给列表滚动失败：游戏失去前台焦点")
-            interaction.do_scroll(x, y, count)
-            self.sleep(0.6)
-        finally:
-            try:
-                win32api.SetCursorPos(previous_cursor)
-            except Exception:
-                self.log_warning("补给滚动后恢复鼠标位置失败")
-            if (
-                previous_window != hwnd
-                and win32gui.IsWindow(previous_window)
-                and win32gui.GetForegroundWindow() == hwnd
-            ):
-                try:
-                    win32gui.SetForegroundWindow(previous_window)
-                except Exception:
-                    self.log_warning("补给滚动后恢复原窗口失败")
+        scroll = getattr(interaction, "scroll", None)
+        if not callable(scroll):
+            raise RuntimeError("当前输入后端不支持补给列表滚动")
+        x, y = int(self.width * 0.12), int(self.height * 0.60)
+        scroll(x, y, count)
+        self.sleep(0.6)
 
     def _claim_supply_activity(self, reward_activity):
         """验证补给页与领取结果，无法确认时保留待核查。"""
