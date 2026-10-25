@@ -1,7 +1,10 @@
 import os
 
+from src.core.debug_config import debug_option
 from src.core.gf_interaction import GfInteraction
 from src.core.input_config import input_option
+from src.core.lineup_config import lineup_option
+from src.core.stamina_config import stamina_option
 
 version = "dev"
 # 不需要修改version, Github Action打包会自动修改
@@ -78,7 +81,12 @@ config = {
     "trigger_tasks": [  # 循环触发的任务
         ["src.tasks.TemplateMonitorTask", "TemplateMonitorTask"],
     ],
-    "global_configs": [input_option],  # 全局配置：设置页里的「输入」
+    "global_configs": [
+        lineup_option,
+        stamina_option,
+        input_option,
+        debug_option,
+    ],  # 全局配置：设置页里的「阵容与助战」「体力」「输入」「调试」
     "custom_tabs": [  # 自定义界面页
         ["src.gui.AccountConfigTab", "AccountConfigTab"],
         ["src.gui.ImportantNoticesTab", "ImportantNoticesTab"],
