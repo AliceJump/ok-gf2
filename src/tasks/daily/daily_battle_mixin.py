@@ -575,7 +575,11 @@ class DailyBattleMixin:
                     win32api.SetCursorPos(previous_cursor)
                 except Exception:
                     self.log_warning("助战滚动后恢复鼠标位置失败")
-                if previous_window != hwnd and win32gui.IsWindow(previous_window) and win32gui.GetForegroundWindow() == hwnd:
+                if (
+                    previous_window != hwnd
+                    and win32gui.IsWindow(previous_window)
+                    and win32gui.GetForegroundWindow() == hwnd
+                ):
                     try:
                         win32gui.SetForegroundWindow(previous_window)
                     except Exception:
@@ -589,7 +593,7 @@ class DailyBattleMixin:
         if frame is None or frame.size == 0:
             return None
         height, width = frame.shape[:2]
-        cards = frame[int(height * 0.31):int(height * 0.79), int(width * 0.18):int(width * 0.82), :3]
+        cards = frame[int(height * 0.31) : int(height * 0.79), int(width * 0.18) : int(width * 0.82), :3]
         if cards.size == 0:
             return None
         return cv2.resize(cards, (256, 144), interpolation=cv2.INTER_AREA)
@@ -614,7 +618,8 @@ class DailyBattleMixin:
             # 同名角色可以来自不同玩家；必须同时确认卡片画面基本不变。
             # 缩图降低分辨率与采集噪声影响，忽略不超过 0.5% 的轻微变化。
             same_image = (
-                previous_image is not None and image is not None
+                previous_image is not None
+                and image is not None
                 and (cv2.absdiff(previous_image, image).max(axis=2) > 12).mean() <= 0.005
             )
             if previous is not None and signature == previous and same_image:
@@ -629,7 +634,7 @@ class DailyBattleMixin:
     def _find_priority_chenyan_assist(self, name):
         """已知角色按属性查找，未录入属性的首选角色遍历属性页。"""
         attr = self.get_role_by_name(name)
-        for candidate_attr in ([attr] if attr else self.roles_dict):
+        for candidate_attr in [attr] if attr else self.roles_dict:
             if not self._select_chenyan_attribute(candidate_attr):
                 continue
             char = self._find_chenyan_assist(name)
@@ -652,13 +657,18 @@ class DailyBattleMixin:
     def _is_chenyan_list(self):
         """排除弹窗后按标题确认列表，允许属性和当前卡片同时漏读。"""
         if self.ocr(
-            match=["确认", "取消", re.compile("队伍中有相同角色"), "火控预演方案", "Firepower Preview", "Combat Effectiveness"],
+            match=[
+                "确认",
+                "取消",
+                re.compile("队伍中有相同角色"),
+                "火控预演方案",
+                "Firepower Preview",
+                "Combat Effectiveness",
+            ],
             box=self.box_of_screen(0.2, 0.25, 0.8, 0.78),
         ):
             return False
-        return bool(
-            self.wait_ocr(match="班组助战", box=self.box_of_screen(0.35, 0.12, 0.65, 0.24), time_out=1)
-        )
+        return bool(self.wait_ocr(match="班组助战", box=self.box_of_screen(0.35, 0.12, 0.65, 0.24), time_out=1))
 
     def _restore_chenyan_list(self):
         """取消冲突或关闭详情，False 可重试，None 表示恢复失败。"""

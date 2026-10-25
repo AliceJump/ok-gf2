@@ -104,7 +104,8 @@ class FoodScreen:
         labels = self.visible()
         if self.state in ("overwrite", "closing") and isinstance(box, tuple):
             labels = [
-                label for label in labels
+                label
+                for label in labels
                 if box[0] <= (self.prompt_position if label == self.prompt else self.confirm_position)[0] <= box[2]
                 and box[1] <= (self.prompt_position if label == self.prompt else self.confirm_position)[1] <= box[3]
             ]
