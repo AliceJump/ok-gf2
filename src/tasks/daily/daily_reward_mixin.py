@@ -54,7 +54,13 @@ class DailyRewardMixin:
         self.info_set("巡录奖励", "未检查")
         box = self.wait_ocr(match=[re.compile(r"^巡录$")], box=self.box._xunlun, time_out=3, raise_if_not_found=False)
         if not box:
-            self.log_info("未找到「巡录」入口，跳过")
+            # 实录：小框 OCR 偶尔读不出底栏的「巡录」，整帧 OCR 能读到（688,716），再用整个底部找一次
+            self.next_frame()
+            box = self.ocr(match=[re.compile(r"^巡录$")], box=self.box.bottom)
+        if not box:
+            self.log_info("主页底栏整帧也没找到「巡录」入口", notify=True)
+            self.screenshot("xunlu_entry_missing")
+            self.info_set("巡录", "没找到入口")
             self.ensure_main()
             return False
         self.click_box_by_match_position(box, "巡录", after_sleep=2)
@@ -132,7 +138,7 @@ class DailyRewardMixin:
         self.ensure_main()
         if action_result is False or reward_result is False:
             return False
-        if action_result == "待核查" or reward_result == "待核查":
+        if str(action_result).startswith("待核查") or str(reward_result).startswith("待核查"):
             return "待核查"
         return True
 
@@ -176,6 +182,8 @@ class DailyRewardMixin:
             if result is True
             else "执行失败"
             if result is False
+            else result
+            if isinstance(result, str) and result.startswith("待核查：")
             else "待核查：缺少领取结果证据"
         )
         self.info_set(name, status)
@@ -215,20 +223,43 @@ class DailyRewardMixin:
         reward_title = re.compile(r"^领取奖励$")
         # 「获得道具」是奖励到账的正面证据，缺少它不能判定领取成功。
         obtained_title = re.compile(r"^获得道具$")
+        # 实录 2026-10-20：一键领取里带「标准武器自选礼箱」时会弹「请在以上奖励中选择 1 项」（1/2、取消、下一个）。
+        # 选哪把武器是玩家的事，脚本不替选：点「取消」关掉（礼箱留在背包里），结果记成待核查并说明原因。
+        choice_title = re.compile(r"请在以上奖励中选择\s*\d+\s*项")
         obtained = False
+        skipped_choice = None
         for _ in range(8):
             titles = self.wait_ocr(
-                match=[pack_title, reward_title, obtained_title],
+                match=[pack_title, reward_title, obtained_title, choice_title],
                 box=self.box_of_screen(0, 0, 1, 1),
                 time_out=4,
                 raise_if_not_found=False,
                 log=True,
             )
             if not titles:
+                if skipped_choice:
+                    return skipped_choice
                 if obtained:
                     return True
                 self.log_info("未看到获得道具，巡录领取结果待核查")
                 return "待核查"
+            if any(choice_title.search(title.name) for title in titles):
+                box_name = next(
+                    (b.name for b in self.ocr(box=self.box_of_screen(0, 0, 1, 0.3)) if "自选" in b.name), "自选礼箱"
+                )
+                self.log_info(f"巡录奖励弹出「{box_name}」自选框，脚本不替你选武器，点「取消」留在背包里", notify=True)
+                self.screenshot("xunlu_choice_box")
+                if not self.wait_click_ocr(
+                    match=[re.compile(r"^取消$")],
+                    box=self.box_of_screen(0, 0.55, 1, 0.95),
+                    time_out=4,
+                    raise_if_not_found=False,
+                    after_sleep=1,
+                ):
+                    self.log_error("自选框上没找到「取消」按钮，领取未完成")
+                    return False
+                skipped_choice = f"待核查：「{box_name}」需要手动选择，脚本已取消未替你选"
+                continue
             if any(obtained_title.search(title.name) for title in titles):
                 obtained = True
                 self.log_info("巡录已显示获得道具，确认奖励到账")
@@ -274,11 +305,17 @@ class DailyRewardMixin:
             match=re.compile("边界推进"),
             box=self.box.top_right,
             after_sleep=6,
-            time_out=2,
-            raise_if_not_found=True,
+            time_out=3,
+            raise_if_not_found=False,
             log=True,
         ):
-            return
+            # 实录：限时开启页右侧只有「危区探遗 / 遗珍回收」，没有边界推进（未开放），不算失败
+            texts = [b.name for b in self.ocr(box=self.box.right)]
+            self.log_info(f"限时开启页没有「边界推进」，探索领取跳过；右侧现有: {texts[:8]}", notify=True)
+            self.info_set("探索领取", "没有边界推进入口，跳过")
+            self.screenshot("explore_no_entry")
+            self.ensure_main()
+            return True
         if not self.wait_click_ocr(
             match=re.compile("采集"),
             box=self.box.bottom_right,

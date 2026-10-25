@@ -231,6 +231,32 @@ class DrinkResultTest(unittest.TestCase):
         self.assertFalse(namespace["_confirm_drink_result"](task))
         self.assertEqual(3, state["clicks"])
 
+    def test_layer_level_up_popup_is_closed_after_drink_result(self):
+        """实录 2026-10-25：结果页关掉后弹「活动层等级提升」，点空白处关闭后才算回到活动层。"""
+        task, state = self.make_task()
+        state["popup"] = True
+        hint = SimpleNamespace(name="点击空白处关闭")
+
+        def read(*args, **kwargs):
+            """结果页已关；升级弹层盖住 HUD，直到点了关闭提示。"""
+            match = kwargs.get("match")
+            if match == "饮品加成":
+                return state["visible"]
+            if isinstance(match, re.Pattern):
+                return [SimpleNamespace(name="活动层等级提升"), hint] if state["popup"] else []
+            return [] if state["popup"] else ["Esc", "P", "M", "F1", "F2"]
+
+        def close(target, *args, **kwargs):
+            """点到关闭提示时弹层消失。"""
+            if target is hint:
+                state["popup"] = False
+
+        task.ocr.side_effect = read
+        task.click.side_effect = close
+        self.assertTrue(namespace["_confirm_drink_result"](task))
+        self.assertFalse(state["popup"])
+        self.assertEqual(1, state["clicks"])
+
     def test_food_flow_never_reports_success_with_blocked_drink_result(self):
         """Verify food flow never reports success with blocked drink result."""
         task = Mock()
