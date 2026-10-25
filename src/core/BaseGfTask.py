@@ -1,9 +1,16 @@
+import functools
+import os
 import re
+import sys
+import threading
 import time
+import traceback
 
-from ok import BaseTask, Box, Logger, find_boxes_by_name
+from ok import BaseTask, Box, Logger, TaskDisabledException, TriggerTask, find_boxes_by_name
 
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
+from src.core.debug_config import DEBUG_OPTION_NAME, KEY_DEBUG_SHOT
+from src.core.debug_shot import save_debug_shot
 from src.data.FeatureList import FeatureList as fL
 from src.image.frame_processs import isolate_by_hsv_ranges
 from src.image.hsv_config import HSVRange as hR
@@ -14,6 +21,88 @@ pop_ups = ["点击空白处关闭", "点击屏幕任意位置继续", "点击任
 number_re = re.compile(r"^\d+$")
 stamina_re = re.compile(r"^\d+/\d+")
 map_re = re.compile(r"^.{0,2}\s*-?\s*\d{1,2}\s*-\s*\d{1,2}\s*\*?$")
+# 战斗中界面的标志：右下角「行动结束」或左上角「01/12 回合」计数
+battle_ui_re = re.compile(r"行动结束|\d{1,2}\s*/\s*\d{1,2}\s*回合")
+stamina_popup_re = re.compile(r"情报拼图补充|情报.{0,3}补充|体力不足|体力补充")
+WATCHDOG_TIMEOUT = 120  # 秒：这么久没有任何进展（没点击、没日志、没换阶段）看门狗就截图报警
+WATCHDOG_KILL_LEVEL = 2  # 停滞达到 WATCHDOG_TIMEOUT 的这个倍数、而且不是人为暂停，就自动停止任务
+# 游戏启动后的「资源更新完毕，需要重新启动游戏」提示框（实录 2026-10-20，游戏热更新当天第一次启动）
+restart_required_re = re.compile(r"重新启动游戏|重启游戏|需要重启")
+GAME_RESTART_TITLE_TIMEOUT = 120  # 秒：重新拉起游戏后等标题页「点击开始」的时间（实机：启动到标题约 50 秒）
+GAME_EXIT_TIMEOUT = 20  # 秒：点「确认」后等游戏自己退出的时间，超过就直接结束进程
+# 标题页前的「用户中心初始化失败 / 请您稍后再试」+「重试」（实录 2026-10-22：刚拉起游戏时连服务器失败，点重试就进标题页了）。
+# ESC 关不掉它，不处理的话回主页一直超时
+init_failed_re = re.compile(r"初始化失败|稍后再试")
+INIT_RETRY_EXTEND = 60  # 秒：点了重试后回主页的超时从现在起至少再给这么久（重连 + 标题页）
+INIT_RETRY_MAX = 5  # 一次回主页最多点几次重试，一直失败就让它按原超时报错，别无限重连
+# 竞技场打完后的通知框 / 结算页（实录 2026-10-20）
+rank_up_notice_re = re.compile(r"晋升至|段位可获得|补给将通过邮件发放")  # 「您已晋升至新锐·三」段位晋升通知，ESC 能关
+battle_result_re = re.compile(r"^对战(胜利|失败)$|已结束$")  # 「对战胜利 / 对战失败」结算页只有「确认」能关
+# 每个任务开始前的隐藏步骤「确保游戏已进入主页」
+title_start_re = re.compile(r"点击开始")
+story_skip_re = re.compile(r"跳过")  # 剧情对话右上角的「跳过 / 全部跳过」（可能和「自动」连成一个框）
+main_marks = ["整备室", "公共区", "活动层", re.compile("招募")]  # 主页右侧的入口文字  # 标题页底部的「点击开始」
+GAME_LAUNCH_MAIN_TIMEOUT = 150  # 秒：从拉起游戏到进入主页的上限（实机：启动到标题约 50 秒，再加公告弹窗）
+GAME_FRESH_SECONDS = 180  # 秒：游戏进程比这更新，就当成刚被框架拉起、还停在启动/标题页，要走一遍进主页
+GAME_CRASH_RETRIES = 3  # 一次任务里游戏进程中途没了（崩溃/被关）时，重新拉起再从头跑的次数上限
+GAME_ALIVE_CHECK_INTERVAL = 10  # 秒：next_frame 里隔这么久查一次游戏进程还在不在
+
+
+class GameCrashed(Exception):
+    """任务跑到一半游戏进程没了。"""
+
+
+def _with_game_started(run):
+    """给任务的 run 套一层：先 ensure_game_started（游戏没开就拉起、标题页点进主页），再跑任务本身。"""
+
+    @functools.wraps(run)
+    def wrapped(self, *args, **kwargs):
+        # 实录 2026-10-22：往期活动推图时挪了一下游戏窗口，游戏崩溃退出，脚本对着失效的窗口句柄一直空点。
+        # 跑到一半游戏进程没了：重新拉起游戏、进主页，再从头跑一遍任务（推图类任务会自己找回进度）。
+        for attempt in range(GAME_CRASH_RETRIES + 1):
+            self.crash_resume = attempt > 0  # 崩溃后重跑：任务可以沿用这次已经做完的进度
+            try:
+                self.ensure_game_started()
+                return run(self, *args, **kwargs)
+            except TaskDisabledException:
+                raise
+            except Exception as e:
+                if attempt >= GAME_CRASH_RETRIES or not self._game_gone():
+                    raise
+                self.log_info(f"游戏进程没了（崩溃或被关闭，{type(e).__name__}），重新拉起游戏后从头接着跑", notify=True)
+
+    wrapped._ensures_game = True
+    return wrapped
+
+
+def watchdog_message(stalled, executor_paused, task_paused, where, window_hidden=False):
+    """看门狗报警文案：先区分是游戏窗口被最小化、人为暂停，还是真卡住。"""
+    secs = int(stalled)
+    if task_paused:
+        return f"任务已暂停 {secs} 秒（任务卡片上的「暂停」按钮），点「开始」继续"
+    if executor_paused and window_hidden:
+        return f"游戏窗口被最小化或移出了屏幕，程序已暂停 {secs} 秒；把游戏窗口恢复出来就会自动继续（被别的窗口挡住没关系，不能最小化）"
+    if executor_paused:
+        return f"程序已暂停 {secs} 秒（F9 热键或顶部的暂停按钮），按 F9 或点「开始」继续"
+    return f"{secs} 秒没有任何进展，卡在 {where}"
+
+
+def describe_screen(names):
+    """根据整屏 OCR 文字猜当前在哪个页面，给超时/报警信息用。"""
+    text = " ".join(names)
+    if stamina_popup_re.search(text):
+        return "体力弹窗"
+    if "任务失败" in text:
+        return "任务失败页"
+    if "继续前进" in text or "任务完成" in text:
+        return "结算页"
+    if "作战开始" in text:
+        return "部署界面"
+    if battle_ui_re.search(text):
+        return "战斗中"
+    if any(map_re.match(n) for n in names):
+        return "选关页面"
+    return "未知页面"
 
 
 def parse_time_option(option: str) -> list[float]:
@@ -26,6 +115,13 @@ def parse_time_option(option: str) -> list[float]:
 
 class BaseGfTask(RuntimeMixin, BaseTask):
     """任务基类：RuntimeMixin 提供模板匹配入口重写，BaseTask 提供框架能力。"""
+
+    def __init_subclass__(cls, **kwargs):
+        # 所有任务的 run 都自动先过一遍 ensure_game_started（界面上不显示这一步）
+        super().__init_subclass__(**kwargs)
+        run = cls.__dict__.get("run")
+        if run is not None and not getattr(run, "_ensures_game", False):
+            cls.run = _with_game_started(run)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,6 +169,142 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.account_config_whitelist = set(getattr(self, "account_config_whitelist", ()))
         self.account_config_defaults = dict(getattr(self, "account_config_defaults", {}))
 
+    def debug_shot(self, tag, boxes=None):
+        """
+        保存调试截图到 screenshots/<任务名>/<日期>/，由设置页全局「调试」里的「调试截图」开关控制，对所有任务生效。
+        :param tag: 文件名标签，说明当前阶段
+        :param boxes: 需要画框标注的 Box 列表，可选
+        """
+        if not self.debug_shot_enabled():
+            return None
+        try:
+            return save_debug_shot(self.frame, self.name, tag, boxes)
+        except Exception as e:
+            self.log_debug(f"调试截图失败: {e}")
+            return None
+
+    def _touch_progress(self):
+        self._progress_ts = time.time()
+        try:
+            executor = self.executor
+        except AttributeError:  # 还没绑定执行器（单测桩、初始化早期）
+            return
+        frame = getattr(executor, "_frame", None)
+        if frame is not None:
+            self._last_frame = frame
+
+    def _game_window_hidden(self):
+        """游戏窗口被最小化/移出屏幕（ok-script 这时会暂停执行器，而且窗口恢复后不会自己继续）。"""
+        hw = getattr(getattr(self.executor, "device_manager", None), "hwnd_window", None)
+        return hw is not None and not getattr(hw, "pos_valid", True)
+
+    def _resume_if_window_back(self):
+        """
+        实录：游戏窗口被最小化时 ok-script 会把执行器暂停并弹「Paused because game window is minimized」，
+        但窗口恢复后它不会自动继续，任务看起来像"自己结束了"。这里记住暂停是窗口引起的，窗口一回来就自动继续。
+        """
+        executor_paused = bool(getattr(self.executor, "paused", False))
+        if executor_paused and self._game_window_hidden():
+            self._paused_by_window = True
+            return
+        if (
+            self._paused_by_window
+            and executor_paused
+            and not getattr(self, "_paused", False)
+            and not self._game_window_hidden()
+        ):
+            logger.info("[看门狗] 游戏窗口恢复了，自动继续被最小化打断的任务")
+            self._paused_by_window = False
+            self.executor.start()
+            self._touch_progress()
+        elif not executor_paused:
+            self._paused_by_window = False
+
+    def log_info(self, message, notify=False, *args, **kwargs):
+        self._touch_progress()
+        return super().log_info(message, notify, *args, **kwargs)
+
+    def info_set(self, key, value):
+        self._touch_progress()
+        return super().info_set(key, value)
+
+    def start_watchdog(self, timeout=WATCHDOG_TIMEOUT):
+        """
+        起一个独立线程盯着任务：超过 timeout 秒没有任何进展就截图、记下执行线程卡在哪一行并弹通知；
+        不是人为暂停、又停滞到 WATCHDOG_KILL_LEVEL 倍超时，就自动停止任务，不让它无限转下去。
+        """
+        self.stop_watchdog()
+        self._touch_progress()
+        self._watchdog_stop_event = threading.Event()
+        threading.Thread(
+            target=self._watchdog_loop,
+            args=(timeout, self._watchdog_stop_event),
+            name=f"watchdog-{self.__class__.__name__}",
+            daemon=True,
+        ).start()
+
+    def stop_watchdog(self):
+        if self._watchdog_stop_event is not None:
+            self._watchdog_stop_event.set()
+            self._watchdog_stop_event = None
+
+    def _watchdog_loop(self, timeout, stop_event):
+        reported = 0
+        while not stop_event.wait(5):
+            try:
+                self._resume_if_window_back()
+                stalled = time.time() - self._progress_ts
+                if stalled < timeout:
+                    reported = 0
+                    continue
+                level = int(stalled // timeout)
+                if level <= reported:
+                    continue
+                reported = level
+                self._watchdog_report(stalled, level)
+            except Exception as e:
+                logger.warning(f"看门狗出错: {e}")
+
+    def _executor_where(self):
+        """执行线程当前的 Python 调用栈（最内层在前），用来判断卡在哪。"""
+        ident = getattr(getattr(self.executor, "thread", None), "ident", None)
+        frame = sys._current_frames().get(ident) if ident else None
+        if frame is None:
+            return "未知位置"
+        stack = traceback.extract_stack(frame)[-8:]
+        return " <- ".join(f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in reversed(stack))
+
+    def _watchdog_report(self, stalled, level):
+        executor_paused = bool(getattr(self.executor, "paused", False))
+        task_paused = bool(getattr(self, "_paused", False))
+        where = self._executor_where()
+        msg = watchdog_message(
+            stalled, executor_paused, task_paused, where, self._game_window_hidden() or self._paused_by_window
+        )
+        path = None
+        try:
+            frame = getattr(self.executor, "_frame", None)
+            path = save_debug_shot(frame if frame is not None else self._last_frame, self.name, f"watchdog_{level}")
+        except Exception as e:
+            logger.warning(f"看门狗截图失败: {e}")
+        logger.warning(f"[看门狗] {msg}；截图 {path}")
+        if level == 1 or not (executor_paused or task_paused):
+            # 暂停状态只在第一次提醒一次，别每两分钟弹一回
+            try:
+                self.notification(msg, error=True, tray=True)
+            except Exception as e:
+                logger.warning(f"看门狗通知失败: {e}")
+        if not executor_paused and not task_paused and level >= WATCHDOG_KILL_LEVEL:
+            logger.error(f"[看门狗] 持续 {int(stalled)} 秒无进展，自动停止任务")
+            self.info["Error"] = f"{int(stalled)} 秒没有进展，看门狗已停止任务，看日志里的 [看门狗] 和 watchdog 截图"
+            self.disable()
+
+    def debug_shot_enabled(self):
+        try:
+            return bool(self.get_global_config(DEBUG_OPTION_NAME).get(KEY_DEBUG_SHOT, True))
+        except Exception:
+            return True
+
     def isolate_by_hsv_ranges(self, frame, ranges, invert=True, kernel_size=2):
         """
         :param frame: 输入图像（BGR）
@@ -96,10 +328,37 @@ class BaseGfTask(RuntimeMixin, BaseTask):
     def get_role_by_name(self, name):
         return next((k for k, v in self.roles_dict.items() if name in v), None)
 
-    def ensure_main(self, recheck_time=1, time_out=30, esc=True):
+    def ensure_main(self, recheck_time=1, time_out=30, esc=True, loading_grace=120):
+        """
+        回到主页。超时后如果画面还是加载页（NOW LOADING / 移动中 / 资源加载中），超时顺延，
+        最多多等 loading_grace 秒（实录：离开活动层的「艾莫号 移动中…69%」加载页把 60 秒耗光，任务被判失败）。
+        """
         self.info_set("current_task", "go_to_main")
-        if not self.wait_until(lambda: self.is_main(recheck_time=recheck_time, esc=esc), time_out=time_out):
-            raise Exception("请从游戏主页进入")
+        self._init_retries = 0
+        deadline = time.time() + time_out
+        hard_deadline = deadline + loading_grace
+        extended = False
+        self._deadline_bump = 0
+        while True:
+            if self.is_main(recheck_time=recheck_time, esc=esc):
+                return True
+            if self._deadline_bump:
+                # is_main 里刚重启过游戏，从现在起重新计时
+                deadline = time.time() + max(time_out, self._deadline_bump)
+                hard_deadline = deadline + loading_grace
+                self._deadline_bump = 0
+            now = time.time()
+            if now >= deadline:
+                self.next_frame()
+                if now < hard_deadline and self._is_loading_frame(self.ocr()):
+                    if not extended:
+                        self.log_info("画面还在加载中（移动中/资源加载中），回主页的超时顺延", notify=False)
+                        extended = True
+                    deadline = now + 10
+                else:
+                    self.debug_shot("ensure_main_timeout")
+                    raise Exception("请从游戏主页进入")
+            self.sleep(recheck_time)
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
         self.info_set("current_task", "skip_dialogs")
@@ -145,15 +404,16 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         """
         if not boxes:
             return True
-        for box in boxes:
-            name = box.name
-            if not name:
-                continue
-            if "资源加载中" in name:
-                return True
-            if re.search(r"\d{1,3}%", name):
-                return True
-        return False
+        names = [box.name for box in boxes if box.name]
+        if any("资源加载中" in name for name in names):
+            return True
+        # 离开活动层时的「艾莫号」过场：NOW LOADING / 移动中…69%，文字很多但就是加载页
+        if any(re.search(r"移动中|NOW\s*LOADING|LOADING\.{0,3}$", name, re.I) for name in names):
+            return True
+        # 只有一个进度百分比、几乎没有别的文字时才算加载页；
+        # 教学弹窗里的「60% 25% 60% 20%」这类伤害数值不能当成加载页，否则会一直不点关闭
+        has_progress = any(re.fullmatch(r"\s*\d{1,3}%\s*", name) for name in names)
+        return has_progress and len(names) <= 3
 
     def auto_battle(
         self, end_match=None, end_box=None, has_dialog=False, need_click_auto=False, has_dialog_behind_start=False
@@ -328,7 +588,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.sleep(2)
 
     def is_main(self, recheck_time=0.0, esc=True):
-        boxes = self.ocr(match=["整备室", "公共区", "活动层", re.compile("招募")], box="right", log=True)
+        boxes = self.ocr(match=main_marks, box="right", log=True)
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
@@ -336,14 +596,49 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         total = len(boxes) + len(feature_boxes)
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
+            self._cancel_streak = 0
             return True
+        if self._handle_restart_required():
+            return False
+        if self._handle_init_failed():
+            return False
+        # 剧情对话：右上角「自动 / 跳过 / 全部跳过」，ESC 没用，交给 skip_dialogs 点「跳过」
+        # （实录 2026-10-21：停掉推图时正好在放下一章的开场剧情，接着跑一键日常，回主页 90 秒超时；OCR 会把「自动跳过」读成一个框）
+        if self.ocr(box=self.box.top_right, match=story_skip_re):
+            self.log_info("画面是剧情对话，先跳过剧情再回主页", notify=False)
+            self.skip_dialogs(end_match=main_marks, time_out=20, raise_if_not_found=False)
+            return False
         # if not self.do_handle_alert()[0]:
         if self.ocr(match=re.compile("^是否离开活动层"), box=self.box.center, log=True):
-            self.wait_click_ocr(match="确认", after_sleep=2, box=self.box.bottom_right)
-            return False
+            # 实录：读到了「是否离开活动层」却 10 秒都找不到确认按钮，连续 5 轮把回主页的时间耗光；缩短等待，找不到就走下面的 ESC
+            if self.wait_click_ocr(match="确认", after_sleep=2, box=self.box.bottom_right, time_out=3):
+                return False
         if box := self.ocr(box=self.box.bottom, match=["点击开始", "点击空白处关闭", "取消"], log=True):
+            if box[0].name == "取消":
+                # 实录：活动层里 ESC 弹出的离开确认框标题没被 OCR 读到，脚本反复点「取消」→ESC→再弹，60 秒后超时。
+                # 弹窗文字里有离开/退出字样、或已经连点 3 次取消还没回主页，就改点「确认」
+                self._cancel_streak = getattr(self, "_cancel_streak", 0) + 1
+                texts = [b.name for b in self.ocr()]
+                leave_like = any(re.search(r"离开|退出|返回", t) for t in texts)
+                if self._cancel_streak == 3:
+                    self.log_info(f"连续 3 次点取消都没回到主页，弹窗文字: {texts[:12]}", notify=False)
+                    self.screenshot("cancel_loop")
+                if leave_like or self._cancel_streak >= 3:
+                    if confirm := self.ocr(box=self.box.bottom, match=["确认"]):
+                        self.log_info(f"弹窗像是离开确认（{texts[:6]}），点确认", notify=False)
+                        self.click(confirm, after_sleep=2)
+                        return False
             self.click(box, after_sleep=2)
             return False
+        # 「本期扩编实练已结束」通知框、竞技场「对战胜利/失败」结算页：只有「确认」能关，ESC 没用
+        if self._confirm_battle_result():
+            return False
+        # 停在战斗部署界面时 ESC 只会弹出/关掉关卡信息菜单，回不去；菜单里有「退出作战」就点它（后面的确认框走上面的离开确认）
+        if quit_box := self.ocr(box=self.box.bottom_left, match=re.compile("^退出作战$")):
+            if self.ocr(box=self.box.bottom_right, match=re.compile("^继续作战$")):
+                self.log_info("在战斗菜单里，点「退出作战」", notify=False)
+                self.click(quit_box, after_sleep=2)
+                return False
         if esc:
             if result := self.find_feature(
                 feature=[fL.back_home, fL.back_home_light], horizontal_variance=0.02, vertical_variance=0.002
@@ -373,6 +668,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         ``alt=True`` 时按住 alt 再点击（等价于 ``click_with_alt``），用于只有 alt 组合键才能命中的界面。
         x 支持 Box、Box 列表、屏幕比例（0~1）与绝对坐标，分派逻辑沿用父类。
         """
+        self._touch_progress()
         if alt:
             return self.click_with_alt(
                 x,
@@ -941,6 +1237,172 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 i -= 1
             # 否则：留在当前步，下一轮重试（因 i 未变）
 
+        return True
+
+    # ------------------------------------------------------------------ 游戏要求重启
+    def _game_exe_names(self):
+        cfg = getattr(getattr(self, "_app", None), "config", None) or {}
+        exes = (cfg.get("windows") or {}).get("exe") or ["GF2_Exilium.exe"]
+        if isinstance(exes, str):
+            exes = [exes]
+        return {e.lower() for e in exes}
+
+    def _game_processes(self):
+        import psutil
+
+        names = self._game_exe_names()
+        return [p for p in psutil.process_iter(["name"]) if (p.info.get("name") or "").lower() in names]
+
+    def _game_gone(self):
+        try:
+            gone = not self._game_processes()
+        except Exception as e:
+            self.log_info(f"查游戏进程失败: {e}", notify=False)
+            return False
+        if not gone:
+            self._game_seen = True
+        return gone
+
+    def next_frame(self):
+        """
+        隔一会儿查一次游戏进程：之前在、现在没了就抛 GameCrashed，交给任务外层重新拉起游戏（不再对着空窗口干等/空点）。
+        从没见过游戏进程（截图回放的单测）不算崩溃。
+        """
+        now = time.time()
+        watch = not isinstance(self, TriggerTask) and not getattr(self, "skip_game_check", False)
+        if watch and now - getattr(self, "_alive_checked", 0) >= GAME_ALIVE_CHECK_INTERVAL:
+            self._alive_checked = now
+            if self._game_gone() and getattr(self, "_game_seen", False):
+                raise GameCrashed("游戏进程没了")
+        return super().next_frame()
+
+    def _wait_game_exit(self, timeout):
+        end = time.time() + timeout
+        while time.time() < end:
+            if not self._game_processes():
+                return True
+            self.sleep(1)
+        return not self._game_processes()
+
+    def _relaunch_game(self):
+        """让框架重新拉起游戏：先刷新设备状态（窗口没了 → 未连接），start_device 才会去执行 exe 并等窗口就绪。"""
+        from ok import og
+
+        og.device_manager.do_refresh(True)
+        self.log_info("重新启动游戏", notify=False)
+        self.start_device()
+        self.next_frame()
+
+    # ------------------------------------------------------------------ 战斗结算相关的通知框
+    def _dismiss_notice(self, boxes):
+        """
+        实录 2026-10-20：竞技场打赢后先弹「您已晋升至新锐·三，首次晋升可获得补给…」的段位通知，
+        盖在「对战胜利」结算页上面；它没有按钮文字，skip_dialogs 认不出就干等 30 秒超时。ESC 能关掉它。
+        """
+        if not self.find_boxes(boxes, match=rank_up_notice_re):
+            return False
+        self.log_info("弹出段位晋升通知，按 ESC 关掉", notify=False)
+        self.debug_shot("rank_up_notice", boxes)
+        self.back(after_sleep=1.5)
+        self.next_frame()
+        return True
+
+    def _confirm_battle_result(self):
+        """
+        实录 2026-10-20：竞技场「对战胜利」结算页（积分、作战奖励、伤害统计、确认）只有「确认」能关，
+        回主页一直按 ESC 按了 85 秒超时，整个一键日常中断。认出结算页就点「确认」。
+        """
+        if not self.ocr(match=battle_result_re, log=True):
+            return False
+        if confirm := self.ocr(box=self.box.bottom, match=re.compile(r"^确认$")):
+            self.log_info("在战斗结算页，点「确认」回去", notify=False)
+            self.click(confirm, after_sleep=2)
+            return True
+        return False
+
+    # ------------------------------------------------------------------ 任务开始前：确保游戏已进入主页
+    def _game_process_age(self):
+        """最年轻的游戏进程已经跑了多少秒；没有进程返回 None，读不到创建时间当成很久。"""
+        procs = self._game_processes()
+        if not procs:
+            return None
+        ages = []
+        for p in procs:
+            try:
+                ages.append(time.time() - p.create_time())
+            except Exception:
+                continue
+        return min(ages) if ages else float("inf")
+
+    def _on_title_screen(self):
+        self.next_frame()
+        return bool(self.ocr(box=self.box.bottom, match=title_start_re, log=True))
+
+    def ensure_game_started(self, time_out=GAME_LAUNCH_MAIN_TIMEOUT):
+        """
+        每个任务开始前自动做的隐藏步骤：
+        游戏没开 → 拉起游戏，等标题页点「点击开始」、关掉公告，直到主页；
+        游戏刚被拉起（进程很新）或停在标题页 → 同样点进主页；
+        游戏早就开着 → 什么都不做，直接开始任务（推图这类从关卡页开始的任务不会被拖回主页）。
+        触发任务（模板监控）每轮都会 run，不走这一步。
+        """
+        if isinstance(self, TriggerTask) or getattr(self, "skip_game_check", False):
+            return False
+        age = self._game_process_age()
+        launched = False
+        if age is None:
+            self.log_info("游戏没有打开，先启动游戏再开始任务", notify=True)
+            self._relaunch_game()
+            launched = True
+        elif age < GAME_FRESH_SECONDS:
+            self.log_info(f"游戏刚启动 {int(age)} 秒，先进入主页再开始任务", notify=False)
+        elif not self._on_title_screen():
+            return False
+        else:
+            self.log_info("游戏停在标题页，点「点击开始」进入主页", notify=False)
+        self.ensure_main(recheck_time=2, time_out=time_out)
+        return launched
+
+    def _handle_restart_required(self):
+        """
+        实录 2026-10-20：游戏热更新当天第一次启动，标题页前弹「资源更新完毕，需要重新启动游戏」，只有一个「确认」，
+        点了游戏自己退出；不处理的话脚本会在这个框前面按 ESC 直到回主页超时。
+        这里点确认 → 等游戏退出（超时就结束进程）→ 框架重新拉起 → 把回主页的超时顺延，交回 is_main 去点「点击开始」。
+        """
+        if not self.ocr(box=self.box.center, match=restart_required_re, log=True):
+            return False
+        self.log_info("游戏提示资源更新完毕、需要重新启动，点确认后重新拉起游戏", notify=True)
+        self.debug_shot("restart_required")
+        if confirm := self.ocr(box=self.box.bottom, match=re.compile(r"^确认$")):
+            self.click(confirm, after_sleep=3)
+        if not self._wait_game_exit(GAME_EXIT_TIMEOUT):
+            self.log_info(f"点确认后 {GAME_EXIT_TIMEOUT} 秒游戏还没退出，直接结束游戏进程", notify=False)
+            for proc in self._game_processes():
+                try:
+                    proc.kill()
+                except Exception as e:
+                    self.log_info(f"结束游戏进程失败: {e}", notify=False)
+            self._wait_game_exit(10)
+        self._relaunch_game()
+        self._deadline_bump = GAME_RESTART_TITLE_TIMEOUT
+        return True
+
+    def _handle_init_failed(self):
+        """
+        实录 2026-10-22：拉起游戏后停在「用户中心初始化失败 请您稍后再试」，框里只有「重试」，点一下就正常进标题页。
+        点重试并把回主页的超时顺延；同一次回主页里点满 INIT_RETRY_MAX 次就不再顺延，交给原来的超时报错。
+        """
+        if not self.ocr(box=self.box.center, match=init_failed_re, log=True):
+            return False
+        retry = self.ocr(match=re.compile(r"^重\s*试$"))
+        if not retry:
+            return False
+        self._init_retries = getattr(self, "_init_retries", 0) + 1
+        self.log_info(f"游戏提示用户中心初始化失败，点「重试」（第 {self._init_retries} 次）", notify=True)
+        self.debug_shot("init_failed")
+        self.click(retry, after_sleep=5)
+        if self._init_retries <= INIT_RETRY_MAX:
+            self._deadline_bump = INIT_RETRY_EXTEND
         return True
 
     def kill_all_related_processes(self):
