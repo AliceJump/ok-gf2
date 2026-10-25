@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 from tests.TestChenyanAssist import battle
 
-
 battle["chenyan"].__globals__["stamina_re"] = re.compile(r"^\d+/\d+")
 
 
