@@ -146,7 +146,20 @@ class DailyPublicMixin:
 
         return bool(self.wait_until(changed, time_out=2, settle_time=0))
 
-    def _claim_shop_free_item(self):
+    def _daily_shop_gift_claimed(self):
+        """核对每日补给箱自身下方的售罄标记，不借用其他付费商品状态。"""
+        names = self.ocr(match=re.compile(r"^每日补给箱$"), box=self.box_of_screen(0.20, 0.20, 0.96, 0.87))
+        for name in names:
+            center = (name.x + name.width / 2) / self.width
+            bottom = (name.y + name.height) / self.height
+            price = self.box_of_screen(
+                max(0.20, center - 0.07), bottom, min(0.96, center + 0.07), min(0.95, bottom + 0.08)
+            )
+            if self.ocr(match=re.compile(r"已售罄|已领取|日限购\s*0"), box=price):
+                return True
+        return False
+
+    def _claim_shop_free_item(self, status_key="免费礼包", daily=False):
         """免费详情确认后才购买，并验证返回商品列表且免费入口消失。"""
         content_box = self.box_of_screen(0.20, 0.20, 0.96, 0.87)
         price_box = self.box_of_screen(0.70, 0.23, 0.83, 0.32)
@@ -158,7 +171,12 @@ class DailyPublicMixin:
                 match=free_match, box=content_box, time_out=3, after_sleep=0.5, raise_if_not_found=False
             ):
                 # 页面稳定且没有可领取入口时才允许结束，空白/加载页不能算完成。
-                if self._shop_category_content() and not self.ocr(match=free_match, box=content_box):
+                if (
+                    self._shop_category_content()
+                    and not self.ocr(match=free_match, box=content_box)
+                    and (not daily or self._daily_shop_gift_claimed())
+                ):
+                    self.info_set(status_key, "已领取" if daily else "无可领取免费礼包")
                     return True
                 continue
             free_detail = bool(
@@ -181,14 +199,20 @@ class DailyPublicMixin:
             if self.ocr(match="取消", box=cancel_box):
                 self.back(after_sleep=0.5)
             if self.wait_until(
-                lambda: self._shop_category_content() and not self.ocr(match=free_match, box=content_box),
+                lambda: (
+                    self._shop_category_content()
+                    and not self.ocr(match=free_match, box=content_box)
+                    and (not daily or self._daily_shop_gift_claimed())
+                ),
                 time_out=3,
                 settle_time=0.3,
             ):
                 self.log_info("免费礼包领取已确认")
+                self.info_set(status_key, "领取已确认")
                 return True
             self.log_warning(f"免费礼包未确认领取，重试 {attempt + 1}/3")
         self.info_set("免费礼包", "待核查：未确认领取")
+        self.info_set(status_key, "待核查：未确认领取或已领取标记")
         runner = getattr(self, "daily_runner", None)
         if runner is not None:
             runner.set_task_failure("免费礼包点击后未确认领取")
@@ -198,6 +222,7 @@ class DailyPublicMixin:
     def shopping(self):
         """确认礼包商品区切换后领取免费物品；缺少证据则保留待核查结果。"""
         self.info_set("current_task", "shopping")
+        self.info_set("每日礼包", "检查中")
         self.wait_click_ocr(match=["商城"], box=self.box.bottom_right, after_sleep=1.5, raise_if_not_found=True)
         for _ in range(3):
             self.wait_click_ocr(
@@ -217,10 +242,11 @@ class DailyPublicMixin:
                 break
         else:
             self.info_set("免费礼包", "待核查：未确认礼包页面")
+            self.info_set("每日礼包", "待核查：未确认礼包页面")
             self.log_warning("未确认礼包商品内容切换，跳过免费礼包并继续后续任务")
             self.ensure_main()
             return "待核查"
-        if not self._claim_shop_free_item():
+        if not self._claim_shop_free_item(status_key="每日礼包", daily=True):
             self.ensure_main()
             return "待核查"
         previous = self.wait_until(self._shop_category_content, time_out=2, settle_time=0)
@@ -228,7 +254,7 @@ class DailyPublicMixin:
             self.info_set("免费礼包", "待核查：未确认限时礼包页面")
             self.ensure_main()
             return "待核查"
-        if not self._claim_shop_free_item():
+        if not self._claim_shop_free_item(status_key="限时礼包"):
             self.ensure_main()
             return "待核查"
         if self.config.get("商店心愿单购买"):

@@ -24,6 +24,7 @@ class ShopScreen(DailyPublicMixin):
         self.config = {}
         self.status = {}
         self.ensure_main_count = 0
+        self.width, self.height = 1920, 1080
 
     def info_set(self, key, value):
         """记录任务状态，供失败路径断言。"""
@@ -75,13 +76,13 @@ class ShopScreen(DailyPublicMixin):
         assert box[1] >= 0.2  # 顶部页签不能成为商品内容证据。
         names = {
             "gifts": ["精选组合礼包", "精选成长礼包"],
-            "periodic": ["每日补给礼包", "每周补给礼包"],
+            "periodic": ["每日补给箱", "每周补给礼包", "已售罄"],
             "limited": ["限时成长礼包", "限时武器礼包"],
         }.get(self.page, [])
         labels = [*names, "剩余1天", "￥6.00"]
         if match is not None:
             labels = [name for name in labels if matches(match, name)]
-        return [SimpleNamespace(name=name) for name in labels]
+        return [SimpleNamespace(name=name, x=400, y=450, width=150, height=30) for name in labels]
 
     def next_frame(self):
         """模型每次 OCR 都读取当前状态，无需设备抓帧。"""
@@ -152,7 +153,13 @@ class ClaimShopScreen(ShopScreen):
             labels = [item.name for item in names]
             if self.page == "periodic" and not self.claimed:
                 labels.append("免费")
-        return [SimpleNamespace(name=text) for text in labels if match is None or matches(match, text)]
+        if self.page == "periodic" and not self.claimed:
+            labels = [text for text in labels if text != "已售罄"]
+        return [
+            SimpleNamespace(name=text, x=400, y=450, width=150, height=30)
+            for text in labels
+            if match is None or matches(match, text)
+        ]
 
     def wait_ocr(self, **kwargs):
         return self.ocr(box=kwargs.get("box"), match=kwargs.get("match"))
@@ -173,6 +180,32 @@ class ClaimShopScreen(ShopScreen):
 
 class ShoppingTest(unittest.TestCase):
     """验证免费搜索只发生在确认切换后的对应分类。"""
+
+    def test_already_claimed_daily_gift_has_explicit_status(self):
+        task = ClaimShopScreen()
+        task.claimed = True
+        task.shopping()
+        self.assertEqual("已领取", task.status["每日礼包"])
+        self.assertEqual(0, task.purchases)
+
+    def test_newly_claimed_daily_gift_has_verified_status(self):
+        task = ClaimShopScreen()
+        task.shopping()
+        self.assertEqual("领取已确认", task.status["每日礼包"])
+
+    def test_limited_category_cannot_overwrite_daily_claim_status(self):
+        task = ClaimShopScreen()
+        task.claimed = True
+        task.limited_dropped = 100
+        self.assertEqual("待核查", task.shopping())
+        self.assertEqual("已领取", task.status["每日礼包"])
+
+    def test_missing_daily_product_does_not_mean_already_claimed(self):
+        task = ShopScreen(dropped=0)
+        original = task.ocr
+        task.ocr = lambda **kwargs: [item for item in original(**kwargs) if item.name != "每日补给箱"]
+        self.assertEqual("待核查", task.shopping())
+        self.assertIn("待核查", task.status["每日礼包"])
 
     def test_dropped_free_purchase_retries_until_claimed(self):
         task = ClaimShopScreen(purchase_dropped=1)
