@@ -535,9 +535,7 @@ class DailyActivityMixin:
                         r"当前已有.+?生效中.*确认更换"
                     )
                     dialog_box = self.box_of_screen(0.25, 0.25, 0.75, 0.75)
-                    if self.wait_ocr(
-                        match=overwrite_match, box=dialog_box, time_out=3, raise_if_not_found=False
-                    ):
+                    if self.wait_ocr(match=overwrite_match, box=dialog_box, time_out=3, raise_if_not_found=False):
                         if not self.wait_click_ocr(
                             match=re.compile(r"^\s*确\s*认\s*$"),
                             box=dialog_box,
@@ -563,9 +561,7 @@ class DailyActivityMixin:
                         return "confirm"
                     if main_btn == "制作":
                         confirm_match = re.compile(r"^\s*确\s*认\s*$")
-                        if not self.wait_until(
-                            lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0
-                        ):
+                        if not self.wait_until(lambda: bool(self.ocr(match=confirm_match)), time_out=3, settle_time=0):
                             if not self.ocr(match="制作", box=self.box.bottom_right):
                                 self.screenshot("food_make_unknown_page")
                                 return "confirm"
