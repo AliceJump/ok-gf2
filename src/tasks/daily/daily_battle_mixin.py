@@ -230,8 +230,11 @@ class DailyBattleMixin:
         end = self.wait_ocr(match=re.compile("前线"), box=self.box.bottom_right, time_out=5, log=True)
         if not end:
             return failed("未找到尘烟前线入口")
-        if closed := self.ocr(
-            match=re.compile(r"\d+\s*(?:天|小时|分钟|秒).*后\s*开\s*启"), box=self.box.bottom_right
+        if closed := self.wait_ocr(
+            match=re.compile(r"\d+\s*(?:天|小时|分钟|秒).*后\s*开\s*启"),
+            box=self.box.bottom_right,
+            time_out=2,
+            raise_if_not_found=False,
         ):
             reason = f"未开放：{closed[0].name}，已跳过"
             self.info_set("尘烟前线", reason)
