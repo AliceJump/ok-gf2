@@ -42,12 +42,14 @@ def install_input_safety_patch():
                     logger.warning("恢复鼠标位置失败", exc_info=True)
 
     def send_key_up(self, key):
-        """Release the key through window messages and tolerate deactivation failure."""
+        """Release the key without marking the foreground game inactive."""
         try:
             self.post_interaction.send_key_up(key)
         finally:
             try:
-                self.deactivate()
+                # Alt 点击入口后，前台游戏仍需接收“制作”和 Esc；仅恢复后台窗口的失活状态。
+                if not self.hwnd_window.is_foreground():
+                    self.deactivate()
             except Exception:
                 logger.warning("松开按键后停用游戏窗口失败", exc_info=True)
 

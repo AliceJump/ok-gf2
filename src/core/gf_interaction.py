@@ -140,9 +140,14 @@ class GfInteraction(GenshinInteraction):
         「按住 alt 点茶歇一刻」之后，游戏认为 alt 还按着、自己已失活，饮品页的「制作」、ESC 全都不认，日常卡在喝水；
         真正把窗口提到前台后才恢复。这里发真的抬起，游戏在前台时不再伪造失活（后台时照旧，和 operate 一致）。
         """
-        self.post_interaction.send_key_up(key)
-        if not self.hwnd_window.is_foreground():
-            self.deactivate()
+        try:
+            self.post_interaction.send_key_up(key)
+        finally:
+            try:
+                if not self.hwnd_window.is_foreground():
+                    self.deactivate()
+            except Exception as error:
+                logger.warning(f"松开按键后恢复后台窗口状态失败：{error}")
 
     def on_destroy(self):
         if self.session_mouse is not None:
