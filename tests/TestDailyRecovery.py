@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 from ok.task.exceptions import CaptureException, FinishedException, HotkeyConfigException, TaskDisabledException
 
+from src.core.BaseGfTask import BaseGfTask
 from src.tasks.daily.daily_activity_mixin import DailyActivityMixin
 from src.tasks.DailyTaskRunner import DailyTaskRunner
+from tests.TestFoodFlow import FoodScreen
 
 
 class Task:
@@ -40,6 +42,64 @@ class Task:
 
 
 class DailyRecoveryTest(unittest.TestCase):
+    def test_meal_result_left_by_failed_item_recovers_home_before_next_item(self):
+        """真实主页恢复须关闭用餐结果页，再允许下一项执行。"""
+
+        class MealRecoveryTask(Task, FoodScreen):
+            ensure_main = BaseGfTask.ensure_main
+            is_main = BaseGfTask.is_main
+
+            def __init__(self):
+                Task.__init__(self)
+                FoodScreen.__init__(self)
+                self.config = {"活动层": True, "领任务": True}
+                self.state = "home"
+                self.box.center = "center"
+                self.box.top = "top"
+                self.find_one = lambda *args, **kwargs: None
+                self.find_feature = lambda **kwargs: None
+                self.next_frame = lambda: None
+
+            def visible(self):
+                if self.state == "home":
+                    return ["整备室", "公共区", "活动层", "招募"]
+                if self.state == "exit":
+                    return ["是否离开活动层", "确认"]
+                return super().visible()
+
+            def back(self, **kwargs):
+                if self.state == "finished":
+                    self.state = "exit"
+
+            def wait_click_ocr(self, **kwargs):
+                if self.state == "exit" and kwargs["match"] == "确认":
+                    self.state = "home"
+                    return True
+                return super().wait_click_ocr(**kwargs)
+
+        for raises in (False, True):
+            with self.subTest(raises=raises):
+                task = MealRecoveryTask()
+                calls = []
+
+                def meal(task=task, raises=raises):
+                    task.state = "result"
+                    task.result_clicks_dropped = 1
+                    if raises:
+                        raise RuntimeError("用餐确认未关闭")
+                    return False
+
+                def rewards(task=task, calls=calls):
+                    self.assertEqual("home", task.state)
+                    calls.append("领任务")
+                    return True
+
+                runner = DailyTaskRunner(task, [("活动层", meal), ("领任务", rewards)])
+                runner.run()
+                self.assertEqual(["领任务"], calls)
+                self.assertEqual(["活动层"], runner.final_summary["per_round"][0]["failed"])
+                self.assertEqual(["领任务"], runner.final_summary["per_round"][0]["success"])
+
     def make_runner(self, error=None):
         self.task = Task()
         self.calls = []

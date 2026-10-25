@@ -11,10 +11,16 @@ task_class = next(n for n in ast.parse(source.read_text(encoding="utf-8")).body 
 method = next(n for n in task_class.body if isinstance(n, ast.FunctionDef) and n.name == "do_food_flow")
 namespace = {"re": re}
 exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+base_source = source.parents[2] / "core/BaseGfTask.py"
+base_tree = ast.parse(base_source.read_text(encoding="utf-8"))
+base_methods = [n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "_confirm_meal_result"]
+exec(compile(ast.Module(body=base_methods, type_ignores=[]), str(base_source), "exec"), namespace)
 
 
 class FoodScreen:
     do_food_flow = namespace["do_food_flow"]
+    if "_confirm_meal_result" in namespace:
+        _confirm_meal_result = namespace["_confirm_meal_result"]
 
     def __init__(self, *, overwrite=True, drink=False):
         """初始化菜品覆盖、邀请和饮品流程的可见状态。"""
@@ -35,6 +41,11 @@ class FoodScreen:
         self.unsafe_clicks = []
         self.screenshots = []
         self.dialogs_skipped = False
+        self.result_clicks_dropped = 0
+        self.result_confirm_label = "确认"
+        self.reward_popup = False
+        self.hud_present = True
+        self.warnings = []
         self.box = SimpleNamespace(bottom_right="bottom_right", bottom="bottom")
 
     def box_of_screen(self, *bounds):
@@ -58,13 +69,16 @@ class FoodScreen:
             "invite": ["确认邀请"] if self.invite_present else [],
             "extra": ["确认"] if self.extra_present else [],
             "drink_confirm": ["确认"],
-            "result": ["确认"],
-            "finished": [],
+            "result": ["用餐效果", "前往战役", self.result_confirm_label],
+            "reward": ["点击空白处关闭"],
+            "finished": ["Esc", "P", "M", "F1", "F2", "F3", "F4"] if self.hud_present else [],
         }["overwrite" if self.state == "closing" else self.state]
 
     @staticmethod
     def matches(match, text):
         """兼容生产流程使用的正则和字符串匹配。"""
+        if isinstance(match, list):
+            return any(FoodScreen.matches(item, text) for item in match)
         return bool(match.search(text)) if hasattr(match, "search") else match in text
 
     def wait_ocr(self, *, match=None, box=None, **kwargs):
@@ -120,7 +134,10 @@ class FoodScreen:
         elif self.state in ("extra", "drink_confirm"):
             self.state = "result"
         elif self.state == "result":
-            self.state = "finished"
+            if self.result_clicks_dropped:
+                self.result_clicks_dropped -= 1
+            else:
+                self.state = "reward" if self.reward_popup else "finished"
         return True
 
     def skip_dialogs(self, **kwargs):
@@ -129,8 +146,18 @@ class FoodScreen:
         self.dialogs_skipped = True
 
     def wait_pop_up(self, **kwargs):
-        """要求结果页已关闭才接受流程完成。"""
-        assert self.state == "finished"
+        """只关闭奖励弹窗，不把点击失败的用餐结果页当作奖励。"""
+        if self.state == "reward":
+            self.state = "finished"
+
+    def is_free_layer(self, **kwargs):
+        """活动层必须显示完整 HUD。"""
+        return self.state == "finished" and self.hud_present
+
+    def log_warning(self, message):
+        self.warnings.append(message)
+
+    log_error = log_warning
 
     def back(self, **kwargs):
         """将模拟页面返回入口以支持再次检查。"""
@@ -154,6 +181,39 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_meal_result_retries_dropped_confirmation(self):
+        """确认被识别和点击，但游戏未响应时，需要重新确认。"""
+        task = FoodScreen(overwrite=False)
+        task.result_clicks_dropped = 1
+        self.assertIs(True, task.run())
+        self.assertEqual("finished", task.state)
+        self.assertEqual(3, task.clicks.count("确认"))
+
+    def test_meal_result_stuck_is_failure(self):
+        task = FoodScreen(overwrite=False)
+        task.result_clicks_dropped = 100
+        self.assertEqual("confirm", task.run())
+        self.assertEqual("result", task.state)
+        self.assertLessEqual(task.clicks.count("确认"), 4)
+        self.assertIn("meal_result_blocked", task.screenshots)
+
+    def test_meal_result_missing_confirm_is_failure(self):
+        task = FoodScreen(overwrite=False)
+        task.result_confirm_label = "确认邀请"
+        self.assertEqual("confirm", task.run())
+        self.assertEqual("result", task.state)
+
+    def test_meal_result_requires_activity_hud(self):
+        task = FoodScreen(overwrite=False)
+        task.hud_present = False
+        self.assertEqual("confirm", task.run())
+
+    def test_meal_reward_popup_is_closed_before_finishing(self):
+        task = FoodScreen(overwrite=False)
+        task.reward_popup = True
+        self.assertIs(True, task.run())
+        self.assertEqual("finished", task.state)
+
     def test_existing_dish_overwrite_then_invitation_completes(self):
         """已有同名菜品时先确认覆盖，再完成邀请和结果确认。"""
         task = FoodScreen()

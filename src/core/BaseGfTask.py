@@ -327,6 +327,35 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 break
         self.sleep(2)
 
+    def _confirm_meal_result(self):
+        """关闭已识别的用餐结果页，验证返回活动层；丢失点击最多重试三次。"""
+        for attempt in range(3):
+            # “前往战役”是用餐结果页标识，不能在未知页面盲点“确认”。
+            if not self.ocr(match="前往战役", box=self.box.bottom):
+                if self.is_free_layer(time_out=0.01):
+                    return True
+                break
+            self.wait_click_ocr(
+                match=re.compile(r"^\s*确\s*认\s*$"),
+                box=self.box.bottom,
+                time_out=3,
+                raise_if_not_found=False,
+                after_sleep=1,
+            )
+            if self.wait_until(
+                lambda: not self.ocr(match="前往战役", box=self.box.bottom),
+                time_out=4,
+                settle_time=0.3,
+            ):
+                # 首次用餐可能还有奖励弹窗；结果页未关闭时不等待奖励。
+                self.wait_pop_up(count=1, time_out=3)
+                if self.is_free_layer(time_out=4):
+                    return True
+                break
+            self.log_warning(f"用餐效果确认后结果页未关闭，重试 {attempt + 1}/3")
+        self.screenshot("meal_result_blocked")
+        return False
+
     def is_main(self, recheck_time=0.0, esc=True):
         boxes = self.ocr(match=["整备室", "公共区", "活动层", re.compile("招募")], box="right", log=True)
         feature_boxes = []
@@ -337,6 +366,9 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
             return True
+        if self.ocr(match="前往战役", box=self.box.bottom):
+            self._confirm_meal_result()
+            return False
         # if not self.do_handle_alert()[0]:
         if self.ocr(match=re.compile("^是否离开活动层"), box=self.box.center, log=True):
             self.wait_click_ocr(match="确认", after_sleep=2, box=self.box.bottom_right)
