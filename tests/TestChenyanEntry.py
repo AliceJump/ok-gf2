@@ -12,7 +12,7 @@ battle["chenyan"].__globals__["stamina_re"] = re.compile(r"^\d+/\d+")
 class ChenyanDevice:
     """将即时截图与加载后的页面分开，复现点击后的瞬时漏读。"""
 
-    def __init__(self, entry=True, tickets=(0,), ready=True):
+    def __init__(self, entry=True, tickets=(0,), ready=True, opens_in=None, countdown_misses=0):
         """Initialize independent entry, ticket, and navigation state."""
         self.config = {"尘烟": True}
         self.box = SimpleNamespace(bottom_right="bottom", top_right="top", _group="group")
@@ -25,6 +25,9 @@ class ChenyanDevice:
         self.shots = []
         self.infos = {}
         self.home = False
+        self.opens_in = opens_in
+        self.countdown_misses = countdown_misses
+        self.countdown_reads = 0
 
     def __getattr__(self, name):
         """Bind production methods to the simulated entry device."""
@@ -34,6 +37,12 @@ class ChenyanDevice:
 
     def ocr(self, *args, **kwargs):
         """Simulate an immediate screenshot before the page is ready."""
+        match = kwargs.get("match")
+        if self.opens_in and isinstance(match, re.Pattern) and match.search(self.opens_in):
+            self.countdown_reads += 1
+            if self.countdown_reads <= self.countdown_misses:
+                return []
+            return [SimpleNamespace(name=self.opens_in)]
         return []
 
     def wait_ocr(self, *args, match=None, **kwargs):
@@ -48,7 +57,12 @@ class ChenyanDevice:
         if match == "攻坚战":
             return [SimpleNamespace(name="攻坚战")] if self.ready else []
         if isinstance(match, re.Pattern):
-            return [SimpleNamespace(name="尘烟前线")] if self.entry else []
+            if match.search("尘烟前线"):
+                return [SimpleNamespace(name="尘烟前线")] if self.entry else []
+            for _ in range(3):
+                if result := self.ocr(match=match):
+                    return result
+            return []
         return []
 
     def click(self, target, **kwargs):
@@ -96,8 +110,46 @@ class ChenyanDevice:
         """Record recovery to the main page."""
         self.home = True
 
+    def _claim_guild_supply(self):
+        """Entry tests isolate supply; TestGuildSupply exercises actual claiming."""
+        self.wait_click_ocr(match=["补给"])
+        return True
+
 
 class TestChenyanEntry(unittest.TestCase):
+    def test_closed_season_is_skipped_without_clicking_entry(self):
+        device = ChenyanDevice(ready=False, opens_in="6天22小时后开启")
+        self.assertIs(True, device.chenyan())
+        self.assertEqual([], device.clicked)
+        self.assertEqual([], device.shots)
+        self.assertIn("未开放", device.infos["尘烟前线"])
+
+    def test_closed_season_does_not_skip_guild_supply(self):
+        device = ChenyanDevice(ready=False, opens_in="6天22小时后开启")
+        device.guild()
+        self.assertIn(["补给"], device.clicked)
+        self.assertTrue(device.home)
+
+    def test_delayed_countdown_still_skips_entry_and_claims_supply(self):
+        """An initial OCR miss must not turn a closed season into a guild failure."""
+        device = ChenyanDevice(ready=False, opens_in="6天22小时后开启", countdown_misses=1)
+        device.guild()
+        self.assertEqual(2, device.countdown_reads)
+        self.assertFalse(
+            any(isinstance(target, list) and target and hasattr(target[0], "name") for target in device.clicked)
+        )
+        self.assertIn(["补给"], device.clicked)
+        self.assertTrue(device.home)
+
+    def test_real_entry_failure_retains_reason_in_runner_summary(self):
+        from src.tasks.DailyTaskRunner import DailyTaskRunner
+
+        device = ChenyanDevice(ready=False)
+        device.config["班组"] = True
+        device.daily_runner = DailyTaskRunner(device, [("班组", device.guild)])
+        device.daily_runner.run()
+        self.assertIn("点击入口后未确认进入尘烟页面", device.daily_runner.failure_details[""]["班组"])
+
     def test_delayed_page_still_runs_each_remaining_battle(self):
         """Wait for the entry page and consume each confirmed remaining ticket."""
         device = ChenyanDevice(tickets=(2, 1, 0))
