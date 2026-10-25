@@ -7,6 +7,10 @@ from src.core.BaseGfTask import BaseGfTask, stamina_re
 from src.image.hsv_config import HSVRange as hR
 
 logger = Logger.get_logger(__name__)
+# 首领挑战左上角「当前层级4/9」、右下角「消耗0/1」（持有/每场需要）
+boss_level_re = re.compile(r"当前层级\s*(\d+)\s*/\s*(\d+)")
+boss_cost_re = re.compile(r"消耗\s*(\d+)\s*/\s*(\d+)")
+BOSS_MAX_LEVEL = 9
 pattern_kt = re.compile(r"^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$")
 
 
@@ -41,8 +45,70 @@ class WeeklyTask(BaseGfTask):
         self.wait_click_ocr(match=re.compile("首领挑战"), raise_if_not_found=True, after_sleep=2)
         # 页面会记住上次的标签，停在「歧路挑战」（50 级解锁）时没有自律按钮，先切回「常规挑战」
         self.wait_click_ocr(match=re.compile("常规挑战"), box="top_right", time_out=3, after_sleep=1)
-        self.fast_combat(set_cost=1, click_all=True)
+        # 用户要求 2026-10-25：常规挑战没到最高层（9 层）时先「开始作战」手动打，完成全部挑战目标层级才会升；
+        # 到 9 层后才用「自律」。每打一场都要消耗一张「挑战权限」（右下角「消耗 有/需」），不够就停。
+        for _ in range(BOSS_MAX_LEVEL):
+            level, top = self._boss_level()
+            if not self._boss_ticket_enough():
+                break
+            if level is None:
+                self.log_info("没读到首领挑战的当前层级，按原来的方式直接自律")
+                self.fast_combat(set_cost=1, click_all=True)
+                break
+            if level >= top:
+                self.log_info(f"首领挑战已在最高层级 {level}/{top}，自律")
+                self.fast_combat(set_cost=1, click_all=True)
+                break
+            self.log_info(f"首领挑战当前层级 {level}/{top}，还没到最高层，开始作战自动打", notify=True)
+            if not self._boss_battle():
+                break
+            after, _ = self._boss_level()
+            if after is None or after <= level:
+                self.log_info(f"打完层级还是 {after}/{top}（挑战目标没全完成），不再重复消耗挑战权限", notify=True)
+                break
         self.ensure_main()
+
+    def _boss_level(self):
+        """左上角「当前层级 4/9」，读不到返回 (None, BOSS_MAX_LEVEL)。"""
+        if result := self.wait_ocr(match=boss_level_re, box="left", time_out=3):
+            level, top = boss_level_re.search(result[0].name).groups()
+            return int(level), int(top)
+        return None, BOSS_MAX_LEVEL
+
+    def _boss_ticket_enough(self):
+        """右下角「消耗 0/1」：前面是持有的挑战权限、后面是每场要的；读不到时按够处理，交给游戏判断。
+
+        实录 2026-10-25：持有 0 时点「开始作战」「自律」都没有任何反应，原来会白点一圈再当成完成。
+        """
+        if result := self.wait_ocr(match=boss_cost_re, box="bottom_right", time_out=2):
+            have, need = map(int, boss_cost_re.search(result[0].name).groups())
+            if have < need:
+                self.log_info(f"首领挑战的挑战权限不够（消耗 {have}/{need}），跳过", notify=True)
+                return False
+        return True
+
+    def _boss_battle(self):
+        """点「开始作战」进部署界面自动打一场，打完回到首领挑战页；没进战斗或打输返回 False。"""
+        if not self.wait_click_ocr(match="开始作战", box="bottom_right", time_out=5, after_sleep=2):
+            self.log_info("首领挑战没找到「开始作战」，跳过")
+            return False
+        # 部署界面按「首领挑战编队」切整备室编队并补满
+        self.set_lineup_kind("首领挑战")
+        try:
+            self.auto_battle(has_dialog=True)
+        except Exception as e:
+            if "没打过" not in str(e):
+                raise
+            self.log_info("首领挑战这一场没打过", notify=True)
+            return False
+        finally:
+            self.set_lineup_kind(None)
+            self.wait_pop_up(count=1)
+        if not self.wait_ocr(match=re.compile("常规挑战"), box="top_right", time_out=15):
+            self.screenshot("boss_not_back")
+            self.log_info("首领挑战打完没回到挑战页面，停止")
+            return False
+        return True
 
     def peak_estimate_tion(self):
         self.info_set("current_task", "peak_estimate_tion")
