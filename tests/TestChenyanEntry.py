@@ -110,6 +110,11 @@ class ChenyanDevice:
         """Record recovery to the main page."""
         self.home = True
 
+    def _claim_guild_supply(self):
+        """Entry tests isolate supply; TestGuildSupply exercises actual claiming."""
+        self.wait_click_ocr(match=["补给"])
+        return True
+
 
 class TestChenyanEntry(unittest.TestCase):
     def test_closed_season_is_skipped_without_clicking_entry(self):
