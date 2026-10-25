@@ -76,7 +76,7 @@ class ShopScreen(DailyPublicMixin):
         assert box[1] >= 0.2  # 顶部页签不能成为商品内容证据。
         names = {
             "gifts": ["精选组合礼包", "精选成长礼包"],
-            "periodic": ["每日补给箱", "每周补给礼包", "已售罄"],
+            "periodic": ["每日补给箱", "每周补给礼包", "每月补给礼包", "已售罄"],
             "limited": ["限时成长礼包", "限时武器礼包"],
         }.get(self.page, [])
         labels = [*names, "剩余1天", "￥6.00"]
@@ -86,6 +86,10 @@ class ShopScreen(DailyPublicMixin):
 
     def next_frame(self):
         """模型每次 OCR 都读取当前状态，无需设备抓帧。"""
+        pass
+
+    def screenshot(self, name):
+        """纯页面模型不保存设备截图。"""
         pass
 
     def wait_until(self, predicate, **kwargs):
@@ -149,7 +153,7 @@ class ClaimShopScreen(ShopScreen):
         elif self.modal:
             labels = ["免费" if self.modal == "free" else "$0.99"] if box and box[0] >= 0.7 else ["取消", "购买"]
         else:
-            names = super().ocr(box=box)
+            names = super().ocr(box=box or (0.20, 0.20, 0.96, 0.87))
             labels = [item.name for item in names]
             if self.page == "periodic" and not self.claimed:
                 labels.append("免费")
@@ -231,6 +235,52 @@ class ShoppingTest(unittest.TestCase):
         task = ClaimShopScreen(wrong_price=True)
         self.assertEqual("待核查", task.shopping())
         self.assertEqual(0, task.purchases)
+
+    def test_paid_detail_with_dropped_back_cannot_confirm_limited_claim(self):
+        """付费详情中的稳定中文不能冒充已返回商品列表。"""
+        task = ClaimShopScreen(wrong_price=True)
+        task.page = "periodic"
+        original_ocr = task.ocr
+
+        def read_paid_detail(**kwargs):
+            items = original_ocr(**kwargs)
+            if task.modal == "paid" and kwargs.get("match") is None:
+                items += [SimpleNamespace(name=name) for name in ["特惠成长礼包", "购买可获得丰厚奖励"]]
+            return items
+
+        task.ocr = read_paid_detail
+        task.back = lambda **kwargs: None
+        self.assertFalse(task._claim_shop_free_item(status_key="限时礼包"))
+        self.assertEqual(0, task.purchases)
+        self.assertEqual("paid", task.modal)
+        self.assertIn("待核查", task.status["限时礼包"])
+
+    def test_missing_reward_evidence_cannot_confirm_limited_claim(self):
+        """点击后免费入口消失但奖励未被观察到时保留待核查。"""
+        task = ClaimShopScreen()
+        task.page = "periodic"
+        original_click = task.wait_click_ocr
+
+        def purchase_with_unobserved_reward(**kwargs):
+            result = original_click(**kwargs)
+            if task.modal == "reward":
+                task.modal = None
+            return result
+
+        task.wait_click_ocr = purchase_with_unobserved_reward
+        self.assertFalse(task._claim_shop_free_item(status_key="限时礼包"))
+        self.assertEqual(1, task.purchases)
+        self.assertIn("待核查", task.status["限时礼包"])
+
+    def test_observed_reward_and_closed_detail_confirm_limited_claim(self):
+        """实际奖励和返回列表共同确认领取，不重复购买自动出现的付费项。"""
+        task = ClaimShopScreen()
+        task.page = "periodic"
+        self.assertTrue(task._claim_shop_free_item(status_key="限时礼包"))
+        self.assertEqual("领取已确认", task.status["限时礼包"])
+        self.assertIsNone(task.modal)
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
 
     def test_successful_claim_does_not_retry_automatic_paid_tab(self):
         task = ClaimShopScreen()

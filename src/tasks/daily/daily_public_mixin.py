@@ -119,13 +119,14 @@ class DailyPublicMixin:
             return
 
     def _shop_category_content(self):
-        """用连续两帧稳定的商品文字确认内容，排除页签、价格和倒计时。"""
+        """用连续两帧稳定商品文字确认列表，排除详情、奖励及加载画面。"""
         box = self.box_of_screen(0.20, 0.20, 0.96, 0.87)
 
         def read_names():
-            return frozenset(
-                item.name for item in self.ocr(box=box) if re.fullmatch(r"[\u4e00-\u9fff·]{4,}", item.name)
-            )
+            items = self.ocr(box=box)
+            if any(item.name.strip() in {"取消", "获得道具", "点击空白处关闭"} for item in items):
+                return frozenset()
+            return frozenset(item.name for item in items if re.fullmatch(r"[\u4e00-\u9fff·]{4,}", item.name))
 
         first = read_names()
         if len(first) < 2:
@@ -160,12 +161,14 @@ class DailyPublicMixin:
         return False
 
     def _claim_shop_free_item(self, status_key="免费礼包", daily=False):
-        """免费详情确认后才购买，并验证返回商品列表且免费入口消失。"""
+        """只购买免费项；以奖励或每日售罄标记及返回列表共同确认领取。"""
         content_box = self.box_of_screen(0.20, 0.20, 0.96, 0.87)
         price_box = self.box_of_screen(0.70, 0.23, 0.83, 0.32)
         cancel_box = self.box_of_screen(0.28, 0.73, 0.48, 0.81)
         purchase_box = self.box_of_screen(0.52, 0.73, 0.72, 0.81)
         free_match = re.compile(r"^\s*免费\s*$")
+        entry_attempted = False
+        reward_seen = False
         for attempt in range(3):
             if not self.wait_click_ocr(
                 match=free_match, box=content_box, time_out=3, after_sleep=0.5, raise_if_not_found=False
@@ -175,10 +178,13 @@ class DailyPublicMixin:
                     self._shop_category_content()
                     and not self.ocr(match=free_match, box=content_box)
                     and (not daily or self._daily_shop_gift_claimed())
+                    and (not entry_attempted or daily or reward_seen)
                 ):
-                    self.info_set(status_key, "已领取" if daily else "无可领取免费礼包")
+                    status = "领取已确认" if entry_attempted else "已领取" if daily else "无可领取免费礼包"
+                    self.info_set(status_key, status)
                     return True
                 continue
+            entry_attempted = True
             free_detail = bool(
                 self.wait_ocr(match=free_match, box=price_box, time_out=2, raise_if_not_found=False)
                 and self.ocr(match="取消", box=cancel_box)
@@ -195,14 +201,15 @@ class DailyPublicMixin:
                 )
                 and self.wait_ocr(match=["获得道具", "点击空白处关闭"], time_out=3, raise_if_not_found=False)
             ):
+                reward_seen = True
                 self.back(after_sleep=0.5)
             if self.ocr(match="取消", box=cancel_box):
                 self.back(after_sleep=0.5)
             if self.wait_until(
-                lambda: (
+                lambda reward_seen=reward_seen: (
                     self._shop_category_content()
                     and not self.ocr(match=free_match, box=content_box)
-                    and (not daily or self._daily_shop_gift_claimed())
+                    and (self._daily_shop_gift_claimed() if daily else reward_seen)
                 ),
                 time_out=3,
                 settle_time=0.3,
