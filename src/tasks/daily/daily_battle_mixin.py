@@ -7,6 +7,7 @@ import win32api
 import win32gui
 
 from src.core.BaseGfTask import stamina_re
+from src.core.foreground import attach_foreground
 from src.core.lineup_config import preset_name_for_kind, support_enabled_for_kind
 from src.tasks.daily.daily_public_mixin import loop_covers
 
@@ -151,12 +152,18 @@ class DailyBattleMixin:
 
         实录 2026-10-25：首次升段进竞技场会晚几秒弹「您已晋升至职业·三」，盖住计数，原来直接 [0] 越界；
         按一次 ESC 能关掉弹窗、留在演习页（回主页的 ESC 就是这样关掉的），关掉后再读。
+        实录 2026-10-26：新周期第一次进竞技场先弹「新周期 实兵演习 已开启」，点掉后又弹「您已重置为职业·四」，
+        两个都是底部「点击(屏幕)任意位置继续」，点这行提示关掉，最多连着点几次再读。
         """
         promoted = re.compile(r"晋\s*升\s*至|首\s*次\s*晋\s*升")
-        for _ in range(3):
+        tap_to_continue = re.compile(r"任\s*意\s*位\s*置\s*继\s*续")
+        for _ in range(5):
             if boxes := self.ocr(0.89, 0.01, 0.99, 0.1, match=stamina_re):
                 return int(boxes[0].name.split("/")[0])
-            if self.ocr(match=promoted):
+            if hints := self.ocr(match=tap_to_continue):
+                self.log_info(f"竞技场弹出「{hints[0].name}」提示，点掉再读次数")
+                self.click(hints[0], after_sleep=2)
+            elif self.ocr(match=promoted):
                 self.log_info("竞技场弹出段位晋升提示，按 ESC 关掉")
                 self.back(after_sleep=2)
             else:
@@ -557,7 +564,9 @@ class DailyBattleMixin:
                     try:
                         win32gui.SetForegroundWindow(hwnd)
                     except Exception as error:
-                        raise RuntimeError("助战列表滚动失败：游戏未进入前台") from error
+                        # 前台锁：无人值守时后台进程不能直接抢前台，挂到前台窗口的输入线程上再切
+                        if not attach_foreground(hwnd, previous_window):
+                            raise RuntimeError("助战列表滚动失败：游戏未进入前台") from error
                     self.sleep(0.05)
                 if win32gui.GetForegroundWindow() != hwnd:
                     raise RuntimeError("助战列表滚动失败：游戏未进入前台")
