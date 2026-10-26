@@ -7,6 +7,7 @@ import win32api
 import win32gui
 
 from src.core.BaseGfTask import map_re, parse_time_option, pop_ups
+from src.core.foreground import attach_foreground
 from src.tasks.daily.daily_common_mixin import (
     chapter_suffix_re,
     down_chapter_re,
@@ -120,7 +121,9 @@ class DailyActivityMixin:
                 try:
                     win32gui.SetForegroundWindow(hwnd)
                 except win32gui.error as error:
-                    raise RuntimeError("补给列表滚动失败：游戏未进入前台") from error
+                    # 前台锁：无人值守时后台进程不能直接抢前台，挂到前台窗口的输入线程上再切
+                    if not attach_foreground(hwnd, previous_window):
+                        raise RuntimeError("补给列表滚动失败：游戏未进入前台") from error
                 self.sleep(0.05)
             if win32gui.GetForegroundWindow() != hwnd:
                 raise RuntimeError("补给列表滚动失败：游戏未进入前台")

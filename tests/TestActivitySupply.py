@@ -30,6 +30,7 @@ methods = [
 namespace = {
     "re": re,
     "pop_ups": ["点击空白处关闭"],
+    "attach_foreground": lambda hwnd, foreground: False,
 }
 current_screen = [None]
 
@@ -509,6 +510,22 @@ class ForegroundSupplyScrollTest(unittest.TestCase):
             namespace["_scroll_supply_menu"](task, -3)
         task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
+    def test_foreground_lock_falls_back_to_input_thread_attach(self):
+        """实录 2026-10-26：前台锁让 SetForegroundWindow 报错，挂到前台窗口的输入线程上切过去再滚。"""
+        task, state, gui, api = self.make_task()
+
+        class Win32Error(Exception):
+            pass
+
+        gui.error = Win32Error
+        gui.SetForegroundWindow.side_effect = Win32Error("foreground locked")
+        attach = Mock(side_effect=lambda hwnd, foreground: state.update(foreground=hwnd) or True)
+        with patch.dict(namespace, {"win32gui": gui, "win32api": api, "attach_foreground": attach}):
+            namespace["_scroll_supply_menu"](task, -3)
+        attach.assert_called_once_with(123, 99)
+        task.executor.interaction.do_scroll.assert_called_once_with(int(task.width * 0.12), int(task.height * 0.60), -3)
+        self.assertEqual((1500, 800), state["cursor"])
 
     def test_wheel_failure_restores_window_and_cursor(self):
         task, state, gui, api = self.make_task()
