@@ -83,9 +83,7 @@ class DailyActivityMixin:
         if self.is_adb():
             # 三格滚轮对应一页；回顶的 30 格需要多次下拖，不能只滑一页。
             for _ in range((abs(count) + 2) // 3):
-                self.swipe_relative(
-                    0.12, 0.40 if count > 0 else 0.72, 0.12, 0.72 if count > 0 else 0.40, duration=0.3
-                )
+                self.swipe_relative(0.12, 0.40 if count > 0 else 0.72, 0.12, 0.72 if count > 0 else 0.40, duration=0.3)
                 self.sleep(0.6)
             return
         interaction = getattr(self.executor, "interaction", None)
