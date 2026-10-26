@@ -23,6 +23,7 @@ def load_methods(path, class_name):
         "win32api": win32api,
         "win32gui": SimpleNamespace(ClientToScreen=lambda hwnd, point: point),
         "loop_covers": loop_covers,
+        "attach_foreground": lambda hwnd, foreground: False,
     }
     # 模块级的正则常量和工具函数（如 chenyan_not_open_re、power_of）也一起带上；import 依赖游戏运行时，不执行
     for node in tree.body:
@@ -516,6 +517,18 @@ class ChenyanAssistTest(unittest.TestCase):
         self.assertIs(activation_error, raised.exception.__cause__)
         task.executor.interaction.do_scroll.assert_not_called()
         self.assertEqual({"foreground": 99, "cursor": (1500, 800)}, state)
+
+    def test_foreground_lock_falls_back_to_input_thread_attach(self):
+        """前台锁拒绝直接切换时，挂到前台窗口的输入线程上切过去再滚。"""
+        task, state, gui, api = self.make_scroll_task()
+        gui.SetForegroundWindow.side_effect = OSError("foreground locked")
+        attach = Mock(side_effect=lambda hwnd, foreground: state.update(foreground=hwnd) or True)
+        task.executor.interaction.do_scroll = Mock()
+        with patch.dict(battle, {"win32gui": gui, "win32api": api, "attach_foreground": attach}):
+            self.assertTrue(battle["_scroll_chenyan_list"](task, 1))
+        attach.assert_called_once_with(123, 99)
+        task.executor.interaction.do_scroll.assert_called_once()
+        self.assertEqual((1500, 800), state["cursor"])
 
     def test_scroll_falls_back_to_public_wheel_with_client_coordinates(self):
         task, state, gui, api = self.make_scroll_task()
