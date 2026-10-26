@@ -7,6 +7,7 @@ import win32api
 import win32gui
 
 from src.core.BaseGfTask import stamina_re
+from src.core.foreground import attach_foreground
 from src.core.lineup_config import preset_name_for_kind, support_enabled_for_kind
 from src.tasks.daily.daily_public_mixin import loop_covers
 
@@ -557,7 +558,9 @@ class DailyBattleMixin:
                     try:
                         win32gui.SetForegroundWindow(hwnd)
                     except Exception as error:
-                        raise RuntimeError("助战列表滚动失败：游戏未进入前台") from error
+                        # 前台锁：无人值守时后台进程不能直接抢前台，挂到前台窗口的输入线程上再切
+                        if not attach_foreground(hwnd, previous_window):
+                            raise RuntimeError("助战列表滚动失败：游戏未进入前台") from error
                     self.sleep(0.05)
                 if win32gui.GetForegroundWindow() != hwnd:
                     raise RuntimeError("助战列表滚动失败：游戏未进入前台")
