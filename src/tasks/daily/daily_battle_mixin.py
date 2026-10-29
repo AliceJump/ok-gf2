@@ -284,6 +284,12 @@ class DailyBattleMixin:
         # 页面切换和后台截图可能延迟；先确认尘烟页，避免把其他页面的数字当成次数。
         if not self.wait_ocr(match=["攻坚战", "前哨战"], box=self.box.top_right, time_out=10, log=True):
             if self.ocr(match=["补给", "要务"], box=self.box.bottom_right):
+                # 实录 2026-10-29：刚进班组页时卡片底下的「6天12小时后开启」比「尘烟前线」晚出来，
+                # 点之前没读到倒计时；点了没进去时倒计时已经出来了，再认一次，按未开放跳过而不是待核查
+                if not_open := self.ocr(match=chenyan_not_open_re, box=self.box.bottom_right):
+                    self.log_info(f"尘烟前线还没开放（{not_open[0].name}），跳过", notify=False)
+                    self.info_set("尘烟", f"未开放：{not_open[0].name}")
+                    return True
                 # 点了卡片没进去、还停在班组页：不能按返回，否则后面的「补给」就找不到了
                 self.log_info("尘烟前线没进去，还在班组页，跳过", notify=False)
                 self.info_set("尘烟前线", "待核查：点了入口还在班组页")
