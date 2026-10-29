@@ -52,6 +52,26 @@ class ChenyanNotOpenTest(unittest.TestCase):
         task.back.assert_not_called()
         task.screenshot.assert_not_called()
 
+    def test_countdown_rendered_after_click_counts_as_not_open(self):
+        """实录 2026-10-29：倒计时比卡片标题晚出来，点之前没读到；点了没进去后读到，按未开放跳过。"""
+        task = fake_task(["补给", "要务", "尘烟前线"])
+        state = {"clicked": False}
+
+        def ocr(*args, match=None, box=None, **kw):
+            texts = ["补给", "要务", "尘烟前线"] + (["6天12小时后开启"] if state["clicked"] else [])
+            if box != "bottom_right":
+                return []
+            if isinstance(match, list):
+                return [card(n) for n in texts if n in match]
+            return [card(n) for n in texts if match.search(n)]
+
+        task.ocr.side_effect = ocr
+        task.click.side_effect = lambda *a, **kw: state.update(clicked=True)
+        self.assertIs(DailyBattleMixin.chenyan(task), True)
+        task.back.assert_not_called()
+        task.screenshot.assert_not_called()
+        task.info_set.assert_called_with("尘烟", "未开放：6天12小时后开启")
+
     def test_left_guild_page_without_chenyan_page_reports_failure(self):
         """班组页的按钮不在了、也没认出尘烟页：按上游的做法报失败留截图，由 guild 回主页。"""
         task = fake_task(["尘烟前线"])
