@@ -9,12 +9,14 @@ logger = Logger.get_logger(__name__)
 
 class ClearMapTask(BaseGfTask):
     def __init__(self, *args, **kwargs):
+        """设置推图任务元数据，并为本任务保留独立地图识别器。"""
         super().__init__(*args, **kwargs)
         self.name = "推图"
         self.description = "从要推的图的最左边开始"
         self._map_recognizer = MapRecognizer()
 
     def find_map_names(self):
+        """识别当前画面的完整关卡编号，并记录调试框和日志。"""
         boxes = self._map_recognizer.recognize(self.frame)
         self.draw_boxes("map_names", boxes, color="green")
         self.log_debug(f"关卡编号: {boxes}")
@@ -26,6 +28,7 @@ class ClearMapTask(BaseGfTask):
         previous = None
 
         def stable():
+            """连续取得有效画面，确认编号与位置一一对应后返回当前框。"""
             nonlocal previous
             self.sleep(0.15)
             if self.frame is None:
@@ -57,6 +60,7 @@ class ClearMapTask(BaseGfTask):
         return [box for box in boxes if box.name == canonical]
 
     def find_boxes(self, boxes, match=None, boundary=None):
+        """地图结束判定使用专用识别器，其他界面文案沿用框架匹配。"""
         # auto_battle / skip_dialogs 的地图结束判定也走同一套高分辨率识别。
         patterns = match if isinstance(match, list) else [match]
         if not any(pattern is map_re for pattern in patterns):
@@ -68,6 +72,7 @@ class ClearMapTask(BaseGfTask):
         return super().find_boxes(self.find_map_names(), boundary=boundary)
 
     def run(self):
+        """从左到右枚举关卡，在战斗或剧情结束后继续处理当前地图。"""
         count = 0
         clicked = []
         last_fallback_name = None
@@ -183,6 +188,7 @@ class ClearMapTask(BaseGfTask):
 
 
 def merge_maps(maps, x_threshold=40, y_threshold=40):
+    """合并位置接近的 OCR 与特征框，同时保留每组关卡身份。"""
     merged = []  # 存最终的 map 对象
     merged_names = []  # 存每个合并组的所有 name
 

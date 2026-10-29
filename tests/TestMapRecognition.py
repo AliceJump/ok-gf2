@@ -11,11 +11,13 @@ from src.tasks.map_recognition import MapRecognizer, extract_map_name, same_map_
 
 
 def detected(text, x=500, y=300, width=100, confidence=0.99):
+    """构造带多边形、文本和置信度的 OCR 引擎返回项。"""
     return [[x, y], [x + width, y], [x + width, y + 30], [x, y + 30]], (text, confidence)
 
 
 class TestMapName(unittest.TestCase):
     def test_complete_names_and_decorations(self):
+        """兼容星级装饰、全角字符、前缀与普通章节编号。"""
         for raw, expected in [
             ("***KA-1-5", "KA-1-5"),
             ("米米米AA-1-4", "AA-1-4"),
@@ -33,6 +35,7 @@ class TestMapName(unittest.TestCase):
                 self.assertEqual(extract_map_name(raw), expected)
 
     def test_rejects_truncation_serial_numbers_and_multiple_labels(self):
+        """拒绝截断编号、序列号和包含多个关卡的歧义文本。"""
         for raw in [
             None,
             "",
@@ -52,14 +55,17 @@ class TestMapName(unittest.TestCase):
 
 class TestMapRecognizer(unittest.TestCase):
     def setUp(self):
+        """准备标准 1080p 空白画面，避免测试依赖游戏截图。"""
         self.frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
 
     def recognizer(self, *responses):
+        """注入按顺序返回指定识别结果的模拟 OCR 引擎。"""
         engine = Mock()
         engine.ocr.side_effect = [[response] for response in responses]
         return MapRecognizer(engine), engine
 
     def test_original_image_handles_black_text_and_star_prefix(self):
+        """原图已识别完整编号时保留结果，且无需颜色过滤。"""
         recognizer, engine = self.recognizer([detected("YA-1-2"), detected("***KA-1-5", x=100)])
         boxes = recognizer.recognize(self.frame)
         self.assertEqual([box.name for box in boxes], ["KA-1-5", "YA-1-2"])
@@ -68,6 +74,7 @@ class TestMapRecognizer(unittest.TestCase):
         self.assertEqual(engine.ocr.call_args.args[0].shape, (880, 1920, 3))
 
     def test_engine_is_created_lazily_with_full_detection_size(self):
+        """独立引擎仅在首次访问时创建，并采用完整检测尺寸。"""
         recognizer = MapRecognizer()
         with patch("onnxocr.onnx_paddleocr.ONNXPaddleOcr") as create:
             engine = recognizer.engine
@@ -77,6 +84,7 @@ class TestMapRecognizer(unittest.TestCase):
             )
 
     def test_filtered_conflict_cannot_shorten_original_number(self):
+        """补充过滤结果时不可缩短原图识别出的完整编号。"""
         recognizer, _ = self.recognizer(
             [detected("SA-1-12", confidence=0.75)], [detected("SA-1-1"), detected("SZ-1-5", x=900)]
         )
@@ -94,6 +102,7 @@ class TestMapRecognizer(unittest.TestCase):
         self.assertEqual([box.name for box in boxes], ["SA-1-2"])
 
     def test_star_and_name_boxes_at_same_location_do_not_duplicate(self):
+        """包含星级的大框与其内部编号框只保留一份。"""
         recognizer, _ = self.recognizer(
             [detected("***KA-1-5", x=200, width=220, confidence=0.75)],
             [detected("KA-1-5", x=320, width=100)],
@@ -101,14 +110,17 @@ class TestMapRecognizer(unittest.TestCase):
         self.assertEqual(len(recognizer.recognize(self.frame)), 1)
 
     def test_gray_fallback_when_original_is_empty(self):
+        """原图没有编号时采用高置信度的颜色过滤结果。"""
         recognizer, _ = self.recognizer([], [detected("LS-1-1")])
         self.assertEqual(recognizer.recognize(self.frame)[0].name, "LS-1-1")
 
     def test_low_confidence_fallback_is_rejected(self):
+        """过滤图识别置信度不足时不产生可点击的关卡框。"""
         recognizer, _ = self.recognizer([], [detected("SA-1-1", confidence=0.6)])
         self.assertEqual(recognizer.recognize(self.frame), [])
 
     def test_weak_raw_label_is_retried_even_when_other_labels_are_confident(self):
+        """部分编号置信度低时仍补识别，不被其他可靠结果掩盖。"""
         recognizer, _ = self.recognizer(
             [detected("LS-1-1"), detected("LA-1-1", x=900, confidence=0.6)],
             [detected("LA-1-1", x=900)],
@@ -116,10 +128,12 @@ class TestMapRecognizer(unittest.TestCase):
         self.assertEqual([box.name for box in recognizer.recognize(self.frame)], ["LS-1-1", "LA-1-1"])
 
     def test_malformed_raw_number_triggers_fallback(self):
+        """疑似截断的原图编号会触发过滤补识别。"""
         recognizer, _ = self.recognizer([detected("SA-1-126")], [detected("SA-1-12")])
         self.assertEqual(recognizer.recognize(self.frame)[0].name, "SA-1-12")
 
     def test_coordinates_are_restored_at_720p_and_1440p(self):
+        """不同分辨率统一 OCR 尺寸后仍返回原屏幕坐标。"""
         for width, height in [(1280, 720), (2560, 1440)]:
             with self.subTest(width=width):
                 recognizer, engine = self.recognizer([detected("SF-1-4", x=600, y=300, width=120)], [])
@@ -130,17 +144,35 @@ class TestMapRecognizer(unittest.TestCase):
                 self.assertAlmostEqual(box.width, 120 * width / 1920, delta=1)
 
     def test_empty_capture_does_not_initialize_engine(self):
+        """没有截图时返回空列表，且不加载 OCR 模型。"""
         recognizer = MapRecognizer()
         self.assertEqual(recognizer.recognize(None), [])
         self.assertIsNone(recognizer._engine)
 
     def test_720p_supplements_labels_missing_from_partial_raw_detection(self):
+        """720p 即使已有可靠编号，也补查原图漏检的其他关卡。"""
         recognizer, _ = self.recognizer([detected("LS-1-1")], [detected("LA-1-1", x=900)])
         boxes = recognizer.recognize(np.zeros((720, 1280, 3), dtype=np.uint8))
         self.assertEqual([box.name for box in boxes], ["LS-1-1", "LA-1-1"])
 
 
 class TestMapStability(unittest.TestCase):
+    def test_ambiguous_same_name_boxes_are_stable_in_any_order(self):
+        """首个当前框需让出共有候选，才能为后一框保留唯一匹配。"""
+        previous = [Box(500, 300, 100, 30, name="SA-1-1"), Box(500, 314, 100, 30, name="SA-1-1")]
+        current = [Box(500, 307, 100, 30, name="SA-1-1"), Box(500, 293, 100, 30, name="SA-1-1")]
+        for old_boxes in (previous, previous[::-1]):
+            for new_boxes in (current, current[::-1]):
+                with self.subTest(previous=old_boxes, current=new_boxes):
+                    self.assertTrue(stable_map_names(old_boxes, new_boxes, 8))
+                    self.assertTrue(stable_map_names(new_boxes, old_boxes, 8))
+
+    def test_matching_cannot_reassign_a_different_name(self):
+        """位置兼容也不能用另一关卡编号补足一对一匹配。"""
+        previous = [Box(500, 300, 100, 30, name="SA-1-1"), Box(500, 314, 100, 30, name="SA-1-2")]
+        current = [Box(500, 307, 100, 30, name="SA-1-1"), Box(500, 293, 100, 30, name="SA-1-1")]
+        self.assertFalse(stable_map_names(previous, current, 8))
+
     def test_two_current_boxes_cannot_reuse_one_previous_box(self):
         """两个重复 OCR 框不能掩盖另一个旧框消失的事实。"""
         previous = [Box(500, 300, 100, 30, name="SA-1-1"), Box(900, 300, 100, 30, name="SA-1-1")]
@@ -148,6 +180,7 @@ class TestMapStability(unittest.TestCase):
         self.assertFalse(stable_map_names(previous, current, 8))
 
     def test_moving_or_changed_labels_are_not_stable(self):
+        """数量、编号或位置变化时拒绝稳定，小幅抖动和双空帧可通过。"""
         first = [Box(500, 300, 100, 30, name="SA-1-1")]
         for second in [[], [Box(540, 300, 100, 30, name="SA-1-1")], [Box(500, 300, 100, 30, name="SA-1-2")]]:
             self.assertFalse(stable_map_names(first, second, 8))
@@ -155,6 +188,7 @@ class TestMapStability(unittest.TestCase):
         self.assertTrue(stable_map_names([], [], 8))
 
     def test_different_rows_or_adjacent_cards_are_not_merged(self):
+        """不同排或相邻卡片不能被视为同一关卡位置。"""
         first = Box(500, 300, 100, 30)
         self.assertFalse(same_map_location(first, Box(500, 470, 100, 30)))
         self.assertFalse(same_map_location(first, Box(700, 300, 100, 30)))
@@ -162,6 +196,7 @@ class TestMapStability(unittest.TestCase):
 
 class TestClearMapRecognition(unittest.TestCase):
     def setUp(self):
+        """构造无设备任务，并替换识别引擎及等待操作。"""
         executor = SimpleNamespace(
             scene=None,
             frame=np.zeros((1080, 1920, 3), dtype=np.uint8),
@@ -173,16 +208,19 @@ class TestClearMapRecognition(unittest.TestCase):
         self.task.sleep = Mock()
 
     def test_legacy_ocr_options_are_retired(self):
+        """旧 OCR 模式开关不再出现在任务默认配置及说明中。"""
         self.assertEqual(self.task.default_config, {})
         self.assertEqual(self.task.config_description, {})
 
     def test_ordinary_ui_lookup_does_not_invoke_map_engine(self):
+        """普通界面文案查找沿用框架，不启动地图 OCR。"""
         self.task.find_map_names = Mock()
         boxes = [Box(500, 300, 100, 30, name="挑战")]
         self.assertEqual(self.task.find_boxes(boxes, match="挑战"), boxes)
         self.task.find_map_names.assert_not_called()
 
     def test_map_end_condition_keeps_popups_and_honors_boundary(self):
+        """地图结束判定优先匹配弹窗文案，并遵守识别区域边界。"""
         inside = Box(500, 300, 100, 30, name="SA-1-1")
         outside = Box(500, 1000, 100, 30, name="SA-1-2")
         confirm = Box(600, 300, 80, 30, name="确认")
@@ -193,6 +231,7 @@ class TestClearMapRecognition(unittest.TestCase):
         self.assertEqual(self.task.find_boxes([], match=[map_re, "确认"], boundary=boundary), [inside])
 
     def test_reclick_is_exact_and_normalizes_retry_prefix(self):
+        """重试前缀规范化后仅匹配完整编号，排除相似关卡。"""
         first = Box(500, 300, 100, 30, name="SF-1-1")
         self.task.wait_stable_map_names = Mock(return_value=[first, Box(700, 300, 100, 30, name="SF-1-12")])
         self.assertEqual(self.task.wait_stable_map_by_name("before_one_SF-1-1"), [first])
@@ -205,6 +244,7 @@ class TestClearMapRecognition(unittest.TestCase):
         self.task._map_recognizer.prepare.side_effect = lambda: events.append("prepared")
 
         def wait(condition, **kwargs):
+            """记录等待开始时机，并返回已稳定的空地图。"""
             events.append(("wait", kwargs["time_out"]))
             return ([],)
 
@@ -231,9 +271,11 @@ class TestClearMapRecognition(unittest.TestCase):
             self.task.wait_stable_map_by_name("SF-1-1")
 
     def wait_with_frames(self, frames):
+        """按给定帧序列执行真实稳定性判断，序列耗尽则模拟超时。"""
         self.task.find_map_names = Mock(side_effect=frames)
 
         def wait(condition, **kwargs):
+            """逐帧调用条件函数，返回第一个完成稳定确认的结果。"""
             for _ in frames:
                 if result := condition():
                     return result
@@ -243,25 +285,37 @@ class TestClearMapRecognition(unittest.TestCase):
         return self.task.wait_stable_map_names()
 
     def test_requires_two_matching_frames_before_using_coordinates(self):
+        """移动停止后仍需连续两帧对应，才允许采用坐标。"""
         moving = [Box(500, 300, 100, 30, name="SA-1-1")]
         stopped = [Box(600, 300, 100, 30, name="SA-1-1")]
         self.assertEqual(self.wait_with_frames([moving, stopped, stopped]), stopped)
         self.assertEqual(self.task.find_map_names.call_count, 3)
 
+    def test_same_name_boxes_with_ambiguous_matches_finish_stability_wait(self):
+        """合法的交叉匹配必须在第二帧确认，不能一直等到超时。"""
+        previous = [Box(500, 300, 100, 30, name="SA-1-1"), Box(500, 314, 100, 30, name="SA-1-1")]
+        current = [Box(500, 307, 100, 30, name="SA-1-1"), Box(500, 293, 100, 30, name="SA-1-1")]
+        self.assertEqual(self.wait_with_frames([previous, current]), current)
+        self.assertEqual(self.task.find_map_names.call_count, 2)
+
     def test_one_empty_frame_does_not_end_map_scan(self):
+        """单帧漏检不能被判作地图已清空。"""
         boxes = [Box(500, 300, 100, 30, name="SA-1-1")]
         self.assertEqual(self.wait_with_frames([boxes, [], boxes, boxes]), boxes)
 
     def test_continuous_movement_raises_instead_of_reporting_completion(self):
+        """持续移动至超时时明确报错，不能宣告推图完成。"""
         with self.assertRaisesRegex(RuntimeError, "不稳定"):
             self.wait_with_frames([[Box(x, 300, 100, 30, name="SA-1-1")] for x in (500, 600, 700)])
 
     def test_missing_capture_is_not_a_stable_empty_map(self):
+        """连续缺失截图时不能将空识别结果当作地图稳定。"""
         self.task.executor.frame = None
         with self.assertRaisesRegex(RuntimeError, "不稳定"):
             self.wait_with_frames([[], []])
 
     def test_left_to_right_sort_keeps_clicked_identity_with_its_box(self):
+        """按横坐标排序时同步移动名称组，保证点击身份对应。"""
         left = Box(500, 300, 100, 30, name="SA-1-1")
         right = Box(900, 300, 100, 30, name="SA-1-2")
         self.task.wait_stable_map_names = Mock(side_effect=[[right, left], [right, left], StopIteration])
@@ -282,6 +336,7 @@ class TestClearMapRecognition(unittest.TestCase):
         self.task.find_map_names = Mock(side_effect=[[initial], [initial], *retry_frames])
 
         def wait(condition, **kwargs):
+            """在有限帧内执行稳定确认，使战后流程测试不依赖真实等待。"""
             for _ in range(10):
                 if result := condition():
                     return result

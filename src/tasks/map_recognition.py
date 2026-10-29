@@ -37,26 +37,30 @@ def stable_map_names(previous, current, tolerance):
     """两个画面的编号和位置需一一对应，才允许使用当前坐标。"""
     if len(previous) != len(current):
         return False
-    unmatched = list(previous)
-    for box in current:
-        index = next(
-            (
-                i
-                for i, old in enumerate(unmatched)
-                if old.name == box.name
-                and abs(old.x + old.width / 2 - box.x - box.width / 2) <= tolerance
-                and abs(old.y + old.height / 2 - box.y - box.height / 2) <= tolerance
-            ),
-            None,
-        )
-        if index is None:
-            return False
-        del unmatched[index]
-    return True
+    matched = {}
+
+    def match(box, seen):
+        """沿增广路径重分配旧框，避免共有候选挡住后续框的唯一匹配。"""
+        for index, old in enumerate(previous):
+            if (
+                index in seen
+                or old.name != box.name
+                or abs(old.x + old.width / 2 - box.x - box.width / 2) > tolerance
+                or abs(old.y + old.height / 2 - box.y - box.height / 2) > tolerance
+            ):
+                continue
+            seen.add(index)
+            if index not in matched or match(matched[index], seen):
+                matched[index] = box
+                return True
+        return False
+
+    return all(match(box, set()) for box in current)
 
 
 class MapRecognizer:
     def __init__(self, engine=None):
+        """注入测试引擎，或延迟创建独立的地图 OCR 引擎。"""
         self._engine = engine
 
     def prepare(self):
@@ -65,6 +69,7 @@ class MapRecognizer:
 
     @property
     def engine(self):
+        """复用检测长边为 1920 的独立 OCR 引擎。"""
         if self._engine is None:
             from onnxocr.onnx_paddleocr import ONNXPaddleOcr
 
@@ -73,6 +78,7 @@ class MapRecognizer:
         return self._engine
 
     def recognize(self, frame):
+        """识别原图并按需补充白灰过滤结果，返回屏幕坐标下的关卡框。"""
         if frame is None or frame.size == 0:
             return []
         height, width = frame.shape[:2]
@@ -111,6 +117,7 @@ class MapRecognizer:
 
     @staticmethod
     def _boxes(results, scale, top, threshold):
+        """筛除无效编号和低置信度结果，并还原裁剪、缩放前的坐标。"""
         boxes = []
         for polygon, (text, confidence) in results:
             name = extract_map_name(text)
