@@ -596,6 +596,12 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         total = len(boxes) + len(feature_boxes)
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
+            # 实录 2026-10-31：主页上盖着「拟态图谱 已解锁 / 点击空白处关闭」的解锁提示，遮罩半透明，右侧入口照样认得出来；
+            # 当成已在主页接着点「商城」「班组」，只是把提示点掉了，免费礼包和班组都没做成。先点掉提示再算回到主页
+            if overlay := self.ocr(box=self.box.bottom, match=re.compile("空白处关闭")):
+                self.log_info(f"主页上盖着提示（{overlay[0].name}），先点掉", notify=False)
+                self.click(overlay, after_sleep=1)
+                return False
             self._cancel_streak = 0
             return True
         if self._handle_restart_required():
