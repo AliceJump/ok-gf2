@@ -29,7 +29,7 @@ def box(name):
     return SimpleNamespace(name=name)
 
 
-def make_task(right=(), top_right=()):
+def make_task(right=(), top_right=(), bottom=()):
     task = Mock()
     task.box = SimpleNamespace(
         top_right="top_right", center="center", bottom="bottom", bottom_left="bl", bottom_right="br"
@@ -44,6 +44,8 @@ def make_task(right=(), top_right=()):
             return list(right)
         if box == "top_right" and match is ns["story_skip_re"]:
             return [b for b in top_right if match.search(b.name)]
+        if box == "bottom" and isinstance(match, re.Pattern):
+            return [b for b in bottom if match.search(b.name)]
         return []
 
     task.ocr.side_effect = ocr
@@ -61,6 +63,18 @@ class MainStoryTest(unittest.TestCase):
         task = make_task(right=[box("整备室"), box("公共区")])
         self.assertTrue(is_main(task))
         task.skip_dialogs.assert_not_called()
+
+    def test_unlock_notice_over_main_is_closed_first(self):
+        """实录 2026-10-31：「拟态图谱 已解锁」盖在主页上，入口文字照样认得出；要先点掉，不能算已回到主页。"""
+        task = make_task(right=[box("整备室"), box("活动层"), box("招募")], bottom=[box("点击空白处关闭")])
+        self.assertFalse(is_main(task))
+        self.assertEqual(task.click.call_args.args[0][0].name, "点击空白处关闭")
+        task.back.assert_not_called()
+
+    def test_main_page_without_notice_is_not_clicked(self):
+        task = make_task(right=[box("整备室"), box("活动层")], bottom=[box("巡录"), box("班组")])
+        self.assertTrue(is_main(task))
+        task.click.assert_not_called()
 
     def test_other_pages_do_not_trigger_story_skip(self):
         task = make_task(top_right=[box("130/240"), box("33908")])
