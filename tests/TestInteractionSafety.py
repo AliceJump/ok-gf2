@@ -13,6 +13,11 @@ else:
 
 
 class InteractionSafetyTest(unittest.TestCase):
+    def setUp(self):
+        patcher = patch("win32api.GetAsyncKeyState", return_value=0)
+        self.button_state = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def make_interaction(self):
         """Create isolated interaction state without sending desktop input."""
         obj = SimpleNamespace(
@@ -204,3 +209,42 @@ class InteractionSafetyTest(unittest.TestCase):
             result = GenshinInteraction.move_mouse_relative(obj, 3, -2)
         self.assertFalse(result)
         obj.do_move_mouse_relative.assert_not_called()
+
+    def test_background_position_wait_failure_never_moves_pointer(self):
+        obj = self.make_interaction()
+        obj.capture = SimpleNamespace(width=1920, height=1080, get_abs_cords=Mock(return_value=(100, 200)))
+        self.button_state.return_value = 0x8000
+        with (
+            patch("win32api.SetCursorPos") as cursor,
+            patch("src.patches.input_safety_patch.time.sleep"),
+            self.assertRaisesRegex(RuntimeError, "鼠标键"),
+        ):
+            GenshinInteraction.make_mouse_position(obj, 100, 200)
+        cursor.assert_not_called()
+
+    def test_cleanup_does_not_drag_pointer_when_button_pressed_during_operation(self):
+        obj = self.make_interaction()
+
+        def callback():
+            self.button_state.return_value = 0x8000
+
+        with (
+            patch("win32api.GetCursorPos", return_value=(30, 40)),
+            patch("win32api.SetCursorPos") as cursor,
+        ):
+            GenshinInteraction.operate(obj, callback)
+        cursor.assert_not_called()
+        obj.deactivate.assert_called_once()
+
+    def test_mouse_up_with_coordinates_releases_even_when_physical_button_held(self):
+        import win32con
+
+        obj = self.make_interaction()
+        obj.capture = SimpleNamespace(width=1920, height=1080, get_abs_cords=Mock(return_value=(100, 200)))
+        obj.make_mouse_position = lambda x, y: GenshinInteraction.make_mouse_position(obj, x, y)
+        obj.post = Mock()
+        self.button_state.return_value = 0x8000
+        with patch("win32api.SetCursorPos") as cursor, patch("src.patches.input_safety_patch.time.sleep"):
+            GenshinInteraction.do_mouse_up(obj, 100, 200, key="right")
+        obj.post.assert_called_once_with(win32con.WM_RBUTTONUP, 0, (200 << 16) | 100)
+        cursor.assert_not_called()
