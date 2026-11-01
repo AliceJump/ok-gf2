@@ -25,6 +25,42 @@ def _get_cursor_clip():
     return rect.left, rect.top, rect.right, rect.bottom
 
 
+def mouse_buttons_down():
+    """Use physical button states, independent of swapped primary buttons."""
+    return any(
+        win32api.GetAsyncKeyState(key) & 0x8000
+        for key in (
+            win32con.VK_LBUTTON,
+            win32con.VK_RBUTTON,
+            win32con.VK_MBUTTON,
+            win32con.VK_XBUTTON1,
+            win32con.VK_XBUTTON2,
+        )
+    )
+
+
+def wait_for_mouse_release():
+    """Wait at most one second before touching a pointer used for a desktop drag."""
+    for _ in range(20):
+        if not mouse_buttons_down():
+            return
+        time.sleep(0.05)
+    if mouse_buttons_down():
+        raise RuntimeError("鼠标键仍按下，取消本次鼠标操作")
+
+
+def _check_wheel_target(hwnd, position):
+    if mouse_buttons_down():
+        raise RuntimeError("滚动中鼠标键按下，停止发送滚轮")
+    if win32gui.GetForegroundWindow() != hwnd:
+        raise RuntimeError("滚动中游戏失去前台，停止发送滚轮")
+    if win32api.GetCursorPos() != position:
+        raise RuntimeError("滚动失败：光标未到达游戏目标位置")
+    receiver = win32gui.WindowFromPoint(position)
+    if receiver != hwnd and win32gui.GetAncestor(receiver, win32con.GA_ROOT) != hwnd:
+        raise RuntimeError("滚动失败：光标下的窗口不是游戏")
+
+
 def _foreground(hwnd):
     """Verify foreground ownership; temporarily attach input queues if needed."""
     if win32gui.GetForegroundWindow() == hwnd:
@@ -70,6 +106,7 @@ def scroll_in_foreground(hwnd, x, y, scroll_amount):
         return
     if not win32gui.IsWindow(hwnd):
         raise RuntimeError("滚动失败：游戏窗口无效")
+    wait_for_mouse_release()
     x, y = int(x), int(y)
     previous_window = win32gui.GetForegroundWindow()
     previous_cursor = win32api.GetCursorPos()
@@ -81,6 +118,10 @@ def scroll_in_foreground(hwnd, x, y, scroll_amount):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         _foreground(hwnd)
         time.sleep(0.15)
+        if mouse_buttons_down():
+            raise RuntimeError("鼠标键按下，取消本次滚动")
+        if win32gui.GetForegroundWindow() != hwnd:
+            raise RuntimeError("游戏失去前台，取消本次滚动")
         left, top, right, bottom = win32gui.GetClientRect(hwnd)
         if not (left <= x < right and top <= y < bottom):
             raise RuntimeError("滚动失败：鼠标位置不在游戏客户区内")
@@ -97,7 +138,10 @@ def scroll_in_foreground(hwnd, x, y, scroll_amount):
         for _ in range(abs(scroll_amount)):
             if win32gui.GetForegroundWindow() != hwnd:
                 raise RuntimeError("滚动中游戏失去前台，停止发送滚轮")
+            if mouse_buttons_down():
+                raise RuntimeError("滚动中鼠标键按下，停止发送滚轮")
             win32api.SetCursorPos(position)
+            _check_wheel_target(hwnd, position)
             win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL, 0, 0, delta, 0)
             time.sleep(0.03)
         time.sleep(0.15)
@@ -130,7 +174,8 @@ def scroll_in_foreground(hwnd, x, y, scroll_amount):
         except Exception:
             logger.warning("滚动结束后恢复最小化状态失败", exc_info=True)
         try:
-            win32api.SetCursorPos(previous_cursor)
+            if not mouse_buttons_down():
+                win32api.SetCursorPos(previous_cursor)
         except Exception:
             logger.warning("滚动结束后恢复鼠标位置失败", exc_info=True)
         logger.info("滚动窗口恢复结束：原前台=%s 当前前台=%s", previous_window, win32gui.GetForegroundWindow())

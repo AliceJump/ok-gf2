@@ -19,6 +19,24 @@ def install_input_safety_patch():
     if getattr(GenshinInteraction, "_gf2_input_safety", False):
         return True
 
+    from src.interaction.foreground_scroll import mouse_buttons_down, wait_for_mouse_release
+
+    original_make_mouse_position = GenshinInteraction.make_mouse_position
+
+    def make_mouse_position(self, x, y):
+        """Avoid dragging the desktop when PostMessage input repositions the real cursor."""
+        if x >= 0:
+            wait_for_mouse_release()
+        return original_make_mouse_position(self, x, y)
+
+    def do_mouse_up(self, x=-1, y=-1, key="left"):
+        """Always release a posted button, without moving a physically held pointer."""
+        if x < 0:
+            x, y = round(self.capture.width * 0.5), round(self.capture.height * 0.5)
+        position = win32api.MAKELONG(x, y)
+        action = win32con.WM_LBUTTONUP if key == "left" else win32con.WM_RBUTTONUP
+        self.post(action, 0, position)
+
     def operate(self, fun, block=False, require_foreground=False):
         """Run input and restore background window state without hiding operation errors."""
         background = not self.hwnd_window.is_foreground()
@@ -37,7 +55,8 @@ def install_input_safety_patch():
                 except Exception:
                     logger.warning("输入结束后停用游戏窗口失败", exc_info=True)
                 try:
-                    win32api.SetCursorPos(position)
+                    if not mouse_buttons_down():
+                        win32api.SetCursorPos(position)
                 except Exception:
                     logger.warning("恢复鼠标位置失败", exc_info=True)
 
@@ -99,5 +118,7 @@ def install_input_safety_patch():
     GenshinInteraction.move_mouse_relative = move_mouse_relative
     GenshinInteraction.do_send_key = do_send_key
     GenshinInteraction.do_click = do_click
+    GenshinInteraction.make_mouse_position = make_mouse_position
+    GenshinInteraction.do_mouse_up = do_mouse_up
     GenshinInteraction._gf2_input_safety = True
     return True

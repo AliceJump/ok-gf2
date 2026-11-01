@@ -23,6 +23,9 @@ class ForegroundScrollTest(unittest.TestCase):
         self.gui.GetForegroundWindow.side_effect = lambda: self.focus
         self.api.GetCursorPos.side_effect = lambda: self.cursor
         self.api.GetCurrentThreadId.return_value = 1
+        self.api.GetAsyncKeyState.return_value = 0
+        self.gui.WindowFromPoint.return_value = 10
+        self.gui.GetAncestor.side_effect = lambda hwnd, flag: hwnd
         self.process.GetWindowThreadProcessId.side_effect = lambda hwnd: (hwnd, 100)
 
         def focus(hwnd):
@@ -69,6 +72,76 @@ class ForegroundScrollTest(unittest.TestCase):
     def test_positive_direction(self):
         self.scroll(2)
         self.assertEqual([e[-1] for e in self.events if e[0] == "wheel"], [120, 120])
+
+    def test_cursor_did_not_reach_target_never_sends_wheel(self):
+        self.api.SetCursorPos.side_effect = lambda position: None
+        with self.assertRaisesRegex(RuntimeError, "光标"):
+            self.scroll()
+        self.api.mouse_event.assert_not_called()
+        self.assertEqual(self.focus, 20)
+        self.assertEqual(self.clip, self.original_clip)
+
+    def test_foreign_window_under_pointer_never_receives_wheel(self):
+        self.gui.WindowFromPoint.return_value = 30
+        with self.assertRaisesRegex(RuntimeError, "窗口"):
+            self.scroll()
+        self.api.mouse_event.assert_not_called()
+        self.assertEqual((self.focus, self.cursor), (20, (900, 700)))
+
+    def test_game_child_under_pointer_accepts_wheel(self):
+        self.gui.WindowFromPoint.return_value = 11
+        self.gui.GetAncestor.side_effect = lambda hwnd, flag: 10 if hwnd == 11 else hwnd
+        self.scroll()
+        self.assertEqual(self.api.mouse_event.call_count, 3)
+
+    def test_target_is_checked_again_between_ticks(self):
+        def wheel(*args):
+            self.gui.WindowFromPoint.return_value = 30
+
+        self.api.mouse_event.side_effect = wheel
+        with self.assertRaisesRegex(RuntimeError, "窗口"):
+            self.scroll()
+        self.assertEqual(self.api.mouse_event.call_count, 1)
+
+    def test_held_button_timeout_does_not_touch_desktop(self):
+        self.api.GetAsyncKeyState.return_value = 0x8000
+        with self.assertRaisesRegex(RuntimeError, "鼠标键"):
+            self.scroll()
+        self.assertEqual(self.events, [])
+
+    def test_waits_for_drag_release_before_switching_focus(self):
+        held = [True]
+        self.api.GetAsyncKeyState.side_effect = lambda key: 0x8000 if held[0] else 0
+
+        def sleep(seconds):
+            self.assertEqual(self.events, [])
+            held[0] = False
+            self.module.time.sleep.side_effect = None
+
+        self.module.time.sleep.side_effect = sleep
+        self.scroll()
+        self.assertEqual(self.api.mouse_event.call_count, 3)
+
+    def test_button_pressed_during_sequence_stops_wheel_and_cursor_restore(self):
+        def wheel(*args):
+            self.api.GetAsyncKeyState.return_value = 0x8000
+
+        self.api.mouse_event.side_effect = wheel
+        with self.assertRaisesRegex(RuntimeError, "鼠标键"):
+            self.scroll()
+        self.assertEqual(self.api.mouse_event.call_count, 1)
+        self.assertEqual(self.cursor, (230, 650))
+        self.assertEqual(self.clip, self.original_clip)
+
+    def test_focus_lost_during_pointer_move_never_sends_wheel(self):
+        def cursor(position):
+            self.cursor = position
+            self.focus = 30
+
+        self.api.SetCursorPos.side_effect = cursor
+        with self.assertRaisesRegex(RuntimeError, "前台"):
+            self.scroll()
+        self.api.mouse_event.assert_not_called()
 
     def test_input_error_restores_both_and_propagates(self):
         self.api.mouse_event.side_effect = RuntimeError("wheel failed")
