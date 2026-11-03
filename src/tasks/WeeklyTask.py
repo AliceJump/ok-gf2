@@ -11,6 +11,8 @@ logger = Logger.get_logger(__name__)
 boss_level_re = re.compile(r"当前层级\s*(\d+)\s*/\s*(\d+)")
 boss_cost_re = re.compile(r"消耗\s*(\d+)\s*/\s*(\d+)")
 BOSS_MAX_LEVEL = 9
+# 峰值推定页右下角的两个标签，认出其中一个才算进了峰值推定页
+peak_tab_re = re.compile("常规峰值|极限峰值")
 pattern_kt = re.compile(r"^(?!(?=.*开拓之王)(?=.*区域开拓))(?:开拓之王|区域开拓(?:I|II|III|IV|V|VI|VII))$")
 
 
@@ -38,11 +40,29 @@ class WeeklyTask(BaseGfTask):
                     func()
         self.log_info("周常完成!", notify=True)
 
+    def _open_simulation(self, entry):
+        """主页 →「战役推进」→「模拟作战」→ entry（首领挑战 / 峰值推定 / 扩编实练）。
+
+        实录 2026-11-03：峰值推定没认出页面，连按 6 次 ESC 退过了主页、开出「个人信息」，回主页那一刻还认成主页，
+        扩编实练接着找「战役推进」10 秒超时，整个周常报错停掉。每项开始前先回主页，找不到「战役推进」再回一次主页重试。
+        """
+        for attempt in range(2):
+            self.ensure_main()
+            if self.wait_click_ocr(
+                match=re.compile("战役推进"),
+                box="top_right",
+                after_sleep=0.5,
+                time_out=5,
+                raise_if_not_found=attempt == 1,
+            ):
+                break
+            self.log_info("右上角没找到「战役推进」，回主页再找一次", notify=False)
+        self.wait_click_ocr(match=re.compile("模拟作战"), box="top_right", raise_if_not_found=True, after_sleep=2)
+        self.wait_click_ocr(match=re.compile(entry), raise_if_not_found=True, after_sleep=2)
+
     def boss_fast(self):
         self.info_set("current_task", "boss_fast")
-        self.wait_click_ocr(match=re.compile("战役推进"), box="top_right", after_sleep=0.5, raise_if_not_found=True)
-        self.wait_click_ocr(match=re.compile("模拟作战"), box="top_right", raise_if_not_found=True)
-        self.wait_click_ocr(match=re.compile("首领挑战"), raise_if_not_found=True, after_sleep=2)
+        self._open_simulation("首领挑战")
         # 页面会记住上次的标签，停在「歧路挑战」（50 级解锁）时没有自律按钮，先切回「常规挑战」
         self.wait_click_ocr(match=re.compile("常规挑战"), box="top_right", time_out=3, after_sleep=1)
         # 用户要求 2026-10-25：常规挑战没到最高层（9 层）时先「开始作战」手动打，完成全部挑战目标层级才会升；
@@ -118,10 +138,11 @@ class WeeklyTask(BaseGfTask):
 
     def peak_estimate_tion(self):
         self.info_set("current_task", "peak_estimate_tion")
-        self.wait_click_ocr(match=re.compile("战役推进"), box="top_right", after_sleep=0.5, raise_if_not_found=True)
-        self.wait_click_ocr(match=re.compile("模拟作战"), box="top_right", raise_if_not_found=True, after_sleep=2)
-        self.wait_click_ocr(match=re.compile("峰值推定"), raise_if_not_found=True, after_sleep=2)
+        self._open_simulation("峰值推定")
         self.wait_pop_up(count=1)
+        if not self._peak_page_ready():
+            self.ensure_main()
+            return
         self.wait_click_ocr(match=re.compile("常规峰值"), box="bottom_right", time_out=2, after_sleep=2)
         max_retry = 3
         for attempt in range(max_retry):
@@ -143,20 +164,43 @@ class WeeklyTask(BaseGfTask):
                     break
                 if attempt == 0:
                     self.wait_pop_up(count=1)
-                for i in range(max_retry):
-                    if self.wait_click_ocr(match=re.compile("0" + str(i + 1)), after_sleep=2):
-                        temp = self.wait_ocr(match=["开始作战"], box="bottom_right", raise_if_not_found=True, log=True)
-                        if temp[0].name == "开始作战":
-                            self.click(temp)
-                            if not self.wait_ocr(match=re.compile("激化等级不足"), time_out=2):
-                                self.auto_battle(has_dialog=True)
-                            else:
-                                self.back(after_sleep=2)
-                            if self.wait_ocr(match=re.compile("激化阶群"), box="top_right", time_out=3):
-                                self.back(after_sleep=2)
+                # 实录 2026-11-03：新一期极限峰值的部署界面是空的（部署人形 0/5），「作战开始」点不动；
+                # 进部署界面后按「峰值推定编队」切整备室编队并补满
+                self.set_lineup_kind("峰值推定")
+                try:
+                    for i in range(max_retry):
+                        if self.wait_click_ocr(match=re.compile("0" + str(i + 1)), after_sleep=2):
+                            temp = self.wait_ocr(
+                                match=["开始作战"], box="bottom_right", raise_if_not_found=True, log=True
+                            )
+                            if temp[0].name == "开始作战":
+                                self.click(temp)
+                                if not self.wait_ocr(match=re.compile("激化等级不足"), time_out=2):
+                                    self.auto_battle(has_dialog=True)
+                                else:
+                                    self.back(after_sleep=2)
+                                if self.wait_ocr(match=re.compile("激化阶群"), box="top_right", time_out=3):
+                                    self.back(after_sleep=2)
+                finally:
+                    self.set_lineup_kind(None)
                 break
             self.back()
         self.ensure_main()
+
+    def _peak_page_ready(self):
+        """右下角「常规峰值 / 极限峰值」标签在，才算进了峰值推定页。
+
+        实录 2026-11-03：新一期第一次进峰值推定，17 秒都没认出「常规峰值」，后面每找不到一样东西就按一次 ESC，
+        把页面一路退到了主页外面。认不出时只按一次 ESC（关掉可能盖着的弹窗）再看，还不行就截图跳过，不再盲按。
+        """
+        for attempt in range(2):
+            if self.wait_ocr(match=peak_tab_re, box="bottom_right", time_out=5):
+                return True
+            self.screenshot("peak_page_unknown")
+            if attempt == 0:
+                self.back(after_sleep=2)
+        self.log_info("没认出峰值推定页面（右下角没有常规峰值/极限峰值），跳过", notify=True)
+        return False
 
     def deep_battle(self):
         """
@@ -164,9 +208,7 @@ class WeeklyTask(BaseGfTask):
         打完一关页面会往右滚，所以每轮都重新找卡片，点最右边那张已解锁的（解锁的卡片标题底是白的，锁着的是灰的）。
         """
         self.info_set("current_task", "deep_battle")
-        self.wait_click_ocr(match=re.compile("战役推进"), box="top_right", after_sleep=0.5, raise_if_not_found=True)
-        self.wait_click_ocr(match=re.compile("模拟作战"), box="top_right", raise_if_not_found=True, after_sleep=2)
-        self.wait_click_ocr(match=re.compile("扩编实练"), raise_if_not_found=True, after_sleep=2)
+        self._open_simulation("扩编实练")
         self.wait_pop_up(count=1)
         if self.ocr(match=re.compile("扩编实练已结束")):
             self.log_info("本期扩编实练已结束，跳过")

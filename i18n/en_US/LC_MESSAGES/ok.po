@@ -526,6 +526,12 @@ msgstr "Boss Challenge Preset"
 msgid "周常「首领挑战」常规挑战（没到最高层级时手动打）用的编队，留空沿用默认编队"
 msgstr "Preset used by the weekly \"Boss Challenge\" regular challenge (fought manually until the top tier); leave empty to use the default preset"
 
+msgid "峰值推定编队"
+msgstr "Peak Estimation Preset"
+
+msgid "周常「峰值推定」极限峰值关卡用的编队，留空沿用默认编队"
+msgstr "Preset used by the weekly \"Peak Estimation\" extreme peak stages; leave empty to use the default preset"
+
 msgid "停在任意关卡页面或章节选择页启动即可，先回章节起点从左到右推完未通关的关卡，推完自动进下一章"
 msgstr "Start from any stage map or the chapter list. Returns to the start of the chapter, clears every uncleared stage from left to right, then moves on to the next chapter"
 
