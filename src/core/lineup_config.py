@@ -32,6 +32,7 @@ SCOPES = [
     {"name": "活动", "support": False, "desc": "一键日常「活动自律」"},
     {"name": "扩编实练", "support": False, "desc": "周常「扩编实练」特殊增强关卡"},
     {"name": "首领挑战", "support": False, "desc": "周常「首领挑战」常规挑战（没到最高层级时手动打）"},
+    {"name": "峰值推定", "support": False, "desc": "周常「峰值推定」极限峰值关卡"},
 ]
 SCOPE_BY_NAME = {s["name"]: s for s in SCOPES}
 DEFAULT_SCOPE = "推图"
