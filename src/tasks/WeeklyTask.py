@@ -175,12 +175,23 @@ class WeeklyTask(BaseGfTask):
                             )
                             if temp[0].name == "开始作战":
                                 self.click(temp)
+                                lost = False
                                 if not self.wait_ocr(match=re.compile("激化等级不足"), time_out=2):
-                                    self.auto_battle(has_dialog=True)
+                                    try:
+                                        self.auto_battle(has_dialog=True)
+                                    except Exception as e:
+                                        if "没打过" not in str(e):
+                                            raise
+                                        # 实录 2026-11-03：新一期子群1 推荐 60 级、敌人 70 级，编队打输了，原来整个周常报错停掉、
+                                        # 扩编实练也没跑。后面的子群更难，不再打
+                                        self.log_info(f"极限峰值 0{i + 1} 没打过，后面的更难，不再打", notify=True)
+                                        lost = True
                                 else:
                                     self.back(after_sleep=2)
                                 if self.wait_ocr(match=re.compile("激化阶群"), box="top_right", time_out=3):
                                     self.back(after_sleep=2)
+                                if lost:
+                                    break
                 finally:
                     self.set_lineup_kind(None)
                 break
