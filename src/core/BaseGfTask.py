@@ -97,7 +97,8 @@ INIT_RETRY_EXTEND = 60  # 秒：点了重试后回主页的超时从现在起至
 INIT_RETRY_MAX = 5  # 一次回主页最多点几次重试，一直失败就让它按原超时报错，别无限重连
 # 竞技场打完后的通知框 / 结算页（实录 2026-10-20）
 rank_up_notice_re = re.compile(r"晋升至|段位可获得|补给将通过邮件发放")  # 「您已晋升至新锐·三」段位晋升通知，ESC 能关
-battle_result_re = re.compile(r"^对战(胜利|失败)$|已结束$")  # 「对战胜利 / 对战失败」结算页只有「确认」能关
+# 「对战胜利 / 对战失败」结算页只有「确认」能关；打输后的「任务失败」结算页也一样，ESC 关不掉（实录 2026-11-03）
+battle_result_re = re.compile(r"^对战(胜利|失败)$|已结束$|^任务失败$")
 # 每个任务开始前的隐藏步骤「确保游戏已进入主页」
 title_start_re = re.compile(r"点击开始")
 story_skip_re = re.compile(r"跳过")  # 剧情对话右上角的「跳过 / 全部跳过」（可能和「自动」连成一个框）
@@ -1315,6 +1316,15 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         """读到「任务失败」后核对：底部有「重新挑战 / 战斗重演」才是真的失败结算页。"""
         return bool(self.wait_ocr(match=failure_page_re, box=self.box.bottom, time_out=3, raise_if_not_found=False))
 
+    def _close_failure_page(self):
+        """
+        打输后的失败结算页（任务失败 / 重新挑战 / 战斗重演 / 确认）只有「确认」能关，ESC 关不掉。
+        实录 2026-11-03 极限峰值：结算页淡入时只认到标题「任务失败」，点了标题没关掉，回主页按 ESC 30 秒超时，周常报错停掉。
+        还在失败结算页就点底部「确认」再抛「没打过」。
+        """
+        if self._is_failure_page():
+            self.wait_click_ocr(match=re.compile(r"^确认$"), box=self.box.bottom, time_out=5, after_sleep=2)
+
     def _is_battle_frame(self, boxes):
         """
         判断当前帧是否为战斗中界面（存在「行动结束」或回合计数）。
@@ -1562,6 +1572,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         if not results:
             raise Exception("自动战斗异常")
         if results[0].name == "任务失败":
+            self._close_failure_page()
             raise BattleLost("任务失败, 没打过!")
         if clicked_continue:
             self.log_info("检测到继续前进，点击后开启新一轮自动战斗", notify=True)
