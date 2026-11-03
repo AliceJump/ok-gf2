@@ -36,8 +36,10 @@ class Game:
     _peak_page_ready = namespace["_peak_page_ready"]
     peak_estimate_tion = namespace["peak_estimate_tion"]
 
-    def __init__(self, campaign_misses=0, peak_tabs=(True,)):
+    def __init__(self, campaign_misses=0, peak_tabs=(True,), peak_levels=("01",), lose=False):
         self.campaign_misses = campaign_misses
+        self.peak_levels = peak_levels
+        self.lose = lose
         self.peak_tabs = list(peak_tabs)
         self.clicks = []
         self.backs = 0
@@ -57,7 +59,7 @@ class Game:
             if raise_if_not_found:
                 raise Exception("没找到战役推进")
             return None
-        if name in ("常规峰值", "02", "03"):
+        if name == "常规峰值" or (name in ("01", "02", "03") and name not in self.peak_levels):
             return None
         self.clicks.append(name)
         return [SimpleNamespace(name=name)]
@@ -84,6 +86,8 @@ class Game:
 
     def auto_battle(self, **kwargs):
         self.battles.append(self.kinds[-1])
+        if self.lose:
+            raise Exception("任务失败, 没打过!")
 
     def back(self, **kwargs):
         self.backs += 1
@@ -148,6 +152,20 @@ class PeakPageTest(unittest.TestCase):
         game.peak_estimate_tion()
         self.assertEqual(["峰值推定"], game.battles)
         self.assertEqual(["峰值推定", None], game.kinds)
+
+    def test_extreme_peak_lost_stops_without_failing_weekly(self):
+        """实录 2026-11-03：子群1 推荐 60 级、编队打输了；原来整个周常报错停掉。现在记下来、不再打更难的子群，回主页接着下一项。"""
+        game = Game(peak_tabs=[True], peak_levels=("01", "02", "03"), lose=True)
+        game.peak_estimate_tion()
+        self.assertEqual(["峰值推定"], game.battles)
+        self.assertEqual(["峰值推定", None], game.kinds)
+        self.assertTrue(any("没打过" in m for m in game.logs))
+        self.assertEqual(2, game.mains)  # 入口一次 + 结束回主页一次
+
+    def test_extreme_peak_wins_go_on(self):
+        game = Game(peak_tabs=[True], peak_levels=("01", "02", "03"))
+        game.peak_estimate_tion()
+        self.assertEqual(["峰值推定"] * 3, game.battles)
 
 
 if __name__ == "__main__":
