@@ -16,7 +16,8 @@ cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "We
 methods = [
     n
     for n in cls.body
-    if isinstance(n, ast.FunctionDef) and n.name in {"boss_fast", "_boss_level", "_boss_ticket_enough", "_boss_battle"}
+    if isinstance(n, ast.FunctionDef)
+    and n.name in {"boss_fast", "_boss_level", "_boss_ticket_enough", "_boss_battle", "_open_simulation"}
 ]
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), namespace)
 
@@ -28,6 +29,7 @@ class BossPage:
     _boss_level = namespace["_boss_level"]
     _boss_ticket_enough = namespace["_boss_ticket_enough"]
     _boss_battle = namespace["_boss_battle"]
+    _open_simulation = namespace["_open_simulation"]
 
     def __init__(self, level=4, tickets=3, levels_per_win=1, lose=False, level_text=True, start_works=True):
         self.level = level
