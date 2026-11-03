@@ -47,9 +47,9 @@ class RegexTest(unittest.TestCase):
             self.assertIsNone(rank_up_notice_re.search(t), t)
 
     def test_battle_result_text(self):
-        for t in ("对战胜利", "对战失败", "本期扩编实练已结束"):
+        for t in ("对战胜利", "对战失败", "本期扩编实练已结束", "任务失败"):
             self.assertTrue(battle_result_re.search(t), t)
-        for t in ("作战奖励", "行动结束", "作战开始", "对战胜利奖励"):
+        for t in ("作战奖励", "行动结束", "作战开始", "对战胜利奖励", "OD47-SG1 激化阶群·子群1"):
             self.assertIsNone(battle_result_re.search(t), t)
 
 
