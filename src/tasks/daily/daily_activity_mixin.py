@@ -285,7 +285,9 @@ class DailyActivityMixin:
 
     def _dismiss_activity_progress_dialog(self):
         """关闭遮住栽培页签的进度窗口，并确认它已消失。"""
-        match = re.compile(r"逸\s*趣\s*导\s*算\s*进\s*度|奖\s*励\s*清\s*单")
+        # 总览本身也显示“逸趣导算进度”；只有弹窗独有的“奖励清单”才能授权返回。
+        # 关闭后仍应按同一标记核验，不能把露出的总览标题当成关闭失败。
+        match = re.compile(r"奖\s*励\s*清\s*单")
         box = self.box_of_screen(0.13, 0.16, 0.87, 0.82)
         if not self.wait_ocr(match=match, box=box, time_out=1, raise_if_not_found=False):
             return True
