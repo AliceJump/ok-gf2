@@ -148,8 +148,16 @@ class ClaimShopScreen(ShopScreen):
         return super().wait_click_ocr(match=match, **kwargs)
 
     def ocr(self, *, box=None, match=None):
+        """按奖励标题、底部提示和商品详情区域返回对应识别结果。"""
+        if box in (self.box.top, self.box.bottom) and self.modal != "reward":
+            return []
         if self.modal == "reward":
-            labels = ["获得道具", "点击空白处关闭"]
+            if box == self.box.bottom:
+                labels = ["点击空白处关闭"]
+            elif box == self.box.top:
+                labels = ["获得道具"]
+            else:
+                labels = ["获得道具", "点击空白处关闭"]
         elif self.modal:
             labels = ["免费" if self.modal == "free" else "$0.99"] if box and box[0] >= 0.7 else ["取消", "购买"]
         else:
@@ -184,6 +192,43 @@ class ClaimShopScreen(ShopScreen):
 
 class ShoppingTest(unittest.TestCase):
     """验证免费搜索只发生在确认切换后的对应分类。"""
+
+    def test_reward_only_readable_in_bottom_crop_is_closed_before_verification(self):
+        """高分辨率全屏漏读奖励时仍关闭弹层，继续检查限时分类。"""
+        task = ClaimShopScreen()
+        original = task.ocr
+
+        def cropped_reward(**kwargs):
+            """只在底部区域返回奖励关闭提示，模拟全屏漏读。"""
+            if task.modal == "reward" and kwargs.get("box") != task.box.bottom:
+                return []
+            return original(**kwargs)
+
+        task.ocr = cropped_reward
+        self.assertIsNone(task.shopping())
+        self.assertEqual("领取已确认", task.status["每日礼包"])
+        self.assertNotIn("待核查", task.status["限时礼包"])
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
+
+    def test_reward_only_readable_in_top_crop_is_closed_before_verification(self):
+        """底部提示漏读时依靠顶部奖励标题关闭弹层并核验领取。"""
+        task = ClaimShopScreen()
+        original = task.ocr
+
+        def cropped_reward(**kwargs):
+            """只在顶部区域返回获得道具标题，强制经过回退路径。"""
+            if task.modal == "reward" and kwargs.get("box") != task.box.top:
+                return []
+            return original(**kwargs)
+
+        task.ocr = cropped_reward
+        self.assertIsNone(task.shopping())
+        self.assertEqual("领取已确认", task.status["每日礼包"])
+        self.assertNotIn("待核查", task.status["限时礼包"])
+        self.assertIsNone(task.modal)
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
 
     def test_already_claimed_daily_gift_has_explicit_status(self):
         task = ClaimShopScreen()
@@ -297,6 +342,25 @@ class ShoppingTest(unittest.TestCase):
         """实际奖励和返回列表共同确认领取，不重复购买自动出现的付费项。"""
         task = ClaimShopScreen()
         task.page = "periodic"
+        self.assertTrue(task._claim_shop_free_item(status_key="限时礼包"))
+        self.assertEqual("领取已确认", task.status["限时礼包"])
+        self.assertIsNone(task.modal)
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
+
+    def test_top_crop_reward_confirms_limited_claim(self):
+        """限时礼包仅顶部奖励标题可读时也必须核验到账并退出详情。"""
+        task = ClaimShopScreen()
+        task.page = "periodic"
+        original = task.ocr
+
+        def top_crop_reward(**kwargs):
+            """屏蔽奖励弹层的非顶部识别，覆盖非每日领取路径。"""
+            if task.modal == "reward" and kwargs.get("box") != task.box.top:
+                return []
+            return original(**kwargs)
+
+        task.ocr = top_crop_reward
         self.assertTrue(task._claim_shop_free_item(status_key="限时礼包"))
         self.assertEqual("领取已确认", task.status["限时礼包"])
         self.assertIsNone(task.modal)
