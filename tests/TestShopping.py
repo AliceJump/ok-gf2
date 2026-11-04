@@ -148,6 +148,7 @@ class ClaimShopScreen(ShopScreen):
         return super().wait_click_ocr(match=match, **kwargs)
 
     def ocr(self, *, box=None, match=None):
+        """按奖励标题、底部提示和商品详情区域返回对应识别结果。"""
         if box in (self.box.top, self.box.bottom) and self.modal != "reward":
             return []
         if self.modal == "reward":
