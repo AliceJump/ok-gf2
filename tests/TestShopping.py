@@ -151,7 +151,12 @@ class ClaimShopScreen(ShopScreen):
         if box in (self.box.top, self.box.bottom) and self.modal != "reward":
             return []
         if self.modal == "reward":
-            labels = ["获得道具", "点击空白处关闭"]
+            if box == self.box.bottom:
+                labels = ["点击空白处关闭"]
+            elif box == self.box.top:
+                labels = ["获得道具"]
+            else:
+                labels = ["获得道具", "点击空白处关闭"]
         elif self.modal:
             labels = ["免费" if self.modal == "free" else "$0.99"] if box and box[0] >= 0.7 else ["取消", "购买"]
         else:
@@ -193,6 +198,7 @@ class ShoppingTest(unittest.TestCase):
         original = task.ocr
 
         def cropped_reward(**kwargs):
+            """只在底部区域返回奖励关闭提示，模拟全屏漏读。"""
             if task.modal == "reward" and kwargs.get("box") != task.box.bottom:
                 return []
             return original(**kwargs)
@@ -201,6 +207,25 @@ class ShoppingTest(unittest.TestCase):
         self.assertIsNone(task.shopping())
         self.assertEqual("领取已确认", task.status["每日礼包"])
         self.assertNotIn("待核查", task.status["限时礼包"])
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
+
+    def test_reward_only_readable_in_top_crop_is_closed_before_verification(self):
+        """底部提示漏读时依靠顶部奖励标题关闭弹层并核验领取。"""
+        task = ClaimShopScreen()
+        original = task.ocr
+
+        def cropped_reward(**kwargs):
+            """只在顶部区域返回获得道具标题，强制经过回退路径。"""
+            if task.modal == "reward" and kwargs.get("box") != task.box.top:
+                return []
+            return original(**kwargs)
+
+        task.ocr = cropped_reward
+        self.assertIsNone(task.shopping())
+        self.assertEqual("领取已确认", task.status["每日礼包"])
+        self.assertNotIn("待核查", task.status["限时礼包"])
+        self.assertIsNone(task.modal)
         self.assertEqual(1, task.purchases)
         self.assertEqual(0, task.paid_purchases)
 
