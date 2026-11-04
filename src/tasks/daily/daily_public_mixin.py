@@ -199,7 +199,15 @@ class DailyPublicMixin:
                     after_sleep=0.5,
                     raise_if_not_found=False,
                 )
-                and self.wait_ocr(match=["获得道具", "点击空白处关闭"], time_out=3, raise_if_not_found=False)
+                # 高分辨率全屏 OCR 会漏读弹层文字；与通用弹窗流程一样分区识别。
+                and self.wait_until(
+                    lambda: (
+                        self.ocr(match="点击空白处关闭", box=self.box.bottom)
+                        or self.ocr(match="获得道具", box=self.box.top)
+                    ),
+                    time_out=3,
+                    settle_time=0,
+                )
             ):
                 reward_seen = True
                 self.back(after_sleep=0.5)

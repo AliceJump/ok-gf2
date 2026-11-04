@@ -148,6 +148,8 @@ class ClaimShopScreen(ShopScreen):
         return super().wait_click_ocr(match=match, **kwargs)
 
     def ocr(self, *, box=None, match=None):
+        if box in (self.box.top, self.box.bottom) and self.modal != "reward":
+            return []
         if self.modal == "reward":
             labels = ["获得道具", "点击空白处关闭"]
         elif self.modal:
@@ -184,6 +186,23 @@ class ClaimShopScreen(ShopScreen):
 
 class ShoppingTest(unittest.TestCase):
     """验证免费搜索只发生在确认切换后的对应分类。"""
+
+    def test_reward_only_readable_in_bottom_crop_is_closed_before_verification(self):
+        """高分辨率全屏漏读奖励时仍关闭弹层，继续检查限时分类。"""
+        task = ClaimShopScreen()
+        original = task.ocr
+
+        def cropped_reward(**kwargs):
+            if task.modal == "reward" and kwargs.get("box") != task.box.bottom:
+                return []
+            return original(**kwargs)
+
+        task.ocr = cropped_reward
+        self.assertIsNone(task.shopping())
+        self.assertEqual("领取已确认", task.status["每日礼包"])
+        self.assertNotIn("待核查", task.status["限时礼包"])
+        self.assertEqual(1, task.purchases)
+        self.assertEqual(0, task.paid_purchases)
 
     def test_already_claimed_daily_gift_has_explicit_status(self):
         task = ClaimShopScreen()
