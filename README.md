@@ -48,7 +48,8 @@ An image-recognition-based automation tool for Girls' Frontline 2, with backgrou
 
 * **[GitHub](https://github.com/alicejump/ok-gf2/releases)**: 官方发布页，全球访问速度快。（**请下载 `7z` 压缩包，而不是 `Source Code` 源码压缩包**）
 * **[Mirror酱](https://mirrorchyan.com/zh/projects?rid=okgf2&source=okgf2readme)**: 国内镜像，下载可能需要购买其平台的 CD-KEY。
-* **[夸克网盘](https://pan.quark.cn/s/a1052cec4d13)**: 免费下载（需注册并下载夸克网盘客户端）
+* **[夸克网盘](https://pan.quark.cn/s/80730a808d0e)**: 免费下载（需注册并下载夸克网盘客户端）
+* **[百度网盘](https://pan.baidu.com/s/102Mh1djq2B1T-cIJhct9Gg?pwd=okww)**: 免费下载（提取码：`okww`）
 
 ## 运行要求与推荐设置
 

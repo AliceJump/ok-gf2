@@ -54,7 +54,8 @@ all potential risks.**
 
 * **[GitHub](https://github.com/alicejump/ok-gf2/releases)**: Official release page with fast global access. (**Download the `7z` archive, not the `Source Code` archive**)
 * **[Mirrorchyan](https://mirrorchyan.com/zh/projects?rid=okgf2&source=okgf2readme)**: China mirror (may require a CD-KEY purchase).
-* **[Quark Drive](https://pan.quark.cn/s/a1052cec4d13)**: Free download (requires registration and Quark Drive client).
+* **[Quark Drive](https://pan.quark.cn/s/80730a808d0e)**: Free download (requires registration and Quark Drive client).
+* **[Baidu Netdisk](https://pan.baidu.com/s/102Mh1djq2B1T-cIJhct9Gg?pwd=okww)**: Free download (extraction code: `okww`).
 
 ## Runtime Requirements & Recommendations
 

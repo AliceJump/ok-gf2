@@ -336,7 +336,8 @@ jobs:
               * 不要下载SourceCode, Do Not Download the SourceCode
             ### 如果无法下载可以使用, 其他下载源 / Alternative download sources
               * [Mirror酱下载渠道](https://mirrorchyan.com/zh/projects?rid=okgf&source=ok-gf-release), 国内网页直链, 下载需要购买CD-KEY, 已有Mirror酱CD-KEY可免费下载 / Mainland China direct link, requires CD-KEY (free for existing Mirror users)
-              * [夸克网盘](https://pan.quark.cn/s/a1052cec4d13), 免费 / Free
+              * [夸克网盘](https://pan.quark.cn/s/80730a808d0e), 免费 / Free
+              * [百度网盘](https://pan.baidu.com/s/102Mh1djq2B1T-cIJhct9Gg?pwd=okww), 免费，提取码：okww / Free, extraction code: okww
           files: pyappify_dist/**
 
   trigger_mirrorchyan:
