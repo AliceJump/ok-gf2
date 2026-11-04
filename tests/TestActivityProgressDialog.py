@@ -18,6 +18,7 @@ dismiss = namespace["_dismiss_activity_progress_dialog"]
 
 class ProgressDialogTest(unittest.TestCase):
     """区分总览文字与真实奖励清单，覆盖返回键关闭结果。"""
+
     def task(self, modal=False, blocked=False):
         """建立返回后露出总览、或关闭受阻的有限页面模型。"""
         overview = ["逸趣事件", "宜居值", "工栽培", "逸趣导算进度", "今日逸趣值", "茶歇一刻"]
