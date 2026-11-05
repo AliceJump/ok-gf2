@@ -265,20 +265,33 @@ class DailyRewardMixin:
         return False
 
     def explore_claim(self):
+        """Collect expedition rewards, skipping removed entries with explicit status."""
         self.info_set("current_task", "explore_claim")
         if not self.wait_click_ocr(
-            match="限时开启", box=self.box.top_right, after_sleep=2, time_out=2, raise_if_not_found=True, log=True
+            match="限时开启", box=self.box.top_right, after_sleep=2, time_out=2, raise_if_not_found=False, log=True
         ):
-            return
+            self.log_warning("未确认限时活动入口，探索领取待核查")
+            self.screenshot("explore_entry_unconfirmed")
+            self.ensure_main()
+            return "待核查"
         if not self.wait_click_ocr(
             match=re.compile("边界推进"),
             box=self.box.top_right,
             after_sleep=6,
             time_out=2,
-            raise_if_not_found=True,
+            raise_if_not_found=False,
             log=True,
         ):
-            return
+            if self.wait_ocr(
+                match=re.compile("危区探遗"), box=self.box.top_right, time_out=1, raise_if_not_found=False
+            ):
+                self.log_info("已确认国服活动入口调整为危区探遗，跳过探索领取")
+                self.ensure_main()
+                return "已跳过"
+            self.log_warning("未找到边界推进入口，也未确认国服替代入口，探索领取待核查")
+            self.screenshot("explore_entry_unconfirmed")
+            self.ensure_main()
+            return "待核查"
         if not self.wait_click_ocr(
             match=re.compile("采集"),
             box=self.box.bottom_right,
