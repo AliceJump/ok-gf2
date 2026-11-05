@@ -275,9 +275,11 @@ class DailyRewardMixin:
             box=self.box.top_right,
             after_sleep=6,
             time_out=2,
-            raise_if_not_found=True,
+            raise_if_not_found=False,
             log=True,
         ):
+            self.log_info("未找到边界推进入口，跳过探索领取")
+            self.ensure_main()
             return
         if not self.wait_click_ocr(
             match=re.compile("采集"),
