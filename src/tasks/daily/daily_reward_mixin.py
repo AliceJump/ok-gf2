@@ -278,9 +278,15 @@ class DailyRewardMixin:
             raise_if_not_found=False,
             log=True,
         ):
-            self.log_info("未找到边界推进入口，跳过探索领取")
+            if self.wait_ocr(
+                match=re.compile("危区探遗"), box=self.box.top_right, time_out=1, raise_if_not_found=False
+            ):
+                self.log_info("已确认国服活动入口调整为危区探遗，跳过探索领取")
+                self.ensure_main()
+                return "已跳过"
+            self.log_warning("未找到边界推进入口，也未确认国服替代入口，探索领取待核查")
             self.ensure_main()
-            return
+            return "待核查"
         if not self.wait_click_ocr(
             match=re.compile("采集"),
             box=self.box.bottom_right,

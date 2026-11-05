@@ -114,6 +114,15 @@ class TestDailyTaskRunner(unittest.TestCase):
         self.assertEqual(runner.final_summary["status"], "部分失败")
         self.assertTrue(any(msg.startswith("以下任务未完成或失败:") for msg, _ in stub.logs))
 
+    def test_explicit_skip_result_is_reported_as_skipped(self):
+        stub = StubTask(dict(ALL_ON))
+        runner = DailyTaskRunner(stub, build_plan(stub, {"邮件": "已跳过"}))
+        runner.run()
+        self.assertEqual(runner.task_status["skipped"], ["邮件"])
+        self.assertNotIn("邮件", runner.task_status["success"])
+        self.assertNotIn("邮件", runner.task_status["failed"])
+        self.assertEqual(runner.final_summary["status"], "完成")
+
     def test_exception_marks_failure_and_continues(self):
         stub = StubTask(dict(ALL_ON))
         runner = DailyTaskRunner(stub, build_plan(stub, {"邮件": RuntimeError("boom")}))

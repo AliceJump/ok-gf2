@@ -260,6 +260,14 @@ class DailyTaskRunner:
             self.final_summary["current_task"] = ""
             return False
 
+        if result == "已跳过":
+            self.task_status["skipped"].append(key)
+            self.clear_task_failure(key)
+            self.task.log_info(self._tr("任务 {key} 已跳过").format(key=self._tr(key)), notify=True)
+            self.current_task_key = None
+            self.final_summary["current_task"] = ""
+            return True
+
         if result == "待核查":
             self.task_status["uncertain"].append(key)
             self.clear_task_failure(key)
