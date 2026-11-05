@@ -17,6 +17,9 @@ power_re = re.compile(r"^\d{3,6}$")
 chenyan_not_open_re = re.compile(r"后\s*开\s*启|未\s*开\s*启|未\s*开\s*放")
 # 班组助战弹窗里战力前面有个图标，实录 OCR 成「心25850」
 support_power_re = re.compile(r"^\D?\d{4,6}$")
+# 借的助战和自己队里是同一个角色时弹「注意：队伍中有相同角色，是否进行替换」（实录 2026-11-04 前哨战）
+outpost_dup_re = re.compile("相同角色")
+OUTPOST_DUP_DIALOG = (0.26, 0.4, 0.74, 0.76)
 
 
 def power_of(box):
@@ -384,8 +387,11 @@ class DailyBattleMixin:
         support = self._outpost_set_support_toggle(support)
         # 开助战时我方 4 格 + 助战 1 格；关助战时我方 5 格
         self._outpost_fill_top_power(4 if support else 5)
-        if support:
-            self._outpost_pick_support()
+        if support and not self._outpost_pick_support():
+            # 借不到助战就关掉助战开关，第 5 格改上自己的人，别空一格开打
+            self.log_info("班组助战没借上，关掉助战开关，改上 5 个自己的人")
+            if not self._outpost_set_support_toggle(False):
+                self._outpost_fill_top_power(5)
         self.next_frame()
         self.debug_shot("chenyan_outpost_ready")
         self.wait_click_ocr(match="确定", box=self.box.bottom_right, after_sleep=2, raise_if_not_found=True)
@@ -499,7 +505,8 @@ class DailyBattleMixin:
     def _outpost_pick_support(self):
         """
         助战格空着就点「助战」打开班组助战弹窗，借战力最高的人形：点卡片选中后按钮变「入队」，点了弹窗关掉就算借上。
-        助战格已经有人（游戏会记住上一场）就沿用。借不到就关掉弹窗不借。
+        和队里是同一个角色时会弹「队伍中有相同角色，是否进行替换」，点取消换下一个（不拿助战替掉自己的人）。
+        助战格已经有人（游戏会记住上一场）就沿用。借不到就关掉弹窗，返回 False。
         """
         if borrowed := self.ocr(box=self.box_of_screen(*OUTPOST_SUPPORT_SLOT), match=power_re):
             self.log_info(f"助战格已有人形（战力 {borrowed[0].name}），沿用")
@@ -515,7 +522,7 @@ class DailyBattleMixin:
             return False
         cards = self.ocr(box=self.box_of_screen(0.18, 0.28, 0.83, 0.74), match=support_power_re, log=True)
         cards.sort(key=power_of, reverse=True)
-        for card in cards[:3]:
+        for card in cards:
             # 点头像会打开人形详情，点战力数字（卡片正文）才是选中
             self.click_box(card, after_sleep=1)
             self.wait_click_ocr(
@@ -525,14 +532,40 @@ class DailyBattleMixin:
                 after_sleep=1.5,
             )
             self.next_frame()
+            if self._outpost_cancel_duplicate():
+                self.log_info(f"战力 {power_of(card)} 的助战和队里是同一个角色，不替换，换下一个")
+                continue
             if not self.ocr(match="班组助战", box=popup_title):
                 self.log_info(f"前哨战借班组助战：战力 {power_of(card)}", notify=True)
                 return True
             self.log_info(f"战力 {power_of(card)} 的助战没借上，换下一个")
         self.debug_shot("chenyan_outpost_support_fail")
-        self.click_relative(0.813, 0.178, after_sleep=1)
         self.log_info("班组助战没借上，关掉弹窗不借", notify=True)
+        self._outpost_close_support_popup(popup_title)
         return False
+
+    def _outpost_cancel_duplicate(self):
+        """「注意：队伍中有相同角色，是否进行替换」点取消；返回刚才是否弹了这个提示。"""
+        dialog = self.box_of_screen(*OUTPOST_DUP_DIALOG)
+        if not self.wait_ocr(match=outpost_dup_re, box=dialog, time_out=1):
+            return False
+        if not self.wait_click_ocr(match=re.compile("^取消$"), box=dialog, time_out=2, after_sleep=1):
+            self.click_relative(0.403, 0.702, after_sleep=1)
+        return True
+
+    def _outpost_close_support_popup(self, popup_title):
+        """
+        关班组助战弹窗：先取消上面可能还开着的「相同角色」提示，再点右上角 X，认不到弹窗标题才算关上。
+        实录 2026-11-04：原来只点一下 X，其实只关掉了上层提示，接着点「确定」落在遮罩上，只是把弹窗关了，没开打。
+        """
+        for _ in range(3):
+            self._outpost_cancel_duplicate()
+            self.click_relative(0.813, 0.178, after_sleep=1)
+            self.next_frame()
+            if not self.ocr(match="班组助战", box=popup_title):
+                return
+        self.debug_shot("chenyan_outpost_support_stuck")
+        raise Exception("前哨战班组助战弹窗关不掉")
 
     def _select_chenyan_attribute(self, attr):
         """切换助战属性，OCR 漏读时在确认列表后使用比例坐标。"""
