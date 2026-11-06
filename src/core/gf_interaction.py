@@ -11,9 +11,11 @@ GenshinInteraction，行为和改之前一样。真实点击落在光标下的�
 
 import time
 
+import win32gui
 from ok.device.interaction_methods.genshin import GenshinInteraction
 from ok.util.logger import Logger
 
+from src.core.foreground import attach_foreground
 from src.core.input_config import INPUT_OPTION_NAME
 from src.core.input_env import choose_input, input_key
 from src.core.session_mouse import BTN_LEFT, BUTTON_OF_KEY, SessionMouseDevice, current_kind
@@ -28,6 +30,14 @@ def input_settings():
         return dict(og.executor.global_config.get_config(INPUT_OPTION_NAME))
     except Exception:  # 没有 executor（单测 / 初始化早期）时按默认值
         return {}
+
+
+def window_label(hwnd):
+    """窗口类名和标题，写日志用（看是谁占着前台）。"""
+    try:
+        return f"{win32gui.GetClassName(hwnd)}「{win32gui.GetWindowText(hwnd)}」"
+    except Exception:
+        return str(hwnd)
 
 
 class GfInteraction(GenshinInteraction):
@@ -68,13 +78,21 @@ class GfInteraction(GenshinInteraction):
         return self.capture.get_abs_cords(int(x), int(y))
 
     def _ensure_front(self):
-        """真实点击落在光标下的窗口；游戏不在前台就先提到前台，提不动也照点（点在游戏区域会顺便激活）。"""
+        """
+        真实点击落在光标下的窗口；游戏不在前台就先提到前台，提不动也照点。
+        ok 的 bring_to_front 直接 SetForegroundWindow，被前台锁挡住时挂到前台窗口的输入线程上再切。
+        实录 2026-11-05：热更新重启游戏后，资源管理器的「Microsoft 帐户」提示窗（Shell_OOBEProxy，全屏、什么都没画）
+        占着前台盖在游戏上，截图里只看到标题页，「点击开始」全点在这个窗口上，2 分钟没进主页，一键日常报错停下。
+        """
         if self.hwnd_window.is_foreground():
             return True
         ok = self.hwnd_window.bring_to_front()
-        time.sleep(0.05)
         if not ok:
-            logger.warning("游戏窗口提到前台失败，仍用会话鼠标点击")
+            foreground = win32gui.GetForegroundWindow()
+            ok = attach_foreground(self.hwnd_window.hwnd, foreground)
+            if not ok:
+                logger.warning(f"游戏窗口提到前台失败，仍用会话鼠标点击（前台：{window_label(foreground)}）")
+        time.sleep(0.05)
         return ok
 
     def _use_session_mouse(self, x, y):
