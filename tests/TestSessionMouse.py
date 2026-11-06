@@ -213,6 +213,13 @@ class SessionMouseDeviceTest(unittest.TestCase):
 source = ROOT / "src/core/gf_interaction.py"
 tree = ast.parse(source.read_text(encoding="utf-8"))
 cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GfInteraction")
+label_fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "window_label")
+# 实录 2026-11-05 占着前台的窗口：资源管理器的「Microsoft 帐户」提示
+FAKE_WIN32GUI = SimpleNamespace(
+    GetForegroundWindow=lambda: 66234,
+    GetClassName=lambda hwnd: "Shell_OOBEProxy",
+    GetWindowText=lambda hwnd: "Microsoft 帐户",
+)
 
 
 class FakeGenshin:
@@ -296,20 +303,27 @@ ns = {
     "input_settings": lambda: dict(STATE["settings"]),
     "logger": Mock(),
     "time": __import__("time"),
+    "win32gui": FAKE_WIN32GUI,
+    "attach_foreground": Mock(return_value=True),
 }
 STATE = {"kind": KIND_RDP, "settings": {}}
-exec(compile(ast.Module(body=[cls], type_ignores=[]), str(source), "exec"), ns)
+exec(compile(ast.Module(body=[label_fn, cls], type_ignores=[]), str(source), "exec"), ns)
 GfInteraction = ns["GfInteraction"]
 
 
-def make_interaction(bound=True, foreground=True, origin=(0, 0), kind=KIND_RDP, settings=None):
+def make_interaction(
+    bound=True, foreground=True, origin=(0, 0), kind=KIND_RDP, settings=None, front_ok=True, attach_ok=True
+):
     FakeDevice.opens = bound
     FakeDevice.created = []
     STATE["kind"], STATE["settings"] = kind, settings or {}
     capture = SimpleNamespace(get_abs_cords=lambda x, y: (origin[0] + x, origin[1] + y))
     window = Mock()
     window.is_foreground.return_value = foreground
-    window.bring_to_front.return_value = True
+    window.bring_to_front.return_value = front_ok
+    window.hwnd = 459332
+    ns["attach_foreground"] = Mock(return_value=attach_ok)
+    ns["logger"] = Mock()
     it = GfInteraction(capture, window)
     it.post_interaction = Mock()
     return it
@@ -328,6 +342,26 @@ class GfInteractionTest(unittest.TestCase):
         it.click(10, 20)
         it.hwnd_window.bring_to_front.assert_called_once()
         self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_foreground_lock_falls_back_to_attaching_input_thread(self):
+        it = make_interaction(foreground=False, front_ok=False)
+        it.click(10, 20)
+        ns["attach_foreground"].assert_called_once_with(459332, 66234)
+        ns["logger"].warning.assert_not_called()
+        self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_still_blocked_logs_who_holds_foreground_and_clicks_anyway(self):
+        it = make_interaction(foreground=False, front_ok=False, attach_ok=False)
+        it.click(10, 20)
+        message = ns["logger"].warning.call_args.args[0]
+        self.assertIn("Shell_OOBEProxy", message)
+        self.assertIn("Microsoft 帐户", message)
+        self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_bring_to_front_success_skips_attach(self):
+        it = make_interaction(foreground=False)
+        it.click(10, 20)
+        ns["attach_foreground"].assert_not_called()
 
     def test_unbound_device_falls_back_to_post_message(self):
         it = make_interaction(bound=False)
