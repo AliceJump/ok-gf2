@@ -94,6 +94,11 @@ from src.patches.ocr_text_fix_patch import install_ocr_text_fix_patch  # noqa: E
 
 install_ocr_text_fix_patch()
 
+# OCR 内存上限：OpenVINO CPU 按输入尺寸缓存编译结果，不限的话桌面端会涨到 5～9GB。
+from src.patches.ocr_memory_patch import install_ocr_memory_patch  # noqa: E402
+
+install_ocr_memory_patch()
+
 # 退出时不激活已关闭的游戏窗口，并确认启动器身份后终止。
 from src.patches.shutdown_patch import install_shutdown_patch  # noqa: E402
 
