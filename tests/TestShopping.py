@@ -203,6 +203,7 @@ class ShoppingTest(unittest.TestCase):
                 reward_reads = 0
 
                 def delayed_reward(*, task=task, original=original, **kwargs):
+                    """首轮奖励区域返回空结果，随后才允许识别迟到弹层。"""
                     nonlocal reward_reads
                     if task.modal == "reward" and kwargs.get("box") in (task.box.top, task.box.bottom):
                         reward_reads += 1

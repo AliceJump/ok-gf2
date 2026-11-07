@@ -570,8 +570,8 @@ class DailyActivityMixin:
                     return "confirm"
                 return True
             else:
-                # 只有原交互入口仍在当前帧中，才允许重试 Alt 点击；未知页不盲点。
-                if attempt + 1 < times and self.ocr(match=entry_match):
+                # 限时等原入口重新可识别后才重试 Alt 点击；未知页不盲点。
+                if attempt + 1 < times and self.wait_ocr(match=entry_match, time_out=3):
                     continue
                 else:
                     self.ocr(log=True, screenshot=True)

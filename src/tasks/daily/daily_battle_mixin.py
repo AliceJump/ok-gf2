@@ -223,6 +223,8 @@ class DailyBattleMixin:
             if runner is not None:
                 runner.set_task_failure(reason)
             self.screenshot("guild_entry_failed")
+            if runner is not None:
+                runner.set_task_failure(reason, screenshot_taken=True)
             self.ensure_main()
             return False
         self.ensure_main()

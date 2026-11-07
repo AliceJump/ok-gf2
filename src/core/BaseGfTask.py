@@ -357,6 +357,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return False
 
     def is_main(self, recheck_time=0.0, esc=True):
+        """识别可操作主页并恢复常见弹层，重连失败时中止当前会话。"""
         boxes = self.ocr(match=["整备室", "公共区", "活动层", re.compile("招募")], box="right", log=True)
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
