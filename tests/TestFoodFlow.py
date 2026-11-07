@@ -181,6 +181,43 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_dropped_drink_entry_is_retried_while_entry_remains_visible(self):
+        """日志中 Alt 点击后仍停留茶歇入口时，应重试交互而非直接失败。"""
+        task = FoodScreen(drink=True)
+        original = task.click_with_key
+        entry_clicks = []
+
+        def drop_first_entry(key, result):
+            entry_clicks.append(result)
+            if len(entry_clicks) > 1:
+                original(key, result)
+
+        task.click_with_key = drop_first_entry
+        self.assertIs(True, task.run())
+        self.assertEqual(2, len(entry_clicks))
+        self.assertEqual(["制作", "确认", "确认"], task.clicks)
+
+    def test_stuck_drink_entry_retries_are_bounded(self):
+        task = FoodScreen(drink=True)
+        entry_clicks = []
+        task.click_with_key = lambda key, result: entry_clicks.append(result)
+        self.assertEqual("button", task.run())
+        self.assertEqual(3, len(entry_clicks))
+        self.assertEqual([], task.clicks)
+
+    def test_missing_drink_menu_on_unknown_page_does_not_reclick_entry(self):
+        task = FoodScreen(drink=True)
+        entry_clicks = []
+
+        def unknown_page(key, result):
+            entry_clicks.append(result)
+            task.state = "finished"
+
+        task.click_with_key = unknown_page
+        self.assertEqual("button", task.run())
+        self.assertEqual(1, len(entry_clicks))
+        self.assertEqual([], task.clicks)
+
     def test_meal_result_retries_dropped_confirmation(self):
         """确认被识别和点击，但游戏未响应时，需要重新确认。"""
         task = FoodScreen(overwrite=False)

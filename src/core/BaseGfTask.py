@@ -365,6 +365,9 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         total = len(boxes) + len(feature_boxes)
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
+            # 断线提示后的主页仍可见，不能把背景入口当成可继续操作的会话。
+            if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
+                raise RuntimeError("游戏重连失败，即将返回登录界面，请重新登录后重试")
             return True
         if self.ocr(match="前往战役", box=self.box.bottom):
             self._confirm_meal_result()
