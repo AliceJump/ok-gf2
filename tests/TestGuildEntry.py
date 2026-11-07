@@ -8,19 +8,24 @@ from tests.TestChenyanEntry import ChenyanDevice
 
 
 class GuildScreen(ChenyanDevice):
-    def __init__(self, dropped=0, unknown=False):
+    def __init__(self, dropped=0, unknown=False, entry_misses=0):
         """分别模拟入口丢失点击和进入未知页面。"""
         super().__init__(ready=False, opens_in="6天21小时后开启")
         self.config["班组"] = True
         self.page = "home"
         self.dropped = dropped
         self.unknown = unknown
+        self.entry_misses = entry_misses
+        self.entry_reads = 0
         self.entry_clicks = 0
         self.duty_clicks = 0
 
     def wait_ocr(self, *args, match=None, **kwargs):
         """主页与班组页只返回各自可见的导航文字。"""
         if match == ["班组"]:
+            self.entry_reads += 1
+            if self.entry_reads <= self.entry_misses:
+                return []
             return [SimpleNamespace(name="班组")] if self.page == "home" else []
         if match == ["要务"]:
             return [SimpleNamespace(name="要务")] if self.page == "guild" else []
@@ -52,6 +57,23 @@ class GuildScreen(ChenyanDevice):
 
 
 class GuildEntryTest(unittest.TestCase):
+    def test_delayed_entry_is_detected_before_clicking(self):
+        """首次识别超时后继续等待，入口可见时才点击并执行要务。"""
+        task = GuildScreen(entry_misses=1)
+        self.assertEqual(["班组"], task.run_guild()["success"])
+        self.assertEqual(2, task.entry_reads)
+        self.assertEqual(1, task.entry_clicks)
+        self.assertEqual(1, task.duty_clicks)
+
+    def test_missing_entry_detection_retries_are_bounded_without_clicks(self):
+        """入口一直缺失时最多检测三次，无点击并保留明确失败原因。"""
+        task = GuildScreen(entry_misses=100)
+        self.assertEqual(["班组"], task.run_guild()["failed"])
+        self.assertEqual(3, task.entry_reads)
+        self.assertEqual(0, task.entry_clicks)
+        self.assertEqual(0, task.duty_clicks)
+        self.assertIn("班组入口", task.daily_runner.failure_details[""]["班组"])
+
     def test_dropped_entry_is_retried_before_daily_duties(self):
         """首次点击丢失后重试入口，再执行要务及补给。"""
         task = GuildScreen(dropped=1)

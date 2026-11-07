@@ -186,7 +186,7 @@ class DailyBattleMixin:
         for _ in range(3):
             result = self.wait_ocr(match=["班组"], box=self.box._group, time_out=3, raise_if_not_found=False)
             if not result:
-                break
+                continue
             self.click_box_by_match_position(result, "班组", after_sleep=2)
             if self.wait_click_ocr(
                 match=["要务"], box=self.box.bottom_right, time_out=10, after_sleep=0.5, settle_time=2
