@@ -170,9 +170,10 @@ class DailyPublicMixin:
         entry_attempted = False
         reward_seen = False
         for attempt in range(3):
-            if not self.wait_click_ocr(
+            entry = self.wait_click_ocr(
                 match=free_match, box=content_box, time_out=3, after_sleep=0.5, raise_if_not_found=False
-            ):
+            )
+            if not entry:
                 # 页面稳定且没有可领取入口时才允许结束，空白/加载页不能算完成。
                 if (
                     self._shop_category_content()
@@ -183,31 +184,32 @@ class DailyPublicMixin:
                     status = "领取已确认" if entry_attempted else "已领取" if daily else "无可领取免费礼包"
                     self.info_set(status_key, status)
                     return True
-                continue
-            entry_attempted = True
+                if not entry_attempted:
+                    continue
+            else:
+                entry_attempted = True
             free_detail = bool(
-                self.wait_ocr(match=free_match, box=price_box, time_out=2, raise_if_not_found=False)
+                entry
+                and self.wait_ocr(match=free_match, box=price_box, time_out=2, raise_if_not_found=False)
                 and self.ocr(match="取消", box=cancel_box)
             )
             # 领取后游戏会自动切到付费礼包详情，每次尝试都必须重查价格。
-            if (
-                free_detail
-                and self.wait_click_ocr(
+            if free_detail:
+                self.wait_click_ocr(
                     match=re.compile(r"^\s*(?:确认|购买)\s*$"),
                     box=purchase_box,
                     time_out=2,
                     after_sleep=0.5,
                     raise_if_not_found=False,
                 )
-                # 高分辨率全屏 OCR 会漏读弹层文字；与通用弹窗流程一样分区识别。
-                and self.wait_until(
-                    lambda: (
-                        self.ocr(match="点击空白处关闭", box=self.box.bottom)
-                        or self.ocr(match="获得道具", box=self.box.top)
-                    ),
-                    time_out=3,
-                    settle_time=0,
-                )
+            # 首次核验超时后，免费入口已消失；仍须分区重查迟到的奖励弹层。
+            if self.wait_until(
+                lambda: (
+                    self.ocr(match="点击空白处关闭", box=self.box.bottom)
+                    or self.ocr(match="获得道具", box=self.box.top)
+                ),
+                time_out=3,
+                settle_time=0,
             ):
                 reward_seen = True
                 self.back(after_sleep=0.5)

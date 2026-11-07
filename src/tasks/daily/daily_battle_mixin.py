@@ -182,9 +182,18 @@ class DailyBattleMixin:
     def guild(self):
         """执行班组要务和尘烟，助战失败时返回主页并报告失败。"""
         self.info_set("current_task", "guild")
-        if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
+        opened = False
+        for _ in range(3):
+            result = self.wait_ocr(match=["班组"], box=self.box._group, time_out=3, raise_if_not_found=False)
+            if not result:
+                continue
             self.click_box_by_match_position(result, "班组", after_sleep=2)
-            self.wait_click_ocr(match=["要务"], box=self.box.bottom_right, after_sleep=0.5, settle_time=2)
+            if self.wait_click_ocr(
+                match=["要务"], box=self.box.bottom_right, time_out=10, after_sleep=0.5, settle_time=2
+            ):
+                opened = True
+                break
+        if opened:
             result = self.wait_ocr(
                 match=["开始作战", "每日要务已完成"], box=self.box.bottom_right, raise_if_not_found=True, log=True
             )
@@ -207,6 +216,17 @@ class DailyBattleMixin:
                 return False
             self.back()
             self.sleep(1)
+        else:
+            reason = "班组入口未成功打开：未确认要务页面"
+            self.log_warning(reason)
+            runner = getattr(self, "daily_runner", None)
+            if runner is not None:
+                runner.set_task_failure(reason)
+            self.screenshot("guild_entry_failed")
+            if runner is not None:
+                runner.set_task_failure(reason, screenshot_taken=True)
+            self.ensure_main()
+            return False
         self.ensure_main()
 
     def _guild_supply_status(self):

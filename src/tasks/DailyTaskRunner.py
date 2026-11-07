@@ -231,7 +231,14 @@ class DailyTaskRunner:
         self.failure_screenshot_tasks.discard(key)
         self.final_summary["current_task"] = key
         self.task.log_info(self._tr("开始任务: {key}").format(key=self._tr(key)))
-        self.task.ensure_main(**self.ensure_main_kwargs)
+        try:
+            self.task.ensure_main(**self.ensure_main_kwargs)
+        except _STOP_EXCEPTIONS:
+            raise
+        except Exception:
+            # 恢复主页失败仍须中止，但不能让已移出未处理列表的任务从汇总中消失。
+            self.task_status["failed"].append(key)
+            raise
         try:
             result = func()
         except _STOP_EXCEPTIONS:

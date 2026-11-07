@@ -461,9 +461,7 @@ class DailyActivityMixin:
     ):
         """返回 True 表示流程完成；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。"""
         enter_func(after_sleep=1)
-        times = 1
-        if need_again_test:
-            times = 2
+        times = 3 if main_btn == "制作" else 2 if need_again_test else 1
         for attempt in range(times):
             if result := self.wait_ocr(match=entry_match, time_out=3):
                 drink_done = False
@@ -572,7 +570,8 @@ class DailyActivityMixin:
                     return "confirm"
                 return True
             else:
-                if need_again_test and attempt == 0:
+                # 限时等原入口重新可识别后才重试 Alt 点击；未知页不盲点。
+                if attempt + 1 < times and self.wait_ocr(match=entry_match, time_out=3):
                     continue
                 else:
                     self.ocr(log=True, screenshot=True)
