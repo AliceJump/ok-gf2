@@ -8,7 +8,7 @@ from tests.TestChenyanEntry import ChenyanDevice
 
 
 class GuildScreen(ChenyanDevice):
-    def __init__(self, dropped=0, unknown=False, entry_misses=0):
+    def __init__(self, dropped=0, unknown=False, entry_misses=0, confirmation_misses=0):
         """分别模拟入口丢失点击和进入未知页面。"""
         super().__init__(ready=False, opens_in="6天21小时后开启")
         self.config["班组"] = True
@@ -17,6 +17,8 @@ class GuildScreen(ChenyanDevice):
         self.unknown = unknown
         self.entry_misses = entry_misses
         self.entry_reads = 0
+        self.confirmation_misses = confirmation_misses
+        self.confirmation_reads = 0
         self.entry_clicks = 0
         self.duty_clicks = 0
 
@@ -29,8 +31,11 @@ class GuildScreen(ChenyanDevice):
             return [SimpleNamespace(name="班组")] if self.page == "home" else []
         if match == ["要务"]:
             return [SimpleNamespace(name="要务")] if self.page == "guild" else []
-        if isinstance(match, list) and "每日要务已完成" in match and self.page != "guild":
-            raise TimeoutError("主页上没有每日要务")
+        if isinstance(match, list) and "每日要务已完成" in match:
+            self.confirmation_reads += 1
+            if self.page != "guild" or self.confirmation_reads <= self.confirmation_misses:
+                return []
+            return [SimpleNamespace(name="每日要务已完成")]
         return super().wait_ocr(*args, match=match, **kwargs)
 
     def click_box_by_match_position(self, *args, **kwargs):
@@ -57,6 +62,13 @@ class GuildScreen(ChenyanDevice):
 
 
 class GuildEntryTest(unittest.TestCase):
+    def test_duty_page_confirmation_is_retried_after_dropped_click(self):
+        """要务点击命中但页面未确认时，继续在班组页有界重试。"""
+        task = GuildScreen(confirmation_misses=1)
+        self.assertEqual(["班组"], task.run_guild()["success"])
+        self.assertEqual(1, task.entry_clicks)
+        self.assertEqual(2, task.duty_clicks)
+
     def test_delayed_entry_is_detected_before_clicking(self):
         """首次识别超时后继续等待，入口可见时才点击并执行要务。"""
         task = GuildScreen(entry_misses=1)

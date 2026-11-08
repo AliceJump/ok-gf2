@@ -185,12 +185,22 @@ class DailyBattleMixin:
         opened = False
         for _ in range(3):
             result = self.wait_ocr(match=["班组"], box=self.box._group, time_out=3, raise_if_not_found=False)
-            if not result:
-                continue
-            self.click_box_by_match_position(result, "班组", after_sleep=2)
-            if self.wait_click_ocr(
+            if result:
+                self.click_box_by_match_position(result, "班组", after_sleep=2)
+            duty_clicked = self.wait_click_ocr(
                 match=["要务"], box=self.box.bottom_right, time_out=10, after_sleep=0.5, settle_time=2
-            ):
+            )
+            if not duty_clicked:
+                continue
+            # wait_click_ocr 命中的是可点击文字，不代表点击已经切到要务页；必须确认后才能继续。
+            result = self.wait_ocr(
+                match=["开始作战", "每日要务已完成"],
+                box=self.box.bottom_right,
+                time_out=3,
+                raise_if_not_found=False,
+                log=True,
+            )
+            if result:
                 opened = True
                 break
         if opened:
