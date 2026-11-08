@@ -26,7 +26,15 @@ from collections.abc import Callable, Iterable
 
 from ok.task.exceptions import CaptureException, FinishedException, HotkeyConfigException, TaskDisabledException
 
-_STOP_EXCEPTIONS = (TaskDisabledException, FinishedException, CaptureException, HotkeyConfigException)
+from src.core.exceptions import SessionStopException
+
+_STOP_EXCEPTIONS = (
+    TaskDisabledException,
+    FinishedException,
+    CaptureException,
+    HotkeyConfigException,
+    SessionStopException,
+)
 
 TaskItem = tuple[str, Callable[[], object]]
 # 可选的第三元素：开关谓词。提供时替代默认的 config.get(key) 判断（例如多开关 OR 逻辑）。
@@ -366,7 +374,8 @@ class DailyTaskRunner:
         self.final_summary["status"] = "异常结束"
         self.final_summary["exception"] = str(e)
         self.final_summary["current_task"] = self.current_task_key or self.final_summary.get("current_task", "")
-        if self.current_task_key:
+        # 任务前中止时 key 已恢复到 all，保留异常原因但不冒充任务失败。
+        if self.current_task_key and self.current_task_key not in self.task_status.get("all", []):
             self.set_task_failure(self._tr("异常: {err}").format(err=e), task_name=self.current_task_key)
 
         # 只有真正进入过轮次才归档；切号阶段失败时 task_status 还是上一轮的残留，补记会产生错误数据

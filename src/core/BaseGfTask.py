@@ -2,9 +2,9 @@ import re
 import time
 
 from ok import BaseTask, Box, Logger, find_boxes_by_name
-from ok.task.exceptions import FinishedException
 
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
+from src.core.exceptions import SessionStopException
 from src.data.FeatureList import FeatureList as fL
 from src.image.frame_processs import isolate_by_hsv_ranges
 from src.image.hsv_config import HSVRange as hR
@@ -369,8 +369,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         if total >= 2:
             # 断线提示后的主页仍可见，不能把背景入口当成可继续操作的会话。
             if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
-                # ok-script 将 FinishedException 传播到 TaskExecutor 后立即终止后续任务。
-                raise FinishedException("游戏重连失败，即将返回登录界面，请重新登录后重试")
+                # 该异常由执行器通用异常路径处理，只禁用当前日常任务并保留排队任务。
+                raise SessionStopException("游戏重连失败，即将返回登录界面，请重新登录后重试")
             return True
         if self.ocr(match="前往战役", box=self.box.bottom):
             self._confirm_meal_result()

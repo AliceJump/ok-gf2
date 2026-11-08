@@ -5,8 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from ok.task.exceptions import FinishedException
-
+from src.core.exceptions import SessionStopException
 from src.tasks.DailyTaskRunner import DailyTaskRunner
 from tests.TestActivityNavigation import method
 from tests.TestDailyRecovery import Task
@@ -17,7 +16,7 @@ class HomeConnectionTest(unittest.TestCase):
         """保留主页背景标识，并独立控制中央连接提示的可见性。"""
         check = method("src/core/BaseGfTask.py", "is_main")
         check.__globals__["fL"] = SimpleNamespace(dog_icon="dog", message_icon="message")
-        check.__globals__["FinishedException"] = FinishedException
+        check.__globals__["SessionStopException"] = SessionStopException
         task = Mock()
         task.find_one.return_value = None
 
@@ -38,7 +37,7 @@ class HomeConnectionTest(unittest.TestCase):
         """重连失败覆盖主页时中止，不点击背景入口或返回键。"""
         task = self.home_screen("重连失败，即将返回登录界面")
         ensure_main = method("src/core/BaseGfTask.py", "ensure_main")
-        with self.assertRaisesRegex(FinishedException, "重连失败"):
+        with self.assertRaisesRegex(SessionStopException, "重连失败"):
             ensure_main(task)
         task.click.assert_not_called()
         task.back.assert_not_called()
@@ -57,7 +56,7 @@ class HomeConnectionTest(unittest.TestCase):
         guild, rewards = Mock(), Mock()
         runner = DailyTaskRunner(task, [("班组", guild), ("领任务", rewards)])
 
-        with self.assertRaisesRegex(FinishedException, "重连失败"):
+        with self.assertRaisesRegex(SessionStopException, "重连失败"):
             runner.run()
 
         summary = runner.final_summary["per_round"][0]
@@ -65,7 +64,8 @@ class HomeConnectionTest(unittest.TestCase):
         self.assertEqual(["班组", "领任务"], summary["all"])
         self.assertEqual(2, len(summary["all"]))
         self.assertEqual([], runner.final_summary["all_fail_tasks"])
-        self.assertIn("重连失败", runner.failure_details[""]["班组"])
+        self.assertNotIn("班组", runner.failure_details.get("", {}))
+        self.assertIn("重连失败", runner.final_summary["exception"])
         guild.assert_not_called()
         rewards.assert_not_called()
 
