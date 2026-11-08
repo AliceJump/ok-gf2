@@ -18,7 +18,7 @@ from src.core.lineup_config import (
     preset_name_for_kind,
     support_enabled_for_kind,
 )
-from src.core.lineup_plan import deploy_count_from_boxes, parse_count_text
+from src.core.lineup_plan import deploy_count_from_boxes, parse_count_text, undeployed_notice
 from src.core.stamina_config import KEY_AUTO_POTION, STAMINA_OPTION_NAME
 from src.core.support_select import (
     BUTTON_BOX,
@@ -1480,7 +1480,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             )
             if not ok_bool:
                 if start_result and ("还有可部署" in start_result[0].name):
-                    self.log_info("阵容没上满!", notify=True)
+                    self.log_info(undeployed_notice(start_result[0].name), notify=True)
 
                     self.wait_click_ocr(match=["确认"], box=self.box.bottom, time_out=5, raise_if_not_found=True)
                     self.wait_ocr(match=["行动结束"], box=self.box.bottom_right, raise_if_not_found=False, time_out=15)
