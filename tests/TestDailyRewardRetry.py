@@ -2,7 +2,7 @@
 
 import re
 import unittest
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
 from src.tasks.daily.daily_reward_mixin import DailyRewardMixin
@@ -15,6 +15,8 @@ class DailyRewardRetryTest(unittest.TestCase):
         task.box_of_screen.side_effect = lambda *bounds: bounds
         task._switch_xunlu_rewards_page.return_value = True
         task._claim_xunlu_rewards.return_value = True
+        task._xunlu_no_reward_status.return_value = "当前无可领取项"
+        task._record_xunlu_result.side_effect = MethodType(DailyRewardMixin._record_xunlu_result, task)
         task.action_clicks = 0
 
         def click(**kwargs):
@@ -59,6 +61,13 @@ class DailyRewardRetryTest(unittest.TestCase):
         self.assertEqual("待核查", DailyRewardMixin.xunlu(task))
         self.assertEqual(1, task.action_clicks)
 
+    def test_action_button_ocr_miss_without_completion_evidence_is_uncertain(self):
+        """按钮漏读不能冒充到账证据，保留行动页现场。"""
+        task = self.action_task(2)
+        task._xunlu_no_reward_status.return_value = "待核查"
+        self.assertEqual("待核查", DailyRewardMixin.xunlu(task))
+        task.screenshot.assert_called_once_with("Xunlu_Uncertain_每日行动")
+
     def explore_task(self, label):
         """按真实 OCR 的正则搜索方式提供探索页面文字。"""
         task = Mock()
@@ -78,11 +87,20 @@ class DailyRewardRetryTest(unittest.TestCase):
         return task, clicked
 
     def test_explore_completed_notice_is_not_clicked(self):
-        """已领取说明是终态而不是领取或派遣按钮。"""
+        """采集已领取说明不能点击，派遣仍需保留待核查。"""
         task, clicked = self.explore_task("当前难度奖励已全部领取")
-        self.assertIs(True, DailyRewardMixin.explore_claim(task))
+        self.assertEqual("待核查", DailyRewardMixin.explore_claim(task))
         self.assertEqual([], clicked)
         task.wait_pop_up.assert_not_called()
+        task.screenshot.assert_called_once_with("explore_dispatch_unconfirmed")
+        task.ensure_main.assert_called_once()
+
+    def test_explore_claim_without_dispatch_is_uncertain(self):
+        """实际领取分支也不得把未识别到派遣当成功。"""
+        task, clicked = self.explore_task("领取")
+        self.assertEqual("待核查", DailyRewardMixin.explore_claim(task))
+        self.assertEqual(["领取"], clicked)
+        task.screenshot.assert_called_once_with("explore_dispatch_unconfirmed")
         task.ensure_main.assert_called_once()
 
     def test_explore_unrelated_claim_text_remains_uncertain(self):

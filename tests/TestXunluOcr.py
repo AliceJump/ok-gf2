@@ -13,7 +13,7 @@ class XunluOcrTest(unittest.TestCase):
         task.box_of_screen.side_effect = lambda *bounds: bounds
         task._switch_xunlu_rewards_page.return_value = True
         task._claim_xunlu_rewards.return_value = True
-        task._xunlu_no_reward_status.return_value = "待核查"
+        task._xunlu_no_reward_status.side_effect = lambda page: "当前无可领取项" if clicks else "待核查"
         clicks = []
         read_count = 0
         click_count = 0
