@@ -215,7 +215,8 @@ class DailyTaskRunner:
 
     def execute_task(self, key, func, predicate=None):
         """执行单个任务项，返回 True 表示可以继续，False 表示该项失败。"""
-        self.task_status["all"].remove(key)
+        unprocessed_index = self.task_status["all"].index(key)
+        self.task_status["all"].pop(unprocessed_index)
         if predicate is not None:
             enabled = bool(predicate())
         elif key in ALWAYS_RUN_KEYS:
@@ -234,6 +235,7 @@ class DailyTaskRunner:
         try:
             self.task.ensure_main(**self.ensure_main_kwargs)
         except _STOP_EXCEPTIONS:
+            self.task_status["all"].insert(unprocessed_index, key)
             raise
         except Exception:
             # 恢复主页失败仍须中止，但不能让已移出未处理列表的任务从汇总中消失。

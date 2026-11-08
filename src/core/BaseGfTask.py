@@ -2,6 +2,7 @@ import re
 import time
 
 from ok import BaseTask, Box, Logger, find_boxes_by_name
+from ok.task.exceptions import FinishedException
 
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
 from src.data.FeatureList import FeatureList as fL
@@ -368,7 +369,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         if total >= 2:
             # 断线提示后的主页仍可见，不能把背景入口当成可继续操作的会话。
             if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
-                raise RuntimeError("游戏重连失败，即将返回登录界面，请重新登录后重试")
+                # ok-script 将 FinishedException 传播到 TaskExecutor 后立即终止后续任务。
+                raise FinishedException("游戏重连失败，即将返回登录界面，请重新登录后重试")
             return True
         if self.ocr(match="前往战役", box=self.box.bottom):
             self._confirm_meal_result()

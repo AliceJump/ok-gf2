@@ -241,6 +241,7 @@ class DailyRecoveryTest(unittest.TestCase):
                     runner.run()
                 self.assertEqual([], self.calls)
                 self.assertEqual([], runner.task_status["failed"])
+                self.assertEqual(["情报和战前补给", "活动自律", "领任务"], runner.task_status["all"])
 
 
 if __name__ == "__main__":
