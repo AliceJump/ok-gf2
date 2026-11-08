@@ -22,7 +22,7 @@ except ImportError:  # mac 上没装 ok 框架：只需要 ConfigOption 这个�
     sys.modules.update({"ok": ok, "ok.util": util, "ok.util.config": config})
 
 from src.core.base_mixin.lineup_mixin import LineupMixin
-from src.core.lineup_plan import LineupState, Unit, deploy_count_from_boxes, plan_lineup
+from src.core.lineup_plan import LineupState, Unit, deploy_count_from_boxes, plan_lineup, undeployed_notice
 
 
 def own(name, power, deployed=False):
@@ -405,6 +405,18 @@ class VisionTest(unittest.TestCase):
         self.assertEqual(parse_badge_text("'4"), 4)
         self.assertEqual(parse_badge_text("-"), 0)
         self.assertIsNone(parse_badge_text("12"))
+
+
+class UndeployedNoticeTest(unittest.TestCase):
+    """实录 2026-11-08 极限峰值：人形 5/5，弹的是「还有可部署的武装小组」，日志别再说阵容没上满。"""
+
+    def test_armed_squad_is_not_reported_as_short_lineup(self):
+        text = undeployed_notice("还有可部署的武装小组，是否确定开始作战？")
+        self.assertIn("武装小组", text)
+        self.assertNotIn("阵容没上满", text)
+
+    def test_doll_slots_still_reported(self):
+        self.assertEqual(undeployed_notice("还有可部署的单位，是否确定开始作战？"), "阵容没上满!")
 
 
 if __name__ == "__main__":
