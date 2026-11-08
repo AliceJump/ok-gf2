@@ -187,6 +187,17 @@ class DailyBattleMixin:
             result = self.wait_ocr(match=["班组"], box=self.box._group, time_out=3, raise_if_not_found=False)
             if result:
                 self.click_box_by_match_position(result, "班组", after_sleep=2)
+            # 重试前先确认可能已经进入要务页，完成状态不一定还显示“要务”入口。
+            result = self.wait_ocr(
+                match=["开始作战", "每日要务已完成"],
+                box=self.box.bottom_right,
+                time_out=3,
+                raise_if_not_found=False,
+                log=True,
+            )
+            if result:
+                opened = True
+                break
             duty_clicked = self.wait_click_ocr(
                 match=["要务"], box=self.box.bottom_right, time_out=10, after_sleep=0.5, settle_time=2
             )
@@ -204,9 +215,6 @@ class DailyBattleMixin:
                 opened = True
                 break
         if opened:
-            result = self.wait_ocr(
-                match=["开始作战", "每日要务已完成"], box=self.box.bottom_right, raise_if_not_found=True, log=True
-            )
             if result[0].name == "开始作战":
                 self.click(result)
                 self.auto_battle()

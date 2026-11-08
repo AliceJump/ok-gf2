@@ -8,7 +8,15 @@ from tests.TestChenyanEntry import ChenyanDevice
 
 
 class GuildScreen(ChenyanDevice):
-    def __init__(self, dropped=0, unknown=False, entry_misses=0, confirmation_misses=0):
+    def __init__(
+        self,
+        dropped=0,
+        unknown=False,
+        entry_misses=0,
+        confirmation_misses=0,
+        duty_click_drops=0,
+        already_completed=False,
+    ):
         """分别模拟入口丢失点击和进入未知页面。"""
         super().__init__(ready=False, opens_in="6天21小时后开启")
         self.config["班组"] = True
@@ -19,6 +27,9 @@ class GuildScreen(ChenyanDevice):
         self.entry_reads = 0
         self.confirmation_misses = confirmation_misses
         self.confirmation_reads = 0
+        self.duty_click_drops = duty_click_drops
+        self.already_completed = already_completed
+        self.duty_page_ready = False
         self.entry_clicks = 0
         self.duty_clicks = 0
 
@@ -33,7 +44,7 @@ class GuildScreen(ChenyanDevice):
             return [SimpleNamespace(name="要务")] if self.page == "guild" else []
         if isinstance(match, list) and "每日要务已完成" in match:
             self.confirmation_reads += 1
-            if self.page != "guild" or self.confirmation_reads <= self.confirmation_misses:
+            if self.page != "guild" or not self.duty_page_ready or self.confirmation_reads <= self.confirmation_misses:
                 return []
             return [SimpleNamespace(name="每日要务已完成")]
         return super().wait_ocr(*args, match=match, **kwargs)
@@ -45,6 +56,7 @@ class GuildScreen(ChenyanDevice):
             self.page = "unknown"
         elif self.entry_clicks > self.dropped:
             self.page = "guild"
+            self.duty_page_ready = self.already_completed
 
     def wait_click_ocr(self, *args, match=None, **kwargs):
         """只有实际进入班组页才允许点击要务。"""
@@ -52,6 +64,8 @@ class GuildScreen(ChenyanDevice):
             if self.page != "guild":
                 return False
             self.duty_clicks += 1
+            if self.duty_clicks > self.duty_click_drops:
+                self.duty_page_ready = True
         return super().wait_click_ocr(*args, match=match, **kwargs)
 
     def run_guild(self):
@@ -63,11 +77,25 @@ class GuildScreen(ChenyanDevice):
 
 class GuildEntryTest(unittest.TestCase):
     def test_duty_page_confirmation_is_retried_after_dropped_click(self):
-        """要务点击命中但页面未确认时，继续在班组页有界重试。"""
-        task = GuildScreen(confirmation_misses=1)
+        """要务点击未生效时，继续在班组页有界重试。"""
+        task = GuildScreen(duty_click_drops=1)
         self.assertEqual(["班组"], task.run_guild()["success"])
         self.assertEqual(1, task.entry_clicks)
         self.assertEqual(2, task.duty_clicks)
+
+    def test_delayed_duty_confirmation_is_reused_without_second_click(self):
+        """要务页确认文字延迟出现时，不重复点击已进入的页面。"""
+        task = GuildScreen(confirmation_misses=1)
+        self.assertEqual(["班组"], task.run_guild()["success"])
+        self.assertEqual(1, task.entry_clicks)
+        self.assertEqual(1, task.duty_clicks)
+
+    def test_completed_duty_page_skips_missing_duty_entry_text(self):
+        """已完成页面没有要务入口文字时，直接复用页面确认继续后续任务。"""
+        task = GuildScreen(already_completed=True)
+        self.assertEqual(["班组"], task.run_guild()["success"])
+        self.assertEqual(1, task.entry_clicks)
+        self.assertEqual(0, task.duty_clicks)
 
     def test_delayed_entry_is_detected_before_clicking(self):
         """首次识别超时后继续等待，入口可见时才点击并执行要务。"""
