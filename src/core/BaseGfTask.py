@@ -330,7 +330,7 @@ class BaseGfTask(RuntimeMixin, BaseTask):
 
     def ensure_main(self, recheck_time=1, time_out=30, esc=True, loading_grace=120):
         """
-        回到主页。超时后如果画面还是加载页（NOW LOADING / 移动中 / 资源加载中），超时顺延，
+        回到主页。画面是加载页（NOW LOADING / 移动中 / 资源加载中）的时间不算进 time_out，超时顺延，
         最多多等 loading_grace 秒（实录：离开活动层的「艾莫号 移动中…69%」加载页把 60 秒耗光，任务被判失败）。
         """
         self.info_set("current_task", "go_to_main")
@@ -348,16 +348,21 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 hard_deadline = deadline + loading_grace
                 self._deadline_bump = 0
             now = time.time()
-            if now >= deadline:
+            loading = False
+            if now < hard_deadline:
                 self.next_frame()
-                if now < hard_deadline and self._is_loading_frame(self.ocr()):
-                    if not extended:
-                        self.log_info("画面还在加载中（移动中/资源加载中），回主页的超时顺延", notify=False)
-                        extended = True
-                    deadline = now + 10
-                else:
-                    self.debug_shot("ensure_main_timeout")
-                    raise Exception("请从游戏主页进入")
+                loading = self._is_loading_frame(self.ocr())
+            if loading:
+                # 加载页的时间不算进回主页的超时：每看到一次加载页，至少再留 15 秒给加载完以后的返回操作。
+                # 实录 2026-11-08：从极限峰值部署界面回主页，退出作战用了 14 秒、接着加载 15 秒，加载刚结束就满 30 秒，
+                # 只在超时那一刻看画面时已经不是加载页了，报「请从游戏主页进入」，其实再点一下返回就到主页
+                if not extended:
+                    self.log_info("画面还在加载中（移动中/资源加载中），回主页的超时顺延", notify=False)
+                    extended = True
+                deadline = min(max(deadline, now + 15), hard_deadline)
+            elif now >= deadline:
+                self.debug_shot("ensure_main_timeout")
+                raise Exception("请从游戏主页进入")
             self.sleep(recheck_time)
 
     def skip_dialogs(self, end_match, end_box=None, time_out=120, has_dialog=True, raise_if_not_found=True):
