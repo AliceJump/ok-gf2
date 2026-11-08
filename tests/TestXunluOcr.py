@@ -13,7 +13,7 @@ class XunluOcrTest(unittest.TestCase):
         task.box_of_screen.side_effect = lambda *bounds: bounds
         task._switch_xunlu_rewards_page.return_value = True
         task._claim_xunlu_rewards.return_value = True
-        task._xunlu_no_reward_status.return_value = "待核查"
+        task._xunlu_no_reward_status.side_effect = lambda page: "当前无可领取项" if clicks else "待核查"
         clicks = []
         read_count = 0
         click_count = 0
@@ -21,7 +21,7 @@ class XunluOcrTest(unittest.TestCase):
         def read(**kwargs):
             nonlocal read_count
             read_count += 1
-            if read_count <= 3:
+            if read_count <= 3 or kwargs["match"][0].fullmatch("每日行动"):
                 return [Mock()]
             # After clicking, a surviving OCR-truncated button must still be detected.
             return [SimpleNamespace(name="键领取")] if persists and kwargs["match"][0].fullmatch("键领取") else []

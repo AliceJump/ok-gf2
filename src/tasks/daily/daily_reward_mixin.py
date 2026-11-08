@@ -90,15 +90,26 @@ class DailyRewardMixin:
         )
         if clicked:
             # 行动里程直接入账：确认仍在行动页，且原先可见的领取按钮消失。
-            if not self.wait_ocr(
-                match=[re.compile(r"^每日行动$")], box=self.box.left, time_out=3, raise_if_not_found=False
-            ):
-                action_result = "待核查"
-            elif self.wait_ocr(match=[claim_match], box=action_box, time_out=2, raise_if_not_found=False):
-                self.log_error("每日行动点击领取后按钮仍在，未确认领取完成")
-                action_result = False
-            else:
-                action_result = True
+            for attempt in range(3):
+                if not self.wait_ocr(
+                    match=[re.compile(r"^每日行动$")], box=self.box.left, time_out=3, raise_if_not_found=False
+                ):
+                    action_result = "待核查"
+                    break
+                if not self.wait_ocr(match=[claim_match], box=action_box, time_out=2, raise_if_not_found=False):
+                    # OCR 漏读也会表现为按钮消失；仍需预期页面的明确已领完证据。
+                    action_result = True if self._xunlu_no_reward_status("action") == "当前无可领取项" else "待核查"
+                    break
+                if attempt == 2:
+                    self.log_error("每日行动三次点击领取后按钮仍在，未确认领取完成")
+                    action_result = False
+                    break
+                self.log_info(f"每日行动领取按钮仍在，重试 {attempt + 1}/2")
+                if not self.wait_click_ocr(
+                    match=[claim_match], box=action_box, time_out=2, raise_if_not_found=False, after_sleep=1
+                ):
+                    action_result = "待核查"
+                    break
         else:
             action_result = self._xunlu_no_reward_status("action")
         self._record_xunlu_result("每日行动", action_result)
@@ -301,16 +312,27 @@ class DailyRewardMixin:
             log=True,
         ):
             return
-        if not self.wait_click_ocr(
-            match=re.compile("领取"),
+        if self.wait_ocr(
+            match=re.compile(r"^\s*当前难度奖励已全部领取\s*$"),
             box=self.box.bottom_right,
             time_out=2,
-            raise_if_not_found=True,
-            after_sleep=2,
-            log=True,
+            raise_if_not_found=False,
         ):
-            return
-        self.wait_pop_up(count=1)
+            self.log_info("当前难度奖励已全部领取，继续核查派遣")
+        else:
+            if not self.wait_click_ocr(
+                match=re.compile(r"^\s*领取\s*$"),
+                box=self.box.bottom_right,
+                time_out=2,
+                raise_if_not_found=False,
+                after_sleep=2,
+                log=True,
+            ):
+                self.log_warning("未确认探索领取按钮或已领取状态，探索领取待核查")
+                self.screenshot("explore_claim_unconfirmed")
+                self.ensure_main()
+                return "待核查"
+            self.wait_pop_up(count=1)
         if not self.wait_click_ocr(
             match=re.compile("派遣"),
             box=self.box.bottom_right,
@@ -319,8 +341,10 @@ class DailyRewardMixin:
             raise_if_not_found=False,
             log=True,
         ):
+            self.log_warning("未确认探索派遣入口，探索领取待核查")
+            self.screenshot("explore_dispatch_unconfirmed")
             self.ensure_main()
-            return
+            return "待核查"
 
     def star_wish(self):
         self.info_set("current_task", "star_wish")

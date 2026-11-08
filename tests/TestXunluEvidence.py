@@ -68,13 +68,14 @@ class XunluOutcomeTest(unittest.TestCase):
         task = self.task()
         task.wait_click_ocr.side_effect = [False, True, True, True]
         task.wait_ocr.side_effect = [True, True, True, False]
+        task._xunlu_no_reward_status.return_value = "当前无可领取项"
         self.assertIs(True, namespace["xunlu"](task))
         task._record_xunlu_result.assert_any_call("每日行动", True)
 
     def test_daily_button_persists_after_click_is_failure(self):
         """Verify daily button persists after click is failure."""
         task = self.task()
-        task.wait_click_ocr.side_effect = [False, True, True, True]
+        task.wait_click_ocr.side_effect = [False, True, True, True, True, True]
         self.assertIs(False, namespace["xunlu"](task))
         task._record_xunlu_result.assert_any_call("巡录奖励", True)
 

@@ -40,6 +40,8 @@ jobs:
 
       - name: Run actionlint
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $version = "1.7.12"
           $archive = Join-Path $env:RUNNER_TEMP "actionlint.zip"
@@ -47,7 +49,21 @@ jobs:
           $expected = "6e7241b51e6817ea6a047693d8e6fed13b31819c9a0dd6c5a726e1592d22f6e9"
           $url = "https://github.com/rhysd/actionlint/releases/download/v$version/actionlint_${version}_windows_amd64.zip"
 
-          Invoke-WebRequest -Uri $url -OutFile $archive
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $archive
+          } catch {
+            Write-Warning "Direct actionlint download failed; trying the official release API."
+            $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = "application/vnd.github+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            }
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/rhysd/actionlint/releases/tags/v$version" -Headers $headers
+            $asset = @($release.assets | Where-Object { $_.name -eq "actionlint_${version}_windows_amd64.zip" })
+            if ($asset.Count -ne 1) { throw "Expected exactly one actionlint Windows release asset" }
+            $headers.Accept = "application/octet-stream"
+            Invoke-WebRequest -Uri $asset[0].url -Headers $headers -OutFile $archive
+          }
           $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
           if ($actual -ne $expected) {
             throw "actionlint archive checksum mismatch: $actual"

@@ -23,6 +23,7 @@ class XunluTest(unittest.TestCase):
                 task.wait_click_ocr.side_effect = [preview, True, True, True]
                 task._switch_xunlu_rewards_page.return_value = True
                 task._claim_xunlu_rewards.return_value = True
+                task._xunlu_no_reward_status.return_value = "当前无可领取项"
                 self.assertTrue(ns["xunlu"](task))
                 task.ensure_main.assert_called_once()
                 self.assertEqual(4, task.wait_click_ocr.call_count)
@@ -39,7 +40,7 @@ class XunluTest(unittest.TestCase):
 
     def test_failed_reward_page_switch_stops_before_claiming(self):
         task = Mock()
-        task.wait_ocr.return_value = True
+        task.wait_ocr.side_effect = [True, True, True, False]
         task.wait_click_ocr.side_effect = [False, True, True]
         task._switch_xunlu_rewards_page.return_value = False
         self.assertFalse(DailyRewardMixin.xunlu(task))
@@ -63,6 +64,7 @@ class XunluTest(unittest.TestCase):
         task = Mock()
         task.box_of_screen.side_effect = lambda *coords: coords
         task.wait_ocr.side_effect = [[Mock()], True, True, False]
+        task._xunlu_no_reward_status.return_value = "当前无可领取项"
         selected = []
         calls = 0
 
