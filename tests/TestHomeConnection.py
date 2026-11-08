@@ -12,18 +12,19 @@ from tests.TestDailyRecovery import Task
 
 
 class HomeConnectionTest(unittest.TestCase):
-    def home_screen(self, dialog=""):
+    def home_screen(self, dialog="", markers=None):
         """保留主页背景标识，并独立控制中央连接提示的可见性。"""
         check = method("src/core/BaseGfTask.py", "is_main")
         check.__globals__["fL"] = SimpleNamespace(dog_icon="dog", message_icon="message")
         check.__globals__["SessionStopException"] = SessionStopException
         task = Mock()
         task.find_one.return_value = None
+        markers = tuple(markers or ("整备室", "活动层", "招募"))
 
         def read(*, match, **kwargs):
             """将主页导航和中央断线提示作为不同识别结果。"""
             if isinstance(match, list):
-                return [SimpleNamespace(name=name) for name in ("整备室", "活动层", "招募")]
+                return [SimpleNamespace(name=name) for name in markers]
             if isinstance(match, re.Pattern) and match.search(dialog):
                 return [SimpleNamespace(name=dialog)]
             return []
@@ -36,6 +37,15 @@ class HomeConnectionTest(unittest.TestCase):
     def test_disconnect_overlay_is_not_a_usable_home(self):
         """重连失败覆盖主页时中止，不点击背景入口或返回键。"""
         task = self.home_screen("重连失败，即将返回登录界面")
+        ensure_main = method("src/core/BaseGfTask.py", "ensure_main")
+        with self.assertRaisesRegex(SessionStopException, "重连失败"):
+            ensure_main(task)
+        task.click.assert_not_called()
+        task.back.assert_not_called()
+
+    def test_disconnect_overlay_is_detected_without_two_home_markers(self):
+        """主页标识不足两个时，断线提示仍立即中止。"""
+        task = self.home_screen("重连失败，即将返回登录界面", markers=("整备室",))
         ensure_main = method("src/core/BaseGfTask.py", "ensure_main")
         with self.assertRaisesRegex(SessionStopException, "重连失败"):
             ensure_main(task)

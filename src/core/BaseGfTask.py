@@ -364,13 +364,12 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
                 feature_boxes.append(result)
+        # 断线提示可能遮住主页标识，必须先于主页数量判断处理。
+        if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
+            raise SessionStopException("游戏重连失败，即将返回登录界面，请重新登录后重试")
         total = len(boxes) + len(feature_boxes)
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:
-            # 断线提示后的主页仍可见，不能把背景入口当成可继续操作的会话。
-            if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
-                # 该异常由执行器通用异常路径处理，只禁用当前日常任务并保留排队任务。
-                raise SessionStopException("游戏重连失败，即将返回登录界面，请重新登录后重试")
             return True
         if self.ocr(match="前往战役", box=self.box.bottom):
             self._confirm_meal_result()
