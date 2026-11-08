@@ -26,7 +26,15 @@ from collections.abc import Callable, Iterable
 
 from ok.task.exceptions import CaptureException, FinishedException, HotkeyConfigException, TaskDisabledException
 
-_STOP_EXCEPTIONS = (TaskDisabledException, FinishedException, CaptureException, HotkeyConfigException)
+from src.core.exceptions import SessionStopException
+
+_STOP_EXCEPTIONS = (
+    TaskDisabledException,
+    FinishedException,
+    CaptureException,
+    HotkeyConfigException,
+    SessionStopException,
+)
 
 TaskItem = tuple[str, Callable[[], object]]
 # 可选的第三元素：开关谓词。提供时替代默认的 config.get(key) 判断（例如多开关 OR 逻辑）。
@@ -215,7 +223,8 @@ class DailyTaskRunner:
 
     def execute_task(self, key, func, predicate=None):
         """执行单个任务项，返回 True 表示可以继续，False 表示该项失败。"""
-        self.task_status["all"].remove(key)
+        unprocessed_index = self.task_status["all"].index(key)
+        self.task_status["all"].pop(unprocessed_index)
         if predicate is not None:
             enabled = bool(predicate())
         elif key in ALWAYS_RUN_KEYS:
@@ -231,7 +240,15 @@ class DailyTaskRunner:
         self.failure_screenshot_tasks.discard(key)
         self.final_summary["current_task"] = key
         self.task.log_info(self._tr("开始任务: {key}").format(key=self._tr(key)))
-        self.task.ensure_main(**self.ensure_main_kwargs)
+        try:
+            self.task.ensure_main(**self.ensure_main_kwargs)
+        except _STOP_EXCEPTIONS:
+            self.task_status["all"].insert(unprocessed_index, key)
+            raise
+        except Exception:
+            # 恢复主页失败仍须中止，但不能让已移出未处理列表的任务从汇总中消失。
+            self.task_status["failed"].append(key)
+            raise
         try:
             result = func()
         except _STOP_EXCEPTIONS:
@@ -357,7 +374,8 @@ class DailyTaskRunner:
         self.final_summary["status"] = "异常结束"
         self.final_summary["exception"] = str(e)
         self.final_summary["current_task"] = self.current_task_key or self.final_summary.get("current_task", "")
-        if self.current_task_key:
+        # 任务前中止时 key 已恢复到 all，保留异常原因但不冒充任务失败。
+        if self.current_task_key and self.current_task_key not in self.task_status.get("all", []):
             self.set_task_failure(self._tr("异常: {err}").format(err=e), task_name=self.current_task_key)
 
         # 只有真正进入过轮次才归档；切号阶段失败时 task_status 还是上一轮的残留，补记会产生错误数据

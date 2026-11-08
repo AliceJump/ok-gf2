@@ -221,6 +221,28 @@ class DailyRecoveryTest(unittest.TestCase):
             runner.run()
         self.assertEqual(self.calls, ["supply"])
 
+    def test_control_and_device_errors_before_task_stop_without_failure_count(self):
+        """主页恢复阶段的停止及设备信号仍传播，不冒充普通任务失败。"""
+        for error in (
+            TaskDisabledException(),
+            FinishedException(),
+            CaptureException("capture lost"),
+            HotkeyConfigException("bad"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                runner = self.make_runner()
+
+                def stop(*, error=error, **kwargs):
+                    """在任务开始前抛出当前控制或设备信号。"""
+                    raise error
+
+                self.task.ensure_main = stop
+                with self.assertRaises(type(error)):
+                    runner.run()
+                self.assertEqual([], self.calls)
+                self.assertEqual([], runner.task_status["failed"])
+                self.assertEqual(["情报和战前补给", "活动自律", "领任务"], runner.task_status["all"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

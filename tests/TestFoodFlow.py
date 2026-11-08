@@ -181,6 +181,90 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_transient_entry_ocr_miss_still_allows_bounded_retry(self):
+        """交互未切页且入口瞬时漏读时，限时等待应容许饮品和用餐再次交互。"""
+
+        def run_scene(drink):
+            """为每个子场景创建独立状态，避免回调捕获循环变量。"""
+            task = FoodScreen(drink=drink)
+            click_entry, read_page = task.click_with_key, task.wait_ocr
+            entry_label = "茶歇一刻" if drink else "美味烹调"
+            entry_clicks, misses = [], []
+
+            def click(key, result):
+                """第一次交互丢失，并让下一帧入口识别短暂失败。"""
+                entry_clicks.append(result)
+                if len(entry_clicks) == 1:
+                    misses.append(True)
+                else:
+                    click_entry(key, result)
+
+            def read(**kwargs):
+                """只漏读一次原入口，其余文字仍反映真实模拟页面。"""
+                if task.state == "entry" and misses and task.matches(kwargs.get("match"), entry_label):
+                    misses.pop()
+                    return []
+                return read_page(**kwargs)
+
+            def wait(**kwargs):
+                """入口等待推进多个识别帧，不能等同于一次即时 OCR。"""
+                if task.matches(kwargs.get("match"), entry_label):
+                    for _ in range(3):
+                        if result := read(**kwargs):
+                            return result
+                    return []
+                return read_page(**kwargs)
+
+            task.click_with_key, task.ocr, task.wait_ocr = click, read, wait
+            self.assertIs(True, task.run())
+            self.assertEqual(2, len(entry_clicks))
+            self.assertEqual([], misses)
+
+        for drink in (False, True):
+            with self.subTest(drink=drink):
+                run_scene(drink)
+
+    def test_dropped_drink_entry_is_retried_while_entry_remains_visible(self):
+        """日志中 Alt 点击后仍停留茶歇入口时，应重试交互而非直接失败。"""
+        task = FoodScreen(drink=True)
+        original = task.click_with_key
+        entry_clicks = []
+
+        def drop_first_entry(key, result):
+            """丢失首次入口交互，第二次才切换到制作页。"""
+            entry_clicks.append(result)
+            if len(entry_clicks) > 1:
+                original(key, result)
+
+        task.click_with_key = drop_first_entry
+        self.assertIs(True, task.run())
+        self.assertEqual(2, len(entry_clicks))
+        self.assertEqual(["制作", "确认", "确认"], task.clicks)
+
+    def test_stuck_drink_entry_retries_are_bounded(self):
+        """入口始终可见但交互无效时，最多点击三次后失败。"""
+        task = FoodScreen(drink=True)
+        entry_clicks = []
+        task.click_with_key = lambda key, result: entry_clicks.append(result)
+        self.assertEqual("button", task.run())
+        self.assertEqual(3, len(entry_clicks))
+        self.assertEqual([], task.clicks)
+
+    def test_missing_drink_menu_on_unknown_page_does_not_reclick_entry(self):
+        """入口消失且制作页未知时，不再次发送入口交互。"""
+        task = FoodScreen(drink=True)
+        entry_clicks = []
+
+        def unknown_page(key, result):
+            """首次交互后切到没有原入口的未知页面。"""
+            entry_clicks.append(result)
+            task.state = "finished"
+
+        task.click_with_key = unknown_page
+        self.assertEqual("button", task.run())
+        self.assertEqual(1, len(entry_clicks))
+        self.assertEqual([], task.clicks)
+
     def test_meal_result_retries_dropped_confirmation(self):
         """确认被识别和点击，但游戏未响应时，需要重新确认。"""
         task = FoodScreen(overwrite=False)

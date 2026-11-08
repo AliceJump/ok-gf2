@@ -193,6 +193,31 @@ class ClaimShopScreen(ShopScreen):
 class ShoppingTest(unittest.TestCase):
     """验证免费搜索只发生在确认切换后的对应分类。"""
 
+    def test_late_reward_is_rechecked_before_retrying_free_entry(self):
+        """首轮核验超时后仍能关闭迟到奖励，不困在已经消失的免费入口。"""
+        for daily in (False, True):
+            with self.subTest(daily=daily):
+                task = ClaimShopScreen()
+                task.page = "periodic"
+                original = task.ocr
+                reward_reads = 0
+
+                def delayed_reward(*, task=task, original=original, **kwargs):
+                    """首轮奖励区域返回空结果，随后才允许识别迟到弹层。"""
+                    nonlocal reward_reads
+                    if task.modal == "reward" and kwargs.get("box") in (task.box.top, task.box.bottom):
+                        reward_reads += 1
+                        if reward_reads <= 6:
+                            return []
+                    return original(**kwargs)
+
+                task.ocr = delayed_reward
+                self.assertTrue(task._claim_shop_free_item(status_key="测试礼包", daily=daily))
+                self.assertEqual("领取已确认", task.status["测试礼包"])
+                self.assertIsNone(task.modal)
+                self.assertEqual(1, task.purchases)
+                self.assertEqual(0, task.paid_purchases)
+
     def test_reward_only_readable_in_bottom_crop_is_closed_before_verification(self):
         """高分辨率全屏漏读奖励时仍关闭弹层，继续检查限时分类。"""
         task = ClaimShopScreen()

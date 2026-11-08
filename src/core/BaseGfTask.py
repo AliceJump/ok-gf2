@@ -4,6 +4,7 @@ import time
 from ok import BaseTask, Box, Logger, find_boxes_by_name
 
 from src.core.base_mixin.runtime_mixin import RuntimeMixin
+from src.core.exceptions import SessionStopException
 from src.data.FeatureList import FeatureList as fL
 from src.image.frame_processs import isolate_by_hsv_ranges
 from src.image.hsv_config import HSVRange as hR
@@ -357,11 +358,15 @@ class BaseGfTask(RuntimeMixin, BaseTask):
         return False
 
     def is_main(self, recheck_time=0.0, esc=True):
+        """识别可操作主页并恢复常见弹层，重连失败时中止当前会话。"""
         boxes = self.ocr(match=["整备室", "公共区", "活动层", re.compile("招募")], box="right", log=True)
         feature_boxes = []
         for feature in [fL.dog_icon, fL.message_icon]:
             if result := self.find_one(feature, vertical_variance=0.002, horizontal_variance=0.002):
                 feature_boxes.append(result)
+        # 断线提示可能遮住主页标识，必须先于主页数量判断处理。
+        if self.ocr(match=re.compile(r"将\s*返回\s*登录\s*界面"), box=self.box.center, log=True):
+            raise SessionStopException("游戏重连失败，即将返回登录界面，请重新登录后重试")
         total = len(boxes) + len(feature_boxes)
         self.log_info(f"is main ocr={len(boxes)} features={len(feature_boxes)} total={total}")
         if total >= 2:

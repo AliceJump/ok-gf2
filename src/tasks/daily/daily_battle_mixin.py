@@ -182,12 +182,39 @@ class DailyBattleMixin:
     def guild(self):
         """执行班组要务和尘烟，助战失败时返回主页并报告失败。"""
         self.info_set("current_task", "guild")
-        if result := self.wait_ocr(match=["班组"], box=self.box._group, raise_if_not_found=True):
-            self.click_box_by_match_position(result, "班组", after_sleep=2)
-            self.wait_click_ocr(match=["要务"], box=self.box.bottom_right, after_sleep=0.5, settle_time=2)
+        opened = False
+        for _ in range(3):
+            result = self.wait_ocr(match=["班组"], box=self.box._group, time_out=3, raise_if_not_found=False)
+            if result:
+                self.click_box_by_match_position(result, "班组", after_sleep=2)
+            # 重试前先确认可能已经进入要务页，完成状态不一定还显示“要务”入口。
             result = self.wait_ocr(
-                match=["开始作战", "每日要务已完成"], box=self.box.bottom_right, raise_if_not_found=True, log=True
+                match=["开始作战", "每日要务已完成"],
+                box=self.box.bottom_right,
+                time_out=3,
+                raise_if_not_found=False,
+                log=True,
             )
+            if result:
+                opened = True
+                break
+            duty_clicked = self.wait_click_ocr(
+                match=["要务"], box=self.box.bottom_right, time_out=10, after_sleep=0.5, settle_time=2
+            )
+            if not duty_clicked:
+                continue
+            # wait_click_ocr 命中的是可点击文字，不代表点击已经切到要务页；必须确认后才能继续。
+            result = self.wait_ocr(
+                match=["开始作战", "每日要务已完成"],
+                box=self.box.bottom_right,
+                time_out=3,
+                raise_if_not_found=False,
+                log=True,
+            )
+            if result:
+                opened = True
+                break
+        if opened:
             if result[0].name == "开始作战":
                 self.click(result)
                 self.auto_battle()
@@ -207,6 +234,17 @@ class DailyBattleMixin:
                 return False
             self.back()
             self.sleep(1)
+        else:
+            reason = "班组入口未成功打开：未确认要务页面"
+            self.log_warning(reason)
+            runner = getattr(self, "daily_runner", None)
+            if runner is not None:
+                runner.set_task_failure(reason)
+            self.screenshot("guild_entry_failed")
+            if runner is not None:
+                runner.set_task_failure(reason, screenshot_taken=True)
+            self.ensure_main()
+            return False
         self.ensure_main()
 
     def _guild_supply_status(self):

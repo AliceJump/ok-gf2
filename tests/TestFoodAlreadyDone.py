@@ -87,7 +87,7 @@ class FoodAlreadyDoneTest(unittest.TestCase):
                     ]
                 )
                 self.assertEqual("button", self.run_drink(task))
-                task.click_with_key.assert_called_once()
+                self.assertEqual(3, task.click_with_key.call_count)
 
     def test_combined_counter_must_be_exactly_one_of_one(self):
         """同框 1/10 和显式未完成状态不能误用附近的完成计数。"""
@@ -100,7 +100,7 @@ class FoodAlreadyDoneTest(unittest.TestCase):
                     ]
                 )
                 self.assertEqual("button", self.run_drink(task))
-                task.click_with_key.assert_called_once()
+                self.assertEqual(3, task.click_with_key.call_count)
 
     def test_split_counter_near_screen_edge_uses_clamped_region(self):
         """不同分辨率及靠边入口使用合法局部区域读取计数。"""
