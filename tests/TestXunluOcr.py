@@ -21,7 +21,7 @@ class XunluOcrTest(unittest.TestCase):
         def read(**kwargs):
             nonlocal read_count
             read_count += 1
-            if read_count <= 3:
+            if read_count <= 3 or kwargs["match"][0].fullmatch("每日行动"):
                 return [Mock()]
             # After clicking, a surviving OCR-truncated button must still be detected.
             return [SimpleNamespace(name="键领取")] if persists and kwargs["match"][0].fullmatch("键领取") else []

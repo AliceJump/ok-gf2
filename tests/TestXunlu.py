@@ -39,7 +39,7 @@ class XunluTest(unittest.TestCase):
 
     def test_failed_reward_page_switch_stops_before_claiming(self):
         task = Mock()
-        task.wait_ocr.return_value = True
+        task.wait_ocr.side_effect = [True, True, True, False]
         task.wait_click_ocr.side_effect = [False, True, True]
         task._switch_xunlu_rewards_page.return_value = False
         self.assertFalse(DailyRewardMixin.xunlu(task))
