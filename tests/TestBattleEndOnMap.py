@@ -91,6 +91,7 @@ class SkipDialogsOnMapTest(unittest.TestCase):
         task._is_loading_frame.return_value = False
         task._is_battle_frame.return_value = False
         task._dismiss_notice.return_value = False
+        task._tap_settlement_exp.return_value = False
         return task
 
     def test_no_corner_clicks_on_stage_select_page(self):
