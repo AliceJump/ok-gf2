@@ -268,6 +268,17 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_recipe_recheck_timeout_none_returns_failure_without_exception(self):
+        """真实 wait_ocr 超时返回 None 时，未知页仍正常记录失败。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.retry_menu_present = False
+        read_page = task.wait_ocr
+        task.wait_ocr = lambda **kwargs: read_page(**kwargs) or None
+        self.assertEqual("confirm", task.run())
+        self.assertIn("cooking_retry_menu_missing", task.screenshots)
+        self.assertEqual(1, task.cooking_attempts)
+
     def test_unknown_cooking_result_returns_failure_without_blind_clicks(self):
         """无法识别结果页时不盲点，也不抛出剧情跳过超时。"""
         task = FoodScreen(overwrite=False)

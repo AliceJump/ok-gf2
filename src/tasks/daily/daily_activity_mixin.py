@@ -600,11 +600,14 @@ class DailyActivityMixin:
                                     match=main_btn, box=self.box.bottom_right, time_out=5, raise_if_not_found=False
                                 ):
                                     # 返回文字的短暂漏读不代表切页成功；仍在失败页时继续有限重试。
-                                    retry_page = self.wait_ocr(
-                                        match=[return_cooking_match, re.compile(rf"^\s*{re.escape(main_btn)}\s*$")],
-                                        box=self.box.bottom,
-                                        time_out=2,
-                                        raise_if_not_found=False,
+                                    retry_page = (
+                                        self.wait_ocr(
+                                            match=[return_cooking_match, re.compile(rf"^\s*{re.escape(main_btn)}\s*$")],
+                                            box=self.box.bottom,
+                                            time_out=2,
+                                            raise_if_not_found=False,
+                                        )
+                                        or []
                                     )
                                     if any(return_cooking_match.search(getattr(box, "name", "")) for box in retry_page):
                                         continue
