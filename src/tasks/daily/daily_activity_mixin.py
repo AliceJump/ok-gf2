@@ -567,11 +567,14 @@ class DailyActivityMixin:
                     return "confirm"
                 if need_extra_confirm:
                     self.wait_click_ocr(match="确认", time_out=3, after_sleep=1)
-                self.skip_dialogs(
+                food_result = self.skip_dialogs(
                     end_match=[*skip_end_match, return_cooking_match] if need_extra_confirm else skip_end_match,
                     time_out=60,
                 )
-                if need_extra_confirm and self.ocr(match=return_cooking_match, box=self.box.bottom):
+                if need_extra_confirm and (
+                    any(return_cooking_match.search(getattr(box, "name", "")) for box in food_result or [])
+                    or self.ocr(match=return_cooking_match, box=self.box.bottom)
+                ):
                     cooking_failures += 1
                     self.log_warning(f"烹饪失败，第 {cooking_failures}/3 次")
                     if cooking_failures < 3:
@@ -591,6 +594,14 @@ class DailyActivityMixin:
                                 if not self.wait_ocr(
                                     match=main_btn, box=self.box.bottom_right, time_out=5, raise_if_not_found=False
                                 ):
+                                    # 返回文字的短暂漏读不代表切页成功；仍在失败页时继续有限重试。
+                                    if self.wait_ocr(
+                                        match=return_cooking_match,
+                                        box=self.box.bottom,
+                                        time_out=2,
+                                        raise_if_not_found=False,
+                                    ):
+                                        continue
                                     self.screenshot("cooking_retry_menu_missing")
                                     return "confirm"
                                 retry_cooking = True

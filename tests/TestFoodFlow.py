@@ -53,6 +53,7 @@ class FoodScreen:
         self.return_label = "返回烹饪"
         self.return_works = True
         self.retry_menu_present = True
+        self.entry_moves = []
         self.box = SimpleNamespace(bottom_right="bottom_right", bottom="bottom")
 
     def box_of_screen(self, *bounds):
@@ -170,6 +171,7 @@ class FoodScreen:
         ):
             raise RuntimeError("跳过剧情超时!")
         self.dialogs_skipped = True
+        return [SimpleNamespace(name=text) for text in self.visible() if self.matches(kwargs["end_match"], text)]
 
     def wait_pop_up(self, **kwargs):
         """只关闭奖励弹窗，不把点击失败的用餐结果页当作奖励。"""
@@ -196,7 +198,7 @@ class FoodScreen:
     def run(self):
         """用吃饭或饮品参数执行真实 do_food_flow 方法。"""
         return self.do_food_flow(
-            enter_func=lambda **kw: None,
+            enter_func=lambda **kw: self.entry_moves.append(kw),
             entry_match=re.compile("茶歇一刻" if self.drink else "美味烹调"),
             main_btn="制作" if self.drink else "下一步",
             second_btn="确认" if self.drink else "确认邀请",
@@ -292,6 +294,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual([], task.clicks)
 
     def test_failed_cooking_returns_to_recipe_and_retries_to_success(self):
+        """失败后返回配方重做，整个流程只移动到入口一次。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 1
         self.assertIs(True, task.run())
@@ -299,8 +302,58 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual(2, task.cooking_attempts)
         self.assertEqual(1, task.clicks.count("返回烹饪"))
         self.assertEqual(2, task.clicks.count("下一步"))
+        self.assertEqual([{"after_sleep": 1}], task.entry_moves)
+
+    def test_failed_result_from_dialog_skip_survives_next_ocr_miss(self):
+        """跳剧情已识别失败页时，不因下一帧漏读而放弃重做。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        read_page = task.ocr
+        misses = [True]
+
+        def ocr(**kwargs):
+            """仅丢弃失败结果页的一次返回按钮识别。"""
+            if task.state == "cooking_failed" and task.matches(kwargs.get("match"), "返回烹饪") and misses:
+                misses.pop()
+                return []
+            return read_page(**kwargs)
+
+        task.ocr = ocr
+        self.assertIs(True, task.run())
+        self.assertEqual(2, task.cooking_attempts)
+        self.assertEqual("finished", task.state)
+
+    def test_dropped_return_and_transient_ocr_miss_rechecks_failure_page(self):
+        """返回点击丢失且误以为失败页消失时，应重新识别并有限重试。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.return_clicks_dropped = 1
+        click, read_page = task.wait_click_ocr, task.ocr
+        misses = []
+
+        def wait_click_ocr(**kwargs):
+            """丢失第一次返回点击后模拟一次文字漏识别。"""
+            dropped = task.state == "cooking_failed" and task.return_clicks_dropped > 0
+            result = click(**kwargs)
+            if dropped and task.matches(kwargs["match"], "返回烹饪"):
+                misses.append(True)
+            return result
+
+        def ocr(**kwargs):
+            """下一次页面消失轮询短暂漏读返回按钮。"""
+            if task.state == "cooking_failed" and task.matches(kwargs.get("match"), "返回烹饪") and misses:
+                misses.pop()
+                return []
+            return read_page(**kwargs)
+
+        task.wait_click_ocr, task.ocr = wait_click_ocr, ocr
+        self.assertIs(True, task.run())
+        self.assertEqual(2, task.cooking_attempts)
+        self.assertEqual(2, task.clicks.count("返回烹饪"))
+        self.assertEqual("finished", task.state)
 
     def test_failed_cooking_retry_repeats_overwrite_and_invitation(self):
+        """每次重做均重新核验覆盖提示和邀请步骤。"""
         task = FoodScreen()
         task.cooking_failures = 2
         self.assertIs(True, task.run())
@@ -309,6 +362,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual([], task.unsafe_clicks)
 
     def test_repeated_cooking_failures_are_bounded_and_leave_result_screen(self):
+        """三次失败后退出结果页并保留失败状态。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 100
         self.assertEqual("confirm", task.run())
@@ -316,6 +370,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual("finished", task.state)
 
     def test_return_to_cooking_retries_dropped_click(self):
+        """返回点击丢失时在原结果页重试。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 1
         task.return_clicks_dropped = 1
@@ -324,6 +379,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual(2, task.clicks.count("返回烹饪"))
 
     def test_blocked_return_button_does_not_start_another_cooking_attempt(self):
+        """无法返回配方时退出失败页，不盲目继续邀请。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 1
         task.return_works = False
@@ -333,6 +389,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual("finished", task.state)
 
     def test_exhausted_cooking_retries_dropped_exit_confirmation(self):
+        """退出失败页的确认点击丢失时仍进行有限重试。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 100
         task.result_clicks_dropped = 1
@@ -341,6 +398,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual("finished", task.state)
 
     def test_return_to_cooking_accepts_ocr_spaces(self):
+        """返回烹饪按钮支持 OCR 在汉字间插入空格。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 1
         task.return_label = "返 回 烹 饪"
@@ -348,6 +406,7 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual(2, task.cooking_attempts)
 
     def test_return_to_unknown_page_does_not_repeat_invitation(self):
+        """无法确认配方页时停止重做并避免未知页面点击。"""
         task = FoodScreen(overwrite=False)
         task.cooking_failures = 1
         task.retry_menu_present = False
