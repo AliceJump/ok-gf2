@@ -625,8 +625,15 @@ class DailyActivityMixin:
                         self.screenshot("cooking_retry_exhausted")
                     # 连续失败或无法返回配方时退出结果页，避免阻塞后续日常。
                     for _ in range(3):
-                        if not self.ocr(match=return_cooking_match, box=self.box.bottom):
+                        if self.is_free_layer(time_out=1):
                             break
+                        if not self.wait_ocr(
+                            match=return_cooking_match,
+                            box=self.box.bottom,
+                            time_out=3,
+                            raise_if_not_found=False,
+                        ):
+                            continue
                         self.wait_click_ocr(
                             match=re.compile(r"^\s*确\s*认\s*$"),
                             box=self.box.bottom,
@@ -634,11 +641,7 @@ class DailyActivityMixin:
                             raise_if_not_found=False,
                             after_sleep=1,
                         )
-                        if self.wait_until(
-                            lambda: not self.ocr(match=return_cooking_match, box=self.box.bottom),
-                            time_out=3,
-                            settle_time=0.3,
-                        ):
+                        if self.is_free_layer(time_out=3):
                             break
                     if not self.is_free_layer(time_out=4):
                         self.screenshot("cooking_failed_result_blocked")
