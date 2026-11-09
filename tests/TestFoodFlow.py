@@ -268,6 +268,99 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_failed_result_uses_real_dialog_and_box_matchers(self):
+        """生产剧情循环和匹配器能从混合结束条件识别底部失败按钮。"""
+        from ok import BaseTask, Box
+
+        task = FoodScreen(overwrite=False)
+        boxes = [
+            Box(480, 510, 60, 30, name="失败"),
+            Box(450, 570, 150, 30, name="烹调熟练度+1"),
+            Box(620, 790, 100, 40, name="确认"),
+            Box(340, 790, 150, 40, name="返 回 烹 饪"),
+        ]
+        task.ocr = lambda **kwargs: boxes
+        task.find_boxes = BaseTask.find_boxes.__get__(task)
+        with patch.object(time, "time", lambda: task.now):
+            result = dialog_namespace["skip_dialogs"](
+                task,
+                end_match=["前往战役", re.compile(r"^\s*返\s*回\s*烹\s*饪\s*$")],
+                end_box=Box(0, 500, 1000, 500),
+                time_out=3,
+                has_dialog=False,
+                raise_if_not_found=False,
+            )
+        self.assertEqual([boxes[-1]], result)
+        self.assertEqual([], task.blind_clicks)
+
+    def test_exhausted_exit_rechecks_transient_missing_failed_page(self):
+        """退出前短暂漏读失败页时仍使用剩余预算重新识别并确认。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 100
+        read_page = task.wait_ocr
+        misses = [True]
+
+        def read(**kwargs):
+            """只在第三次烹饪后的首次退出检查漏读返回按钮。"""
+            if task.state == "cooking_failed" and task.cooking_attempts == 3 and misses:
+                misses.pop()
+                return None
+            return read_page(**kwargs)
+
+        task.wait_ocr = read
+        self.assertEqual("confirm", task.run())
+        self.assertEqual("finished", task.state)
+        self.assertNotIn("cooking_failed_result_blocked", task.screenshots)
+
+    def test_dropped_failed_exit_and_ocr_miss_retries_until_hud(self):
+        """退出点击丢失后的单帧漏读不能代替活动层 HUD 确认。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 100
+        task.result_clicks_dropped = 1
+        click, read_page = task.wait_click_ocr, task.wait_ocr
+        misses = []
+
+        def wait_click_ocr(**kwargs):
+            """丢失退出确认后，让下一次页面识别短暂超时。"""
+            dropped = task.state == "cooking_failed" and task.result_clicks_dropped > 0
+            result = click(**kwargs)
+            if dropped and task.matches(kwargs["match"], "确认"):
+                misses.append(True)
+            return result
+
+        def read(**kwargs):
+            """模拟点击之后的短暂 OCR 漏读，其余帧保持实际状态。"""
+            if task.state == "cooking_failed" and misses:
+                misses.pop()
+                return None
+            return read_page(**kwargs)
+
+        task.wait_click_ocr, task.wait_ocr = wait_click_ocr, read
+        self.assertEqual("confirm", task.run())
+        self.assertEqual("finished", task.state)
+        self.assertEqual(5, task.clicks.count("确认"))
+
+    def test_unknown_page_during_failed_exit_never_blindly_confirms(self):
+        """退出时页面持续未知，识别和确认都有界且不盲目点击。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 100
+        read_page = task.wait_ocr
+        reads = []
+
+        def read(**kwargs):
+            """耗尽烹饪次数后持续返回真实超时值。"""
+            if task.state == "cooking_failed" and task.cooking_attempts == 3:
+                reads.append(True)
+                return None
+            return read_page(**kwargs)
+
+        task.wait_ocr = read
+        self.assertEqual("confirm", task.run())
+        self.assertEqual("cooking_failed", task.state)
+        self.assertEqual(3, task.clicks.count("确认"))
+        self.assertLessEqual(len(reads), 3)
+        self.assertIn("cooking_failed_result_blocked", task.screenshots)
+
     def test_recipe_recheck_timeout_none_returns_failure_without_exception(self):
         """真实 wait_ocr 超时返回 None 时，未知页仍正常记录失败。"""
         task = FoodScreen(overwrite=False)
