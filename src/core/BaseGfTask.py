@@ -99,6 +99,19 @@ INIT_RETRY_MAX = 5  # 一次回主页最多点几次重试，一直失败就让�
 rank_up_notice_re = re.compile(r"晋升至|段位可获得|补给将通过邮件发放")  # 「您已晋升至新锐·三」段位晋升通知，ESC 能关
 # 「对战胜利 / 对战失败」结算页只有「确认」能关；打输后的「任务失败」结算页也一样，ESC 关不掉（实录 2026-11-03）
 battle_result_re = re.compile(r"^对战(胜利|失败)$|已结束$|^任务失败$")
+
+
+def settlement_exp_page(names):
+    """
+    「任务完成」结算的经验页：有标题和「指挥官等级」，还没出「重新挑战 / 确认结算」按钮。
+    平时这一页自己过去；这一仗让指挥官升级时（实录 2026-11-08 前哨战，57→58）它停着等点一下，页面上也没有「点击继续」。
+    """
+    names = [n for n in names if n]
+    if not any("任务完成" in n for n in names) or not any("指挥官等级" in n for n in names):
+        return False
+    return not any("确认结算" in n or "重新挑战" in n for n in names)
+
+
 # 每个任务开始前的隐藏步骤「确保游戏已进入主页」
 title_start_re = re.compile(r"点击开始")
 story_skip_re = re.compile(r"跳过")  # 剧情对话右上角的「跳过 / 全部跳过」（可能和「自动」连成一个框）
@@ -588,7 +601,7 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
             elif self.find_boxes(boxes, match=pop_ups):
                 self.back()
                 self.sleep(1)
-            elif self._dismiss_notice(boxes):
+            elif self._dismiss_notice(boxes) or self._tap_settlement_exp(boxes):
                 pass
             else:
                 # 战斗中界面右上角是加速/跳过回合图标，不是剧情跳过，不能点
@@ -1688,6 +1701,9 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         # 「本期扩编实练已结束」通知框、竞技场「对战胜利/失败」结算页：只有「确认」能关，ESC 没用
         if self._confirm_battle_result():
             return False
+        # 「任务完成」结算页（经验页 / 奖励页）ESC 也关不掉
+        if self._leave_mission_settlement():
+            return False
         # 停在战斗部署界面时 ESC 只会弹出/关掉关卡信息菜单，回不去；菜单里有「退出作战」就点它（后面的确认框走上面的离开确认）
         if quit_box := self.ocr(box=self.box.bottom_left, match=re.compile("^退出作战$")):
             if self.ocr(box=self.box.bottom_right, match=re.compile("^继续作战$")):
@@ -2458,6 +2474,37 @@ class BaseGfTask(LineupMixin, RuntimeMixin, BaseTask):
         self.back(after_sleep=1.5)
         self.next_frame()
         return True
+
+    def _tap_settlement_exp(self, boxes):
+        """
+        实录 2026-11-08 前哨战：这一仗让指挥官从 57 升到 58，点掉「任务完成」后停在经验页（参战人形经验、指挥官等级 58、
+        +1320），要点一下才出「重新挑战 / 确认结算」。页面上没有「点击继续」，等结算的 skip_dialogs 认不出、干等 30 秒，
+        班组记失败，接着回主页按 ESC 也出不去，一键日常停下。点下方空白处一下就过去了（当时实测的位置）：
+        在「确认结算」正下方、按钮外面，碰不到「重新挑战」。
+        """
+        if not settlement_exp_page([b.name for b in boxes]):
+            return False
+        self.log_info("结算停在指挥官经验页（指挥官升级了），点一下下方空白处继续", notify=False)
+        self.debug_shot("settlement_exp_page", boxes)
+        self.click_relative(0.85, 0.95, after_sleep=2)
+        self.next_frame()
+        return True
+
+    def _leave_mission_settlement(self):
+        """
+        回主页时停在「任务完成」结算页：经验页点空白处，奖励页点「确认结算」，ESC 都没用；「重新挑战」绝不点（会再花一次次数）。
+        实录 2026-11-08：日常在经验页报错后回主页，按了 90 秒 ESC 都没出去；手动点过经验页后停在奖励页，回主页照样 30 秒超时。
+        """
+        boxes = self.ocr()
+        if not self.find_boxes(boxes, match=re.compile("^任务完成$")):
+            return False
+        if self._tap_settlement_exp(boxes):
+            return True
+        if confirm := self.find_boxes(boxes, match=re.compile("^确认结算$")):
+            self.log_info("在「任务完成」结算页，点「确认结算」回去", notify=False)
+            self.click(confirm, after_sleep=3)
+            return True
+        return False
 
     def _confirm_battle_result(self):
         """
