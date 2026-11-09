@@ -346,6 +346,8 @@ class FoodFlowTest(unittest.TestCase):
         task.cooking_failures = 100
         read_page = task.wait_ocr
         reads = []
+        click = task.wait_click_ocr
+        exit_confirms = []
 
         def read(**kwargs):
             """耗尽烹饪次数后持续返回真实超时值。"""
@@ -354,10 +356,19 @@ class FoodFlowTest(unittest.TestCase):
                 return None
             return read_page(**kwargs)
 
+        def click_ocr(**kwargs):
+            """记录未知页退出阶段的确认调用，确保不会盲点。"""
+            if task.state == "cooking_failed" and task.cooking_attempts == 3 and task.matches(kwargs["match"], "确认"):
+                exit_confirms.append(kwargs)
+            return click(**kwargs)
+
         task.wait_ocr = read
+        task.wait_click_ocr = click_ocr
         self.assertEqual("confirm", task.run())
         self.assertEqual("cooking_failed", task.state)
         self.assertEqual(3, task.clicks.count("确认"))
+        self.assertEqual([], exit_confirms)
+        self.assertEqual([], task.blind_clicks)
         self.assertLessEqual(len(reads), 3)
         self.assertIn("cooking_failed_result_blocked", task.screenshots)
 
