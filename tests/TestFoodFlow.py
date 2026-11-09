@@ -2,9 +2,11 @@
 
 import ast
 import re
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 source = Path(__file__).resolve().parents[1] / "src/tasks/daily/daily_activity_mixin.py"
 task_class = next(n for n in ast.parse(source.read_text(encoding="utf-8")).body if isinstance(n, ast.ClassDef))
@@ -15,6 +17,9 @@ base_source = source.parents[2] / "core/BaseGfTask.py"
 base_tree = ast.parse(base_source.read_text(encoding="utf-8"))
 base_methods = [n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "_confirm_meal_result"]
 exec(compile(ast.Module(body=base_methods, type_ignores=[]), str(base_source), "exec"), namespace)
+dialog_namespace = {"time": time, "pop_ups": ["点击空白处关闭"]}
+dialog_method = next(n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "skip_dialogs")
+exec(compile(ast.Module(body=[dialog_method], type_ignores=[]), str(base_source), "exec"), dialog_namespace)
 
 
 class FoodScreen:
@@ -54,6 +59,9 @@ class FoodScreen:
         self.return_works = True
         self.retry_menu_present = True
         self.entry_moves = []
+        self.unknown_result = False
+        self.now = 0
+        self.blind_clicks = []
         self.box = SimpleNamespace(bottom_right="bottom_right", bottom="bottom")
 
     def box_of_screen(self, *bounds):
@@ -78,6 +86,7 @@ class FoodScreen:
             "extra": ["确认"] if self.extra_present else [],
             "drink_confirm": ["确认"],
             "result": ["用餐效果", "前往战役", self.result_confirm_label],
+            "unknown": ["无法辨识的结果"],
             "cooking_failed": ["失败", "烹调熟练度+1", "确认"]
             + ([self.return_label] if self.return_button_present else []),
             "reward": ["点击空白处关闭"],
@@ -99,6 +108,22 @@ class FoodScreen:
             else:
                 self.state = "invite"
         labels = self.visible()
+        if self.state == "cooking_failed" and box is not None:
+            bounds = (
+                {"bottom": (0, 0.5, 1, 1), "bottom_right": (0.5, 0.5, 1, 1)}.get(box) if isinstance(box, str) else box
+            )
+            if bounds:
+                positions = {
+                    "失败": (0.50, 0.51),
+                    "烹调熟练度+1": (0.50, 0.57),
+                    "确认": (0.62, 0.79),
+                    self.return_label: (0.39, 0.79),
+                }
+                labels = [
+                    label
+                    for label in labels
+                    if bounds[0] <= positions[label][0] <= bounds[2] and bounds[1] <= positions[label][1] <= bounds[3]
+                ]
         if self.state in ("overwrite", "closing") and isinstance(box, tuple):
             labels = [
                 label
@@ -108,7 +133,8 @@ class FoodScreen:
             ]
         if match is None:
             return labels
-        return [label for label in labels if self.matches(match, label)]
+        found = [label for label in labels if self.matches(match, label)]
+        return [SimpleNamespace(name=label) for label in found] if isinstance(match, list) else found
 
     def ocr(self, **kwargs):
         """以同一状态模型提供即时文字识别结果。"""
@@ -143,7 +169,13 @@ class FoodScreen:
             self.state = "extra"
         elif self.state in ("extra", "drink_confirm"):
             self.cooking_attempts += 1
-            self.state = "cooking_failed" if self.cooking_attempts <= self.cooking_failures else "result"
+            self.state = (
+                "unknown"
+                if self.unknown_result
+                else "cooking_failed"
+                if self.cooking_attempts <= self.cooking_failures
+                else "result"
+            )
         elif self.state == "cooking_failed":
             if self.matches(match, self.return_label):
                 if self.return_clicks_dropped:
@@ -165,6 +197,10 @@ class FoodScreen:
 
     def skip_dialogs(self, **kwargs):
         """只允许已完成确认的结果页跳过对话。"""
+        if self.state == "unknown":
+            # 未知结果场景使用真实 skip_dialogs，仅模拟时钟与游戏 I/O。
+            with patch.object(time, "time", lambda: self.now):
+                return dialog_namespace["skip_dialogs"](self, **kwargs)
         assert self.state in ("result", "cooking_failed"), "不能跳过尚未完成确认的流程"
         if self.state == "cooking_failed" and not any(
             self.matches(kwargs["end_match"], text) for text in self.visible()
@@ -172,6 +208,29 @@ class FoodScreen:
             raise RuntimeError("跳过剧情超时!")
         self.dialogs_skipped = True
         return [SimpleNamespace(name=text) for text in self.visible() if self.matches(kwargs["end_match"], text)]
+
+    def info_set(self, *args):
+        """测试中不写入任务面板。"""
+
+    def find_boxes(self, boxes, *, match, **kwargs):
+        """为真实剧情循环筛选当前帧可见文字。"""
+        return [box for box in boxes if self.matches(match, box)]
+
+    def _is_loading_frame(self, boxes):
+        """未知结果不是加载页。"""
+        return False
+
+    def click_relative(self, x, y):
+        """记录未知界面上的盲目点击。"""
+        self.blind_clicks.append((x, y))
+
+    def sleep(self, seconds):
+        """推进模拟时钟，测试不真实等待。"""
+        self.now += seconds
+
+    def next_frame(self):
+        """模拟每次取帧的有限耗时。"""
+        self.now += 0.1
 
     def wait_pop_up(self, **kwargs):
         """只关闭奖励弹窗，不把点击失败的用餐结果页当作奖励。"""
@@ -209,6 +268,33 @@ class FoodScreen:
 
 
 class FoodFlowTest(unittest.TestCase):
+    def test_unknown_cooking_result_returns_failure_without_blind_clicks(self):
+        """无法识别结果页时不盲点，也不抛出剧情跳过超时。"""
+        task = FoodScreen(overwrite=False)
+        task.unknown_result = True
+        self.assertEqual("confirm", task.run())
+        self.assertEqual([], task.blind_clicks)
+        self.assertEqual("unknown", task.state)
+
+    def test_recipe_becomes_visible_during_failure_page_recheck(self):
+        """配方页在初次等待结束后出现时，复查仍能继续做菜。"""
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        read_page = task.wait_ocr
+        delayed = [True]
+
+        def wait_ocr(**kwargs):
+            """首次配方识别超时后，下一个有限复查帧显示下一步。"""
+            if task.state == "menu" and task.cooking_attempts == 1 and kwargs.get("match") == "下一步" and delayed:
+                delayed.pop()
+                return []
+            return read_page(**kwargs)
+
+        task.wait_ocr = wait_ocr
+        self.assertIs(True, task.run())
+        self.assertEqual(2, task.cooking_attempts)
+        self.assertEqual("finished", task.state)
+
     def test_transient_entry_ocr_miss_still_allows_bounded_retry(self):
         """交互未切页且入口瞬时漏读时，限时等待应容许饮品和用餐再次交互。"""
 

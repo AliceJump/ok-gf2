@@ -570,7 +570,12 @@ class DailyActivityMixin:
                 food_result = self.skip_dialogs(
                     end_match=[*skip_end_match, return_cooking_match] if need_extra_confirm else skip_end_match,
                     time_out=60,
+                    has_dialog=not need_extra_confirm,
+                    raise_if_not_found=not need_extra_confirm,
                 )
+                if need_extra_confirm and not food_result:
+                    self.screenshot("cooking_result_unknown")
+                    return "confirm"
                 if need_extra_confirm and (
                     any(return_cooking_match.search(getattr(box, "name", "")) for box in food_result or [])
                     or self.ocr(match=return_cooking_match, box=self.box.bottom)
@@ -595,13 +600,17 @@ class DailyActivityMixin:
                                     match=main_btn, box=self.box.bottom_right, time_out=5, raise_if_not_found=False
                                 ):
                                     # 返回文字的短暂漏读不代表切页成功；仍在失败页时继续有限重试。
-                                    if self.wait_ocr(
-                                        match=return_cooking_match,
+                                    retry_page = self.wait_ocr(
+                                        match=[return_cooking_match, re.compile(rf"^\s*{re.escape(main_btn)}\s*$")],
                                         box=self.box.bottom,
                                         time_out=2,
                                         raise_if_not_found=False,
-                                    ):
+                                    )
+                                    if any(return_cooking_match.search(getattr(box, "name", "")) for box in retry_page):
                                         continue
+                                    if any(getattr(box, "name", "").strip() == main_btn for box in retry_page):
+                                        retry_cooking = True
+                                        break
                                     self.screenshot("cooking_retry_menu_missing")
                                     return "confirm"
                                 retry_cooking = True
