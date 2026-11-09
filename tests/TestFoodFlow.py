@@ -46,6 +46,13 @@ class FoodScreen:
         self.reward_popup = False
         self.hud_present = True
         self.warnings = []
+        self.cooking_failures = 0
+        self.cooking_attempts = 0
+        self.return_clicks_dropped = 0
+        self.return_button_present = True
+        self.return_label = "返回烹饪"
+        self.return_works = True
+        self.retry_menu_present = True
         self.box = SimpleNamespace(bottom_right="bottom_right", bottom="bottom")
 
     def box_of_screen(self, *bounds):
@@ -70,6 +77,8 @@ class FoodScreen:
             "extra": ["确认"] if self.extra_present else [],
             "drink_confirm": ["确认"],
             "result": ["用餐效果", "前往战役", self.result_confirm_label],
+            "cooking_failed": ["失败", "烹调熟练度+1", "确认"]
+            + ([self.return_label] if self.return_button_present else []),
             "reward": ["点击空白处关闭"],
             "finished": ["Esc", "P", "M", "F1", "F2", "F3", "F4"] if self.hud_present else [],
         }["overwrite" if self.state == "closing" else self.state]
@@ -132,7 +141,20 @@ class FoodScreen:
         elif self.state == "invite":
             self.state = "extra"
         elif self.state in ("extra", "drink_confirm"):
-            self.state = "result"
+            self.cooking_attempts += 1
+            self.state = "cooking_failed" if self.cooking_attempts <= self.cooking_failures else "result"
+        elif self.state == "cooking_failed":
+            if self.matches(match, self.return_label):
+                if self.return_clicks_dropped:
+                    self.return_clicks_dropped -= 1
+                elif self.return_works:
+                    self.state = "menu"
+                    self.main_present = self.retry_menu_present
+            elif label == "确认":
+                if self.result_clicks_dropped:
+                    self.result_clicks_dropped -= 1
+                else:
+                    self.state = "finished"
         elif self.state == "result":
             if self.result_clicks_dropped:
                 self.result_clicks_dropped -= 1
@@ -142,7 +164,11 @@ class FoodScreen:
 
     def skip_dialogs(self, **kwargs):
         """只允许已完成确认的结果页跳过对话。"""
-        assert self.state == "result", "不能跳过尚未完成确认的流程"
+        assert self.state in ("result", "cooking_failed"), "不能跳过尚未完成确认的流程"
+        if self.state == "cooking_failed" and not any(
+            self.matches(kwargs["end_match"], text) for text in self.visible()
+        ):
+            raise RuntimeError("跳过剧情超时!")
         self.dialogs_skipped = True
 
     def wait_pop_up(self, **kwargs):
@@ -264,6 +290,70 @@ class FoodFlowTest(unittest.TestCase):
         self.assertEqual("button", task.run())
         self.assertEqual(1, len(entry_clicks))
         self.assertEqual([], task.clicks)
+
+    def test_failed_cooking_returns_to_recipe_and_retries_to_success(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        self.assertIs(True, task.run())
+        self.assertEqual("finished", task.state)
+        self.assertEqual(2, task.cooking_attempts)
+        self.assertEqual(1, task.clicks.count("返回烹饪"))
+        self.assertEqual(2, task.clicks.count("下一步"))
+
+    def test_failed_cooking_retry_repeats_overwrite_and_invitation(self):
+        task = FoodScreen()
+        task.cooking_failures = 2
+        self.assertIs(True, task.run())
+        self.assertEqual(3, task.cooking_attempts)
+        self.assertEqual(3, task.clicks.count("确认邀请"))
+        self.assertEqual([], task.unsafe_clicks)
+
+    def test_repeated_cooking_failures_are_bounded_and_leave_result_screen(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 100
+        self.assertEqual("confirm", task.run())
+        self.assertEqual(3, task.cooking_attempts)
+        self.assertEqual("finished", task.state)
+
+    def test_return_to_cooking_retries_dropped_click(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.return_clicks_dropped = 1
+        self.assertIs(True, task.run())
+        self.assertEqual(2, task.cooking_attempts)
+        self.assertEqual(2, task.clicks.count("返回烹饪"))
+
+    def test_blocked_return_button_does_not_start_another_cooking_attempt(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.return_works = False
+        self.assertEqual("confirm", task.run())
+        self.assertEqual(1, task.cooking_attempts)
+        self.assertLessEqual(task.clicks.count("返回烹饪"), 3)
+        self.assertEqual("finished", task.state)
+
+    def test_exhausted_cooking_retries_dropped_exit_confirmation(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 100
+        task.result_clicks_dropped = 1
+        self.assertEqual("confirm", task.run())
+        self.assertEqual(3, task.cooking_attempts)
+        self.assertEqual("finished", task.state)
+
+    def test_return_to_cooking_accepts_ocr_spaces(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.return_label = "返 回 烹 饪"
+        self.assertIs(True, task.run())
+        self.assertEqual(2, task.cooking_attempts)
+
+    def test_return_to_unknown_page_does_not_repeat_invitation(self):
+        task = FoodScreen(overwrite=False)
+        task.cooking_failures = 1
+        task.retry_menu_present = False
+        self.assertEqual("confirm", task.run())
+        self.assertEqual(1, task.cooking_attempts)
+        self.assertEqual(1, task.clicks.count("确认邀请"))
 
     def test_meal_result_retries_dropped_confirmation(self):
         """确认被识别和点击，但游戏未响应时，需要重新确认。"""

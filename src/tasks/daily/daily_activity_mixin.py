@@ -462,8 +462,16 @@ class DailyActivityMixin:
         """返回 True 表示流程完成；失败时返回 'entry'、'button' 或 'confirm' 表示失败阶段。"""
         enter_func(after_sleep=1)
         times = 3 if main_btn == "制作" else 2 if need_again_test else 1
-        for attempt in range(times):
-            if result := self.wait_ocr(match=entry_match, time_out=3):
+        entry_attempt = 0
+        cooking_failures = 0
+        retry_cooking = False
+        return_cooking_match = re.compile(r"^\s*返\s*回\s*烹\s*饪\s*$")
+        while entry_attempt < times or retry_cooking:
+            if retry_cooking:
+                # 返回烹饪已到配方页，不重复移动或 Alt 点击活动层入口。
+                retry_cooking = False
+            elif result := self.wait_ocr(match=entry_match, time_out=3):
+                entry_attempt += 1
                 drink_done = False
                 if main_btn == "制作":
                     for entry in result:
@@ -559,7 +567,59 @@ class DailyActivityMixin:
                     return "confirm"
                 if need_extra_confirm:
                     self.wait_click_ocr(match="确认", time_out=3, after_sleep=1)
-                self.skip_dialogs(end_match=skip_end_match, time_out=60)
+                self.skip_dialogs(
+                    end_match=[*skip_end_match, return_cooking_match] if need_extra_confirm else skip_end_match,
+                    time_out=60,
+                )
+                if need_extra_confirm and self.ocr(match=return_cooking_match, box=self.box.bottom):
+                    cooking_failures += 1
+                    self.log_warning(f"烹饪失败，第 {cooking_failures}/3 次")
+                    if cooking_failures < 3:
+                        for _ in range(3):
+                            self.wait_click_ocr(
+                                match=return_cooking_match,
+                                box=self.box.bottom,
+                                time_out=3,
+                                raise_if_not_found=False,
+                                after_sleep=1,
+                            )
+                            if self.wait_until(
+                                lambda: not self.ocr(match=return_cooking_match, box=self.box.bottom),
+                                time_out=3,
+                                settle_time=0.3,
+                            ):
+                                if not self.wait_ocr(
+                                    match=main_btn, box=self.box.bottom_right, time_out=5, raise_if_not_found=False
+                                ):
+                                    self.screenshot("cooking_retry_menu_missing")
+                                    return "confirm"
+                                retry_cooking = True
+                                break
+                        if retry_cooking:
+                            continue
+                        self.screenshot("cooking_return_blocked")
+                    else:
+                        self.screenshot("cooking_retry_exhausted")
+                    # 连续失败或无法返回配方时退出结果页，避免阻塞后续日常。
+                    for _ in range(3):
+                        if not self.ocr(match=return_cooking_match, box=self.box.bottom):
+                            break
+                        self.wait_click_ocr(
+                            match=re.compile(r"^\s*确\s*认\s*$"),
+                            box=self.box.bottom,
+                            time_out=3,
+                            raise_if_not_found=False,
+                            after_sleep=1,
+                        )
+                        if self.wait_until(
+                            lambda: not self.ocr(match=return_cooking_match, box=self.box.bottom),
+                            time_out=3,
+                            settle_time=0.3,
+                        ):
+                            break
+                    if not self.is_free_layer(time_out=4):
+                        self.screenshot("cooking_failed_result_blocked")
+                    return "confirm"
                 if skip_end_match == ["饮品加成"]:
                     if self._confirm_drink_result() is False:
                         self.log_error("饮品加成确认失败：结果页未关闭")
@@ -571,7 +631,7 @@ class DailyActivityMixin:
                 return True
             else:
                 # 限时等原入口重新可识别后才重试 Alt 点击；未知页不盲点。
-                if attempt + 1 < times and self.wait_ocr(match=entry_match, time_out=3):
+                if entry_attempt < times and self.wait_ocr(match=entry_match, time_out=3):
                     continue
                 else:
                     self.ocr(log=True, screenshot=True)
