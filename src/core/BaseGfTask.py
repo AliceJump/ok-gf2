@@ -113,7 +113,8 @@ class BaseGfTask(RuntimeMixin, BaseTask):
                 self.sleep(3)
                 self.next_frame()
                 continue
-            if skip := self.find_boxes(boxes, match=["跳过"]):
+            # 跳过图标可能被 OCR 合并为“日/口”；仍要求整段文字为按钮，避免匹配对话正文。
+            if skip := self.find_boxes(boxes, match=re.compile(r"^\s*[日口囗□]?\s*跳\s*过\s*$")):
                 self.click(skip, after_sleep=2)
             elif no_alert := self.find_boxes(boxes, match="今日不再提示"):
                 self.click(no_alert)
