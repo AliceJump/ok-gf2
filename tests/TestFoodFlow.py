@@ -17,7 +17,7 @@ base_source = source.parents[2] / "core/BaseGfTask.py"
 base_tree = ast.parse(base_source.read_text(encoding="utf-8"))
 base_methods = [n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "_confirm_meal_result"]
 exec(compile(ast.Module(body=base_methods, type_ignores=[]), str(base_source), "exec"), namespace)
-dialog_namespace = {"time": time, "pop_ups": ["点击空白处关闭"]}
+dialog_namespace = {"re": re, "time": time, "pop_ups": ["点击空白处关闭"]}
 dialog_method = next(n for n in ast.walk(base_tree) if isinstance(n, ast.FunctionDef) and n.name == "skip_dialogs")
 exec(compile(ast.Module(body=[dialog_method], type_ignores=[]), str(base_source), "exec"), dialog_namespace)
 
