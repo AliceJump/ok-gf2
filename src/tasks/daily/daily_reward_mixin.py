@@ -276,7 +276,7 @@ class DailyRewardMixin:
         return False
 
     def explore_claim(self):
-        """Collect expedition rewards, skipping removed entries with explicit status."""
+        """领取后继续派遣；只有奖励状态和派遣结果都有明确证据才报告完成。"""
         self.info_set("current_task", "explore_claim")
         if not self.wait_click_ocr(
             match="限时开启", box=self.box.top_right, after_sleep=2, time_out=2, raise_if_not_found=False, log=True
@@ -312,16 +312,20 @@ class DailyRewardMixin:
             log=True,
         ):
             return
-        if self.wait_ocr(
-            match=re.compile(r"^\s*当前难度奖励已全部领取\s*$"),
-            box=self.box.bottom_right,
-            time_out=2,
-            raise_if_not_found=False,
-        ):
+        claim_confirmed = bool(
+            self.wait_ocr(
+                match=re.compile(r"^\s*当前难度奖励已全部领取\s*$"),
+                box=self.box.bottom_right,
+                time_out=2,
+                raise_if_not_found=False,
+            )
+        )
+        if claim_confirmed:
             self.log_info("当前难度奖励已全部领取，继续核查派遣")
         else:
             if not self.wait_click_ocr(
-                match=re.compile(r"^\s*领取\s*$"),
+                # 一键领取的首字横线可能漏识别；仍整段匹配，避免点击已领取说明。
+                match=re.compile(r"^\s*(?:一?\s*键\s*)?领取\s*$"),
                 box=self.box.bottom_right,
                 time_out=2,
                 raise_if_not_found=False,
@@ -332,11 +336,29 @@ class DailyRewardMixin:
                 self.screenshot("explore_claim_unconfirmed")
                 self.ensure_main()
                 return "待核查"
-            self.wait_pop_up(count=1)
+            # wait_pop_up 不返回结果；点击框也不是到账证据，须先读取奖励提示。
+            if self.wait_ocr(
+                match=re.compile(r"^\s*获得道具\s*$"),
+                box=self.box.top,
+                time_out=3,
+                raise_if_not_found=False,
+            ):
+                claim_confirmed = True
+                self.back(after_sleep=1)
+            else:
+                claim_confirmed = bool(
+                    self.wait_ocr(
+                        match=re.compile(r"^\s*(?:当前难度奖励已全部领取|暂无可领取奖励|无可领取奖励)\s*$"),
+                        box=self.box.bottom_right,
+                        time_out=2,
+                        raise_if_not_found=False,
+                    )
+                )
+            # 空槽时领取按钮可能置灰，缺少奖励弹窗仍应继续尝试派遣。
         if not self.wait_click_ocr(
             match=re.compile("派遣"),
             box=self.box.bottom_right,
-            after_sleep=2,
+            after_sleep=0,
             time_out=2,
             raise_if_not_found=False,
             log=True,
@@ -345,6 +367,25 @@ class DailyRewardMixin:
             self.screenshot("explore_dispatch_unconfirmed")
             self.ensure_main()
             return "待核查"
+        dispatch_confirmed = bool(
+            self.wait_ocr(
+                match=re.compile(r"^\s*派遣成功\s*$"),
+                box=self.box.center,
+                time_out=4,
+                settle_time=0,
+                raise_if_not_found=False,
+            )
+        )
+        if not dispatch_confirmed:
+            self.log_warning("未确认探索派遣结果，探索领取待核查")
+            self.screenshot("explore_dispatch_result_unconfirmed")
+        elif not claim_confirmed:
+            self.log_warning("派遣已确认，但未确认探索领取结果或无奖励状态，探索领取待核查")
+            self.screenshot("explore_claim_result_unconfirmed")
+        if not dispatch_confirmed or not claim_confirmed:
+            self.ensure_main()
+            return "待核查"
+        return True
 
     def star_wish(self):
         self.info_set("current_task", "star_wish")
