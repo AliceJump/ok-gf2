@@ -321,7 +321,8 @@ class DailyRewardMixin:
             self.log_info("当前难度奖励已全部领取，继续核查派遣")
         else:
             if not self.wait_click_ocr(
-                match=re.compile(r"^\s*领取\s*$"),
+                # 一键领取的首字横线可能漏识别；仍整段匹配，避免点击已领取说明。
+                match=re.compile(r"^\s*(?:一?\s*键\s*)?领取\s*$"),
                 box=self.box.bottom_right,
                 time_out=2,
                 raise_if_not_found=False,

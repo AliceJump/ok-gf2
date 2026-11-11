@@ -68,7 +68,7 @@ class DailyRewardRetryTest(unittest.TestCase):
         self.assertEqual("待核查", DailyRewardMixin.xunlu(task))
         task.screenshot.assert_called_once_with("Xunlu_Uncertain_每日行动")
 
-    def explore_task(self, label):
+    def explore_task(self, label, dispatch_label=None):
         """按真实 OCR 的正则搜索方式提供探索页面文字。"""
         task = Mock()
         task.wait_ocr.side_effect = lambda **kw: [SimpleNamespace(name=label)] if re.search(kw["match"], label) else []
@@ -81,10 +81,44 @@ class DailyRewardRetryTest(unittest.TestCase):
             if re.search(pattern, label):
                 clicked.append(label)
                 return True
+            if dispatch_label and re.search(pattern, dispatch_label):
+                clicked.append(dispatch_label)
+                return True
             return False
 
         task.wait_click_ocr.side_effect = click
         return task, clicked
+
+    def test_explore_bulk_claim_continues_to_dispatch(self):
+        """兼容一键按钮首字漏识别，领取后仍执行派遣。"""
+        for claim, dispatch in (
+            ("领取", "派遣"),
+            ("一键领取", "一键派遣"),
+            ("键领取", "键派遣"),
+            (" 一 键 领取 ", "一键派遣"),
+        ):
+            with self.subTest(claim=claim, dispatch=dispatch):
+                task, clicked = self.explore_task(claim, dispatch)
+                self.assertIsNone(DailyRewardMixin.explore_claim(task))
+                self.assertEqual([claim, dispatch], clicked)
+                task.screenshot.assert_not_called()
+                task.ensure_main.assert_not_called()
+
+    def test_explore_disabled_bulk_claim_does_not_block_empty_slots_dispatch(self):
+        """空采集槽的领取按钮置灰、无奖励弹窗，仍需点击可用派遣。"""
+        task, clicked = self.explore_task("键领取", "键派遣")
+        task.wait_pop_up.return_value = None
+        self.assertIsNone(DailyRewardMixin.explore_claim(task))
+        self.assertEqual(["键领取", "键派遣"], clicked)
+        task.wait_pop_up.assert_called_once_with(count=1)
+        task.screenshot.assert_not_called()
+
+    def test_explore_bulk_claim_without_dispatch_is_uncertain(self):
+        """识别到一键领取仍不能掩盖派遣入口缺失。"""
+        task, clicked = self.explore_task("一键领取")
+        self.assertEqual("待核查", DailyRewardMixin.explore_claim(task))
+        self.assertEqual(["一键领取"], clicked)
+        task.screenshot.assert_called_once_with("explore_dispatch_unconfirmed")
 
     def test_explore_completed_notice_is_not_clicked(self):
         """采集已领取说明不能点击，派遣仍需保留待核查。"""
@@ -105,7 +139,7 @@ class DailyRewardRetryTest(unittest.TestCase):
 
     def test_explore_unrelated_claim_text_remains_uncertain(self):
         """领奖说明与空白页面都不能当作领取成功。"""
-        for label in ("完成后领取奖励", ""):
+        for label in ("完成后领取奖励", "一键领取奖励说明", "奖励已一键领取", ""):
             with self.subTest(label=label):
                 task, clicked = self.explore_task(label)
                 self.assertEqual("待核查", DailyRewardMixin.explore_claim(task))
