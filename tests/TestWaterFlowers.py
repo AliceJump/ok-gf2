@@ -11,7 +11,19 @@ methods = [
     n
     for n in node.body
     if isinstance(n, ast.FunctionDef)
-    and n.name in ("water_flowers", "_ensure_activity_panel", "free_time_layer", "do_food_flow", "_route", "go_drink", "go_eat")
+    and n.name
+    in (
+        "water_flowers",
+        "_ensure_activity_panel",
+        "free_time_layer",
+        "do_food_flow",
+        "_route",
+        "go_drink",
+        "go_eat",
+        "_flowerpot_page",
+        "_harvest_flower",
+        "_plant_seed",
+    )
 ]
 DRINK_ROUTE, EAT_ROUTE = "1.087-1.0-0.6", "0.65"
 ns = {
@@ -20,6 +32,7 @@ ns = {
     "EAT_ROUTE": EAT_ROUTE,
     "LEGACY_ROUTES": {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)},
     "parse_time_option": lambda v: [float(x) for x in v.split("-")],
+    "NO_SEED": "不种",
 }
 exec(compile(ast.Module(body=methods, type_ignores=[]), str(source), "exec"), ns)
 water_flowers = ns["water_flowers"]
@@ -144,6 +157,8 @@ class WaterFlowersTest(unittest.TestCase):
         clicks = []
 
         def matches(pattern, text):
+            if isinstance(pattern, list):
+                return any(matches(p, text) for p in pattern)
             return bool(pattern.search(text)) if isinstance(pattern, re.Pattern) else pattern == text
 
         def click_ocr(*, match, **kwargs):
@@ -170,7 +185,9 @@ class WaterFlowersTest(unittest.TestCase):
                 return False
             # 按钮中心取自 issue #80 日志；次数坐标为旧框下方的模拟样本。
             if box == "right":
-                return [SimpleNamespace(x=1520, y=568, width=60, height=30)] if matches(match, "浇灌") else []
+                return (
+                    [SimpleNamespace(name="浇灌", x=1520, y=568, width=60, height=30)] if matches(match, "浇灌") else []
+                )
             left, top, right, bottom = box
             labels = [(1550, 660, "1/1" if state["done"] else "0/1"), (1760, 660, "1/1")]  # 施肥始终已完成
             return [
@@ -180,6 +197,7 @@ class WaterFlowersTest(unittest.TestCase):
             ]
 
         task._ensure_activity_panel.side_effect = lambda: ensure_panel(task)
+        task._flowerpot_page.side_effect = lambda **kw: ns["_flowerpot_page"](task, **kw)
         task.wait_click_ocr.side_effect = click_ocr
         task.wait_ocr.side_effect = ocr
         return task, clicks
@@ -235,7 +253,7 @@ class WaterFlowersTest(unittest.TestCase):
 
         def moved_ocr(*, match, box, **kwargs):
             if box == "right":
-                return [SimpleNamespace(x=2100, y=780, width=80, height=40)]
+                return [SimpleNamespace(name="浇灌", x=2100, y=780, width=80, height=40)]
             if kwargs.get("time_out") in (1, 10):
                 left, top, right, bottom = box
                 self.assertTrue(left <= 2140 / 2560 <= right)
@@ -273,6 +291,155 @@ class WaterFlowersTest(unittest.TestCase):
         self.assertEqual("待核查", water_flowers(task))
         self.assertEqual([], clicks)
         task.info_set.assert_any_call("浇灌", "已跳过：未识别到栽培入口")
+
+
+# 实录 2026-11-11 各页 OCR：花熟了的 F2 栽培概览 / 花盆页、收获后的空盆概览、海伦娜那里的选种子页
+RIPE_OVERVIEW = [
+    "逸趣事件",
+    "宜居值",
+    "栽培",
+    "三色堇",
+    "花朵盛放值",
+    "90/90",
+    "栽培天数",
+    "24天",
+    "生长阶段",
+    "可收获",
+]
+RIPE_OVERVIEW += ["花朵可收获", "前往"]
+RIPE_POT = ["三色堇", "盛放值：90", "栽培天数", "24天", "生长阶段", "可收获", "收获", "获得【三色堇】"]
+RIPE_POT += ["当前存在可领取的奖励"]
+EMPTY_OVERVIEW = ["逸趣事件", "宜居值", "栽培", "当前未种植花朵，可找到海伦娜进行种植", "前往"]
+SEED_PAGE = ["请选择一个种子进行播种", "三色堇", "成熟后可收获【三色堇】", "幽蓝美人", "成熟后可收获【幽蓝美人】"]
+SEED_PAGE += ["紫阳花", "成熟后可收获【紫阳花】", "番茄", "成熟后可收获【番茄】", "确认"]
+# 播种后的花盆页没有实录，按平时的浇灌页（浇灌 + 下方次数）模拟
+NEW_POT = ["三色堇", "栽培天数", "0天", "浇灌", "0/1"]
+
+
+def text_matches(pattern, text):
+    if isinstance(pattern, list):
+        return any(text_matches(p, text) for p in pattern)
+    return bool(pattern.search(text)) if isinstance(pattern, re.Pattern) else pattern == text
+
+
+class Cultivation:
+    """活动层栽培：花熟了 → 收获弹「获得道具」→ 关掉回到活动层（F2 关了）→ 空盆概览 → 前往 → 选种子 → 确认 → 浇灌。"""
+
+    def __init__(self, ripe=True):
+        self.page = "layer"
+        self.ripe = ripe
+        self.planted = None
+        self.selected = "三色堇"  # 选种子页默认选中第一张
+        self.harvests = 0
+        self.watered = False
+        self.clicks = []
+
+    def texts(self):
+        if self.page == "overview":
+            return RIPE_OVERVIEW if self.ripe else EMPTY_OVERVIEW if not self.planted else ["栽培天数", "前往"]
+        if self.page == "pot":
+            return RIPE_POT if self.ripe else [*NEW_POT[:-1], "1/1" if self.watered else "0/1"]
+        if self.page == "seed":
+            return SEED_PAGE
+        if self.page == "reward":
+            return ["获得道具", "点击空白处关闭"]
+        return []
+
+    def find(self, match):
+        return [
+            SimpleNamespace(name=t, x=500, y=500, width=40, height=20) for t in self.texts() if text_matches(match, t)
+        ]
+
+    def tap(self, name):
+        self.clicks.append(name)
+        if self.page == "overview" and name == "前往":
+            self.page = "pot" if self.ripe or self.planted else "seed"
+        elif self.page == "pot" and self.ripe and name == "收获":
+            self.ripe, self.harvests, self.page = False, self.harvests + 1, "reward"
+        elif self.page == "pot" and name == "浇灌":
+            self.watered = True
+        elif self.page == "seed" and name == "确认":
+            self.planted, self.page = self.selected, "pot"
+        elif self.page == "seed" and name in SEED_PAGE:
+            self.selected = name
+
+
+class FlowerHarvestTest(unittest.TestCase):
+    """实录 2026-11-11：三色堇种了 24 天熟了，花盆页只有「收获」没有浇灌，浇花记待核查、花一直没收。"""
+
+    def make_task(self, screen, seed="三色堇"):
+        task = Mock()
+        task.width, task.height = 1000, 1000
+        task.config = {"栽培种子": seed}
+
+        def open_panel():
+            if screen.page == "layer":
+                screen.page = "overview"
+            return True
+
+        def click_ocr(*, match, **kwargs):
+            found = screen.find(match)
+            if found:
+                screen.tap(found[0].name)
+            return found
+
+        def close_popup():
+            if screen.page == "reward":
+                screen.page = "layer"  # 关掉「获得道具」后回到活动层，F2 面板也关了
+            return True
+
+        task._ensure_activity_panel.side_effect = open_panel
+        task._dismiss_activity_progress_dialog.return_value = True
+        task._close_reward_popup.side_effect = close_popup
+        task.wait_ocr.side_effect = lambda *, match, **kw: screen.find(match)
+        task.wait_click_ocr.side_effect = click_ocr
+        task.click.side_effect = lambda b, **kw: screen.tap(b.name)
+        for name in ("water_flowers", "_flowerpot_page", "_harvest_flower", "_plant_seed"):
+            getattr(task, name).side_effect = lambda *a, _f=ns[name], **kw: _f(task, *a, **kw)
+        return task
+
+    def test_recorded_pages_are_classified(self):
+        screen = Cultivation()
+        task = self.make_task(screen)
+        for page, ripe, kind in (("pot", True, "harvest"), ("seed", False, "seed"), ("overview", True, None)):
+            with self.subTest(page=page):
+                screen.page, screen.ripe = page, ripe
+                self.assertEqual(kind, ns["_flowerpot_page"](task)[0])  # 「可收获」「花朵可收获」不算收获按钮
+        screen.page, screen.ripe, screen.planted = "pot", False, "三色堇"
+        self.assertEqual("water", ns["_flowerpot_page"](task)[0])
+
+    def test_ripe_flower_is_harvested_replanted_and_watered(self):
+        screen = Cultivation()
+        task = self.make_task(screen)
+        self.assertIs(True, water_flowers(task))
+        self.assertEqual(1, screen.harvests)
+        self.assertEqual("三色堇", screen.planted)
+        self.assertTrue(screen.watered)
+        self.assertEqual(["前往", "收获", "前往", "三色堇", "确认", "浇灌"], screen.clicks)
+        task.info_set.assert_any_call("栽培", "已收获")
+        task.info_set.assert_any_call("栽培", "已播种「三色堇」")
+
+    def test_configured_seed_card_is_picked(self):
+        screen = Cultivation()
+        task = self.make_task(screen, seed="番茄")
+        self.assertIs(True, water_flowers(task))
+        self.assertEqual("番茄", screen.planted)
+
+    def test_no_seed_leaves_pot_empty_for_user(self):
+        screen = Cultivation()
+        task = self.make_task(screen, seed="不种")
+        self.assertEqual("待核查", water_flowers(task))
+        self.assertEqual(1, screen.harvests)
+        self.assertIsNone(screen.planted)
+        self.assertNotIn("确认", screen.clicks)
+        task.back.assert_called()
+
+    def test_empty_pot_is_planted_then_watered(self):
+        screen = Cultivation(ripe=False)
+        task = self.make_task(screen)
+        self.assertIs(True, water_flowers(task))
+        self.assertEqual(0, screen.harvests)
+        self.assertEqual(["前往", "三色堇", "确认", "浇灌"], screen.clicks)
 
 
 class FoodFlowResultTest(unittest.TestCase):
