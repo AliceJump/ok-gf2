@@ -22,6 +22,7 @@ const dailyKeys = [
   ['喝水', '1.087-1.0-0.8', 'text', { sub_config: true, description: '饮品坐标预设，和实机一致' }],
   ['吃饭', '1.0', 'text', { sub_config: true, description: '今日已用餐会跳过' }],
   ['活动层浇花', false, 'boolean', { sub_config: true }],
+  ['栽培种子', '三色堇', 'select', { sub_config: true, options: ['三色堇', '幽蓝美人', '紫阳花', '番茄', '不种'], description: '花熟了自动收获后种这个' }],
   ['公共区/调度室', true, 'boolean'],
   ['自主循环', false, 'boolean', { sub_config: true, description: '开了会跳过体力本、刷钱本、竞技场' }],
   ['领任务', true, 'boolean'],
