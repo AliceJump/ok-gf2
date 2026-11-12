@@ -27,6 +27,9 @@ DRINK_ROUTE = "1.087-1.0-0.6"
 EAT_ROUTE = "0.65"
 # 旧默认值是按「中间停顿」量的，换成连续按键后已经不对；存着旧默认值的配置按新默认走
 LEGACY_ROUTES = {"喝水": ("1.087-1.0-0.8", DRINK_ROUTE), "吃饭": ("1.0", EAT_ROUTE)}
+# 栽培选种子页的四种种子（实录 2026-11-11），「栽培种子」选「不种」时花盆空着等用户自己选
+NO_SEED = "不种"
+SEED_OPTIONS = ["三色堇", "幽蓝美人", "紫阳花", "番茄", NO_SEED]
 # 进活动层时画面还是黑屏/加载页，在入口原有的 8+12 秒之外最多再等这么久
 LAYER_LOADING_GRACE = 40
 
@@ -399,8 +402,12 @@ class DailyActivityMixin:
             return False
         return True
 
-    def water_flowers(self):
-        """验证浇灌次数，无法识别栽培入口时标记待核查。"""
+    def water_flowers(self, harvested=False):
+        """验证浇灌次数，无法识别栽培入口时标记待核查。
+
+        花熟了花盆页没有浇灌、只有「收获」：先收获，再从头走一遍，空盆按「栽培种子」播种后接着浇。
+        harvested：这一轮是收获之后重走的，不再收获第二次。
+        """
         self.info_set("current_task", "water_flowers")
         if not self._ensure_activity_panel():
             self.info_set("浇灌", "已跳过：未识别到栽培入口")
@@ -422,8 +429,9 @@ class DailyActivityMixin:
         on_watering_page = self.wait_ocr(match=watering_match, box=self.box.right, time_out=2, raise_if_not_found=False)
         on_overview = False
         if not on_watering_page:
+            # 空盆时概览只有一句「当前未种植花朵，可找到海伦娜进行种植」和「前往」
             on_overview = self.wait_ocr(
-                match=re.compile(r"栽\s*培\s*天\s*数|生\s*长\s*阶\s*段"),
+                match=re.compile(r"栽\s*培\s*天\s*数|生\s*长\s*阶\s*段|未\s*种\s*植\s*花\s*朵"),
                 box=self.box_of_screen(0.36, 0.43, 0.85, 0.59),
                 time_out=2,
                 raise_if_not_found=False,
@@ -457,10 +465,23 @@ class DailyActivityMixin:
                 self.info_set("浇灌", "已跳过：未识别到浇灌入口")
                 self.log_info("未识别到浇灌入口，跳过浇灌并继续后续任务")
                 return "待核查"
-        watering_buttons = self.wait_ocr(
-            match=watering_match, box=self.box.right, time_out=10, raise_if_not_found=False
-        )
-        if not watering_buttons:
+        kind, watering_buttons = self._flowerpot_page(time_out=10)
+        if kind == "harvest":
+            self._harvest_flower(watering_buttons[0])
+            if harvested:
+                self.log_warning("收获后花盆页又是「收获」，不再重复点")
+                return "待核查"
+            # 收获后回到活动层、F2 面板也关了，从头再走一遍：空盆 → 选种子播种 → 浇灌
+            return self.water_flowers(harvested=True)
+        if kind == "seed":
+            planted = self._plant_seed()
+            if planted is not True:
+                return planted
+            kind, watering_buttons = self._flowerpot_page(time_out=15)
+            if kind != "water":
+                self.debug_shot("flowerpot_after_seed")
+                self.log_info(f"播种后没看到浇灌按钮，画面：{[b.name for b in self.ocr()][:15]}")
+        if kind != "water":
             self.info_set("浇灌", "已跳过：未进入浇灌页面")
             self.log_info("未进入浇灌页面，跳过浇灌并继续后续任务")
             return "待核查"
@@ -491,6 +512,79 @@ class DailyActivityMixin:
         # 关闭栽培页面后，由活动层共用的 ensure_main 处理退出确认。
         self.back(after_sleep=2)
         return completed
+
+    def _flowerpot_page(self, time_out=10):
+        """点「前往」之后的花盆页是哪一种，返回 (种类, 对应的框)。
+
+        water：有「浇灌」；harvest：花熟了，右下角只有「收获 获得【三色堇】」；
+        seed：空盆，右上角「请选择一个种子进行播种」；都没有返回 (None, [])。
+        """
+        watering = re.compile(r"浇\s*灌")
+        harvest = re.compile(r"^\s*收\s*获\s*$")
+        seed = re.compile(r"选\s*择.{0,4}种\s*子|进\s*行\s*播\s*种")
+        found = (
+            self.wait_ocr(
+                match=[watering, harvest, seed], box=self.box.right, time_out=time_out, raise_if_not_found=False
+            )
+            or []
+        )
+        for kind, pattern in (("water", watering), ("harvest", harvest), ("seed", seed)):
+            boxes = [b for b in found if pattern.search(b.name)]
+            if boxes:
+                return kind, boxes
+        return None, []
+
+    def _harvest_flower(self, button):
+        """花熟了点「收获」，关掉「获得道具」。
+
+        实录 2026-11-11：三色堇种了 24 天，盛放值 90/90，生长阶段「可收获」。花盆页没有浇灌按钮，
+        右下角是「收获 获得【三色堇】」，原来等不到浇灌就跳过（活动层记待核查）。点「收获」弹「获得道具」
+        （三色堇 ×1，顺带解锁两个成就），关掉后回到活动层、F2 面板也关了，栽培页变成「当前未种植花朵」。
+        """
+        self.log_info("花熟了（栽培「可收获」），点「收获」", notify=False)
+        self.click(button, after_sleep=2)
+        self._close_reward_popup()
+        self.info_set("栽培", "已收获")
+
+    def _plant_seed(self):
+        """空花盆的选种子页：按「栽培种子」点种子卡片，再点「确认」播种；选了「不种」就退出来让用户自己选。
+
+        实录 2026-11-11：收获后栽培页是「当前未种植花朵，可找到海伦娜进行种植」，点「前往」走到海伦娜那里，
+        右边列出三色堇、幽蓝美人、紫阳花、番茄四张卡片（默认选中第一张），右下角「确认」。
+        """
+        seed = (self.config.get("栽培种子") or NO_SEED).strip()
+        if seed == NO_SEED:
+            self.info_set("栽培", "待核查：花盆空着，「栽培种子」选了不种")
+            self.log_info("花盆空着，「栽培种子」选了「不种」，不替你选种子", notify=True)
+            self.back(after_sleep=2)
+            return "待核查"
+        if not self.wait_click_ocr(
+            match=re.compile(rf"^\s*{re.escape(seed)}\s*$"),
+            box=self.box.right,
+            time_out=3,
+            raise_if_not_found=False,
+            after_sleep=1,
+            log=True,
+        ):
+            self.info_set("栽培", f"待核查：选种子页没找到「{seed}」")
+            self.log_warning(f"选种子页没找到「{seed}」，不播种")
+            self.back(after_sleep=2)
+            return "待核查"
+        if not self.wait_click_ocr(
+            match=re.compile(r"^\s*确\s*认\s*$"),
+            box=self.box.bottom_right,
+            time_out=3,
+            raise_if_not_found=False,
+            after_sleep=3,
+            log=True,
+        ):
+            self.info_set("栽培", "待核查：选种子页没找到「确认」")
+            self.log_warning("选种子页没找到「确认」，不播种")
+            self.back(after_sleep=2)
+            return "待核查"
+        self.log_info(f"花盆空着，播种「{seed}」", notify=False)
+        self.info_set("栽培", f"已播种「{seed}」")
+        return True
 
     def _skip_active_food_buff(self, next_match=None, stay_match=None):
         """仅处理已生效饮食的覆盖提示，取消重复制作并验证弹窗关闭。

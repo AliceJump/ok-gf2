@@ -10,7 +10,7 @@ from pathlib import Path
 from src.core.BaseGfTask import BaseGfTask
 from src.tasks.AccountMixin import AccountMixin
 from src.tasks.CommunityClient import CommunityMixin
-from src.tasks.daily.daily_activity_mixin import DRINK_ROUTE, EAT_ROUTE, DailyActivityMixin
+from src.tasks.daily.daily_activity_mixin import DRINK_ROUTE, EAT_ROUTE, SEED_OPTIONS, DailyActivityMixin
 from src.tasks.daily.daily_battle_mixin import DailyBattleMixin
 from src.tasks.daily.daily_common_mixin import DailyCommonMixin
 from src.tasks.daily.daily_public_mixin import DailyPublicMixin
@@ -84,6 +84,7 @@ class DailyTask(
                 "活动自律": ('自动进入限时开启活动并挑战物资关卡\n关卡名称在"当前物资关卡名称"中配置'),
                 "活动层": "自动完成活动层中的喝水、吃饭和奖励领取流程",
                 "活动层浇花": "在喝水和吃饭后浇灌栽培植物；已浇灌则跳过，不施肥",
+                "栽培种子": "花熟了（约 24 天）浇花时自动收获，然后种这个种子再浇水；选「不种」就空着等你自己选",
                 "公共区/调度室": "自动完成公共区委托的派遣与领取；开了「自主循环」且已解锁时改用游戏内自主循环",
                 "自主循环": (
                     "吃完饭后点主页左下角的自主循环图标（指挥官 50 级解锁）→「开始循环」，由游戏按循环队列完成调度室、体力本、竞技场等\n"
@@ -119,6 +120,7 @@ class DailyTask(
                 "活动自律": True,
                 "活动层": True,
                 "活动层浇花": True,
+                "栽培种子": "三色堇",
                 "公共区/调度室": True,
                 "自主循环": False,
                 "购买免费礼包": True,
@@ -150,6 +152,7 @@ class DailyTask(
         }
         self.stamina_options = ["军备解析", "深度搜索", "决策构象", "定向"]
         self.config_type["体力本"] = {"type": "drop_down", "options": self.stamina_options}
+        self.config_type["栽培种子"] = {"type": "drop_down", "options": SEED_OPTIONS}
 
     def _init_default_config_group(self):
         """
@@ -161,7 +164,7 @@ class DailyTask(
                 "社区每日": ["用户名", "密码"],
                 "大月卡": ["拂晓之光补给包奖励"],
                 "活动自律": ["当前物资关卡名称"],
-                "活动层": ["喝水", "吃饭", "活动层浇花"],
+                "活动层": ["喝水", "吃饭", "活动层浇花", "栽培种子"],
                 "公共区/调度室": ["自主循环"],
                 "购买免费礼包": ["商店心愿单购买"],
                 "自动刷体力": ["体力本"],

@@ -287,6 +287,27 @@ msgstr ""
 msgid "待核查"
 msgstr "Needs verification"
 
+msgid "栽培种子"
+msgstr "Cultivation seed"
+
+msgid "花熟了（约 24 天）浇花时自动收获，然后种这个种子再浇水；选「不种」就空着等你自己选"
+msgstr "When the flower is ripe (about 24 days), harvest it while watering, then plant this seed and water it. Choose \"Don't plant\" to leave the pot empty for you to pick."
+
+msgid "三色堇"
+msgstr "Pansy"
+
+msgid "幽蓝美人"
+msgstr "Blue Beauty"
+
+msgid "紫阳花"
+msgstr "Hydrangea"
+
+msgid "番茄"
+msgstr "Tomato"
+
+msgid "不种"
+msgstr "Don't plant"
+
 msgid "待核查任务:"
 msgstr "Tasks needing verification:"
 
