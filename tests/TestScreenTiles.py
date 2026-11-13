@@ -1,6 +1,7 @@
 """
 切块补读（实录 2026-10-22）：整屏 OCR 把 2560 宽的画面缩小后，低对比的小字检测不到——
 驻足之地「当前」剧情关 DS-1-1（浅绿底深色字）、瑞骋迎春至未解锁的关（暗红底灰字）；切成 3x2 块分别 OCR 都读得到。
+实录 2026-11-12 热寂悖论挑战模式：能打的 DT-1-1 是亮白卡深色字，彩色切块也读不到，灰度切块才读得到。
 """
 
 import ast
@@ -20,6 +21,7 @@ nodes = [
     or (isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "TILE_GRID" for t in n.targets))
 ] + [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in ("scan_maps", "scan_tiles")]
 ns = {"re": re, "Box": lambda x, y, w, h: SimpleNamespace(x=x, y=y, width=w, height=h), "map_re": re.compile("x")}
+ns["to_gray"] = lambda frame: frame  # 测试里只认它是不是灰度那一遍
 exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), ns)
 W, H = 2560, 1440
 
@@ -33,21 +35,33 @@ class ScreenTilesTest(unittest.TestCase):
         # 每个像素都在某一块里；相邻块重叠，宽 150 的关卡名不会被切断
         for px in range(0, W - 150, 37):
             for py in range(0, H - 40, 53):
-                self.assertTrue(any(x <= px and px + 150 <= x + w and y <= py and py + 40 <= y + h for x, y, w, h in tiles))
+                self.assertTrue(
+                    any(x <= px and px + 150 <= x + w and y <= py and py + 40 <= y + h for x, y, w, h in tiles)
+                )
 
 
 class ScanTilesTest(unittest.TestCase):
-    def make_task(self, full, hidden):
-        """full：整屏 OCR 读得到的关卡；hidden：只有切块才读得到的关卡。"""
+    def make_task(self, full, hidden, gray_only=()):
+        """full：整屏 OCR 读得到的关卡；hidden：只有切块才读得到的关卡；gray_only：只有灰度切块才读得到的关卡。"""
         task = Mock()
         task.width, task.height = W, H
         task.processors = [None]
         task.read_tiles = False
+        self.tile_calls = []
 
-        def ocr(*a, box=None, **k):
+        def ocr(*a, box=None, frame_processor=None, **k):
             if box is None:
                 return list(full)
-            return [b for b in hidden if box.x <= b.x and b.x + b.width <= box.x + box.width and box.y <= b.y and b.y + b.height <= box.y + box.height]
+            self.tile_calls.append(frame_processor)
+            cards = list(hidden) + (list(gray_only) if frame_processor is ns["to_gray"] else [])
+            return [
+                b
+                for b in cards
+                if box.x <= b.x
+                and b.x + b.width <= box.x + box.width
+                and box.y <= b.y
+                and b.y + b.height <= box.y + box.height
+            ]
 
         task.ocr.side_effect = ocr
         task.scan_tiles.side_effect = lambda maps: ns["scan_tiles"](task, maps)
@@ -73,6 +87,21 @@ class ScanTilesTest(unittest.TestCase):
         task.read_tiles = True
         ordered = ns["scan_maps"](task)
         self.assertEqual([m.name for m, _ in ordered], ["DS-1-1", "DA-1-7"])
+
+    def test_bright_card_read_only_in_grayscale(self):
+        """热寂悖论挑战模式：DT-1-2～1-5 彩色切块读得到，能打的 DT-1-1（亮白卡深色字）只有灰度切块读得到。"""
+        hidden = [self.card(f"DT-1-{i}", x, 807) for i, x in ((2, 729), (3, 1186), (4, 1648), (5, 2109))]
+        task = self.make_task([], hidden, gray_only=[self.card("DT-1-1", 273, 807)])
+        ordered = ns["scan_maps"](task)
+        self.assertEqual([m.name for m, _ in ordered], ["DT-1-1", "DT-1-2", "DT-1-3", "DT-1-4", "DT-1-5"])
+        self.assertEqual(self.tile_calls.count(None), 6)
+        self.assertEqual(self.tile_calls.count(ns["to_gray"]), 6)
+
+    def test_grayscale_pass_does_not_duplicate_cards(self):
+        """灰度那遍又读到彩色已经读到的卡，不重复加。"""
+        card = self.card("DT-1-2", 729, 807)
+        task = self.make_task([], [card], gray_only=[self.card("DT-1-2", 731, 807)])
+        self.assertEqual([m.name for m, _ in ns["scan_maps"](task)], ["DT-1-2"])
 
 
 if __name__ == "__main__":

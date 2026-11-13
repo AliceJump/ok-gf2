@@ -54,6 +54,8 @@ SCREEN = 2000  # 屏幕能看到的地图宽度（真实章节里相邻卡片相
 
 class FakeChapter:
     width, height = 2560, 1440
+    BACK_TO_MAP = ns["BACK_TO_MAP"]
+    MAP_MARKS = [ns["map_re"]]
 
     def __init__(self, stages):
         # name -> {"x": 地图横坐标, "y": 行, "done": bool, "needs": [...], "story": bool}
