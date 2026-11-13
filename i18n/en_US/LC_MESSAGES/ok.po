@@ -699,8 +699,8 @@ msgstr "When set, press and drag from x1,y1 to x2,y2 (relative 0~1), e.g. 0.85,0
 msgid "往期活动推图"
 msgstr "Past Events"
 
-msgid "从主页、作战页或活动列表启动：进第一个完成度不到 100% 的往期活动推图，推完回列表找下一个；停在活动地图上启动就先推当前这个"
-msgstr "Start from the home screen, the combat screen or the event list: enter the first past event below 100% and push it, then go back to the list for the next one; when started on an event map, push that event first"
+msgid "从主页、作战页或活动列表启动：进第一个完成度不到 100% 的往期活动推图，推完回列表找下一个；停在活动地图上启动就先推当前这个；停在当期活动（限时开启）的挑战 / 剧情 / 物资模式上启动，只推这一页"
+msgstr "Start from the home screen, the combat screen or the event list: enter the first past event below 100% and push it, then go back to the list for the next one; when started on an event map, push that event first; when started on the challenge / story / supply mode of the current (limited-time) event, push only that page"
 
 msgid "推完继续下一个活动"
 msgstr "Continue with the next event"
