@@ -41,6 +41,8 @@ def find_boxes(boxes, match=None, boundary=None):
 def make_task(screens):
     task = Mock()
     task.config = {}
+    task.MAP_MARKS = [ns["map_re"]]
+    task.BACK_TO_MAP = ns["BACK_TO_MAP"]
     frames = iter(screens)
     current = {"boxes": []}
 
