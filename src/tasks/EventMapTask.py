@@ -8,15 +8,27 @@
 
 import re
 from difflib import SequenceMatcher
+from typing import ClassVar
 
 from src.core.BaseGfTask import map_re, nav_tabs_re
 from src.core.chapter_reward import card_has_badge, event_badges
-from src.tasks.ClearMapTask import DIFFICULTY_FILL, DIFFICULTY_MIN_FILL, ClearMapTask, campaign_re, difficulty_fill
+from src.tasks.ClearMapTask import (
+    BACK_TO_MAP,
+    DIFFICULTY_FILL,
+    DIFFICULTY_MIN_FILL,
+    ClearMapTask,
+    campaign_re,
+    difficulty_fill,
+)
 
 event_percent_re = re.compile(r"完\s*成\s*度\s*(\d{1,3})\s*%")
 event_tab_re = re.compile(r"^往期活动$")
 event_story_re = re.compile(r"^活动剧情$")
 map_tab_re = re.compile(r"^(剧\s*情|物\s*资)$")  # 活动地图右下的页签
+# 当期活动（主页「限时开启」进去的）地图顶上正中的模式名；往期活动的地图顶上是「活动剧情」
+limited_mode_re = re.compile(r"^(挑战|剧情|物资)模式$")
+challenge_notice_re = re.compile(r"挑战模式仅在当前活动期间")  # 当期活动挑战模式页左下的提示
+LIMITED_MODE_MAX_Y = 0.12  # 模式名在画面最上面这一条里（画面高的比例）
 EVENT_TITLE_DX = 0.08  # 活动名在「完成度」正上方：中心 x 相差不超过画面宽的这个比例
 EVENT_TITLE_DY = (0.02, 0.07)  # 活动名中心在「完成度」中心上方多远（画面高的比例）
 EVENT_LIST_DRAG = (0.75, 0.35)  # 拖活动列表时按住的起止 x（相对宽），一次挪两张多卡片，不会跳过
@@ -93,6 +105,23 @@ def pick_event(cards, skip):
     return None
 
 
+def limited_event_mode(boxes, height):
+    """
+    停着的是不是当期活动的地图，是就返回模式名（挑战模式 / 剧情模式 / 物资模式），不是返回 None。
+    当期活动地图顶上正中是「活动名 / 挑战模式」，挑战模式左下还有「挑战模式仅在当前活动期间内开放」；
+    往期活动地图顶上是「活动名 / 活动剧情」。
+    实录 2026-11-12 热寂悖论挑战模式（2560x1440）：「挑战模式」(1194,82)，左下提示 (32,1324)；
+    物资模式的标题是花体字，只读出「模」，这种认不出就按往期活动处理。
+    """
+    for b in boxes:
+        name = re.sub(r"\s", "", b.name or "")
+        if challenge_notice_re.search(name):
+            return "挑战模式"
+        if limited_mode_re.match(name) and b.y < LIMITED_MODE_MAX_Y * height:
+            return name
+    return None
+
+
 def event_title_on_map(boxes, width, height):
     """
     活动地图顶部正中：小字活动名在「活动剧情」上面一行。同一行可能被 OCR 拆成几个框
@@ -149,12 +178,16 @@ def selected_event_tab(frame, boxes, height):
 
 
 class EventMapTask(ClearMapTask):
+    # 当期活动挑战模式页的关卡卡片整屏 OCR 读不出名字（亮白卡 / 暗卡），打完回到这页时认左下角的提示
+    BACK_TO_MAP: ClassVar[list] = [*BACK_TO_MAP, challenge_notice_re]
+    MAP_MARKS: ClassVar[list] = [map_re, challenge_notice_re]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "往期活动推图"
         self.description = (
             "从主页、作战页或活动列表启动：进第一个完成度不到 100% 的往期活动推图，推完回列表找下一个；"
-            "停在活动地图上启动就先推当前这个"
+            "停在活动地图上启动就先推当前这个；停在当期活动（限时开启）的挑战 / 剧情 / 物资模式上启动，只推这一页"
         )
         for key in ("推完继续下一章", "难度", "英雄难度"):
             self.default_config.pop(key, None)
@@ -180,6 +213,9 @@ class EventMapTask(ClearMapTask):
             self.skipped_events = []
         if self.scan_maps():
             self.event_name = event_title_on_map(self.ocr(box="top") or [], self.width, self.height)
+            if mode := limited_event_mode(self.ocr() or [], self.height):
+                self.push_limited_event(mode)
+                return
             self.log_info(f"停在活动「{self.event_name or '?'}」的地图上，先推这个", notify=True)
         elif not self.enter_next_event():
             self.log_info("往期活动都推到 100% 了", notify=True)
@@ -201,6 +237,21 @@ class EventMapTask(ClearMapTask):
                 self.collect_event_rewards()
                 break
         self.log_info(f"往期活动推图完成, 本次推进 {total} 关", notify=True)
+
+    def push_limited_event(self, mode):
+        """
+        当期活动只推停着的这一页：它不在往期活动列表里，没法回列表读完成度核对，也没有「下一个活动」，推完就停在这页。
+        实录 2026-11-12 热寂悖论：剧情 / 物资模式都 100%，挑战模式 DT-1-1～1-5 是 0%；旧逻辑推完去找往期活动列表，
+        在活动主页认不出画面，当成剧情点右上角跳过。
+        """
+        self.log_info(
+            f"停在当期活动「{self.event_name or '?'}」的「{mode}」上：只推这一页，推完不回往期活动列表", notify=True
+        )
+        self.prepare_chapter()
+        count, locked = self.clear_chapter()
+        self.log_info(
+            f"当期活动「{self.event_name or '?'}」「{mode}」本次推进 {count} 关，未解锁 {locked or '无'}", notify=True
+        )
 
     def collect_event_rewards(self):
         """

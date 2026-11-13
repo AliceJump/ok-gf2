@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from typing import ClassVar
 
 import cv2
 from ok import Box, Logger
@@ -54,6 +55,16 @@ PASS_MAX_STEPS = 300  # 一遍扫描最多处理多少步（防止死循环）
 # 切块补读：整屏 OCR 会把 2560 宽的画面缩小再检测，低对比的小字（浅底深字的「当前」剧情关、暗红底灰字的未解锁关）检测不到，
 # 单独裁出来就读得到。补读时把画面切成 列 x 行 块（相邻块各重叠 1/4，免得关卡名被切在两块中间）分别 OCR
 TILE_GRID = (3, 2)
+
+
+def to_gray(frame):
+    """
+    切块补读时再按灰度读一遍。实录 2026-11-12 热寂悖论挑战模式：能打的 DT-1-1 是亮白卡深色字，
+    彩色切块只读出「DT-1-」或干脆读不到，转灰度后整块都读得出 DT-1-1（置信度 1.0）。
+    """
+    return cv2.cvtColor(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+
+
 MAP_DRAG_Y = 0.2  # 拖地图时按住的高度：卡片都在 0.3~0.75，这一带是空白背景，不会点到卡片
 # 打完/看完一关后「回到选关」的标志：地图卡片、章节选择页的「章节进度」、或作战页顶上的页签。
 # 实录 2026-10-21 15.0 章：看完剧情落在章节选择页，「章节进度」四个字 OCR 没读到、页签读到了，白等了 120 秒
@@ -295,6 +306,8 @@ def revealed_new(before, after, direction, min_shift=40, same_tol=60):
 
 class ClearMapTask(ChapterRewardMixin, BaseGfTask):
     LINEUP_TASK = True  # 每关开战前都整理阵容（切编队、补满；借助战看开关）
+    BACK_TO_MAP = BACK_TO_MAP  # 打完 / 看完一关后「回到选关」的标志，子类可以加自己选关页上的字
+    MAP_MARKS: ClassVar[list] = [map_re]  # 接管战斗时认「已经在选关页上」的标志（整屏 OCR）
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -375,14 +388,15 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
         把画面切块重新 OCR，补出整屏没读到名字的关卡卡片，只返回新位置上的。
         实录 2026-10-22 驻足之地：「当前」剧情关 DS-1-1 是浅绿底深色字，整屏 OCR 时有时无，后面 DA-1-7～1-9 一直「需要完成前置关卡」；
         瑞骋迎春至：未解锁的关是暗红底灰字，视野里全是这种关时一张卡都读不到，被当成不在地图上、走了回地图的恢复流程。
-        两种卡片单独裁出来都读得到。
+        两种卡片单独裁出来都读得到。彩色切块读完再按灰度切块读一遍（亮白卡深色字，见 to_gray）。
         """
         near_x, near_y = 0.05 * self.width, 0.03 * self.height
         found = []
-        for x, y, w, h in screen_tiles(self.width, self.height):
-            for b in self.ocr(box=Box(x, y, w, h), match=map_re) or []:
-                if not any(abs(b.x - m.x) < near_x and abs(b.y - m.y) < near_y for m in maps + found):
-                    found.append(b)
+        for processor in (None, to_gray):
+            for x, y, w, h in screen_tiles(self.width, self.height):
+                for b in self.ocr(box=Box(x, y, w, h), match=map_re, frame_processor=processor) or []:
+                    if not any(abs(b.x - m.x) < near_x and abs(b.y - m.y) < near_y for m in maps + found):
+                        found.append(b)
         if found:
             self.log_info(f"切块补读到关卡: {[b.name for b in found]}", notify=False)
         return found
@@ -703,7 +717,7 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
         while time.time() - start < time_out:
             self.next_frame()
             boxes = self.ocr()
-            if self.find_boxes(boxes, match=map_re):
+            if self.find_boxes(boxes, match=self.MAP_MARKS):
                 return True
             if self.find_boxes(boxes, match=campaign_re):
                 return False  # 游戏主页，交给 ensure_map 点「战役推进」
@@ -714,7 +728,9 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
             ):
                 self.log_info("当前在部署界面或战斗中，先打完这一关再继续推图", notify=True)
                 self.auto_battle(
-                    end_match=BACK_TO_MAP, has_dialog=True, need_click_auto=self.config.get("战斗内点击自动", False)
+                    end_match=self.BACK_TO_MAP,
+                    has_dialog=True,
+                    need_click_auto=self.config.get("战斗内点击自动", False),
                 )
                 self.reenter_from_chapter_select()
                 self.close_map_panel()
@@ -884,7 +900,7 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
             if status == "challenge":
                 try:
                     self.auto_battle(
-                        end_match=BACK_TO_MAP,
+                        end_match=self.BACK_TO_MAP,
                         has_dialog=True,
                         need_click_auto=self.config.get("战斗内点击自动", False),
                     )
@@ -899,7 +915,7 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
                     self.close_map_panel()
                     continue
             else:
-                self.skip_dialogs(end_match=BACK_TO_MAP, raise_if_not_found=False)
+                self.skip_dialogs(end_match=self.BACK_TO_MAP, raise_if_not_found=False)
             played += 1
             handled.update(group)
             done.update(group)

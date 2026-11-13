@@ -243,5 +243,100 @@ class EventListDragTest(unittest.TestCase):
         self.assertIsNone(cards)
 
 
+# 实录 2026-11-12 当期活动「热寂悖论」挑战模式（2560x1440）整屏 OCR：卡片上的 DT-1-1～1-5 一个都没读出来
+CHALLENGE_PAGE = [
+    ("热寂悖论", 1229, 45),
+    ("挑战模式", 1194, 82),
+    ("-", 2173, 604),
+    ("断罪审判", 285, 871),
+    ("断罪审判川", 741, 871),
+    ("断罪审判", 1197, 871),
+    ("断罪审判IV", 1653, 871),
+    ("断罪审判V", 2117, 871),
+    ("需要完成前置关卡", 707, 966),
+    ("挑战模式仅在当前活动期间内开放", 32, 1324),
+    ("号英雄难度", 2224, 1331),
+]
+# 同一活动的主页：右下三个模式入口（不是地图）
+EVENT_HOME = [
+    ("热寂悖论", 72, 180),
+    ("火线突围", 248, 889),
+    ("取证日程", 299, 1030),
+    ("挑战模式", 1280, 1241),
+    ("物资模式", 1629, 1236),
+    ("剧情模式", 1987, 1241),
+    ("完成度0%", 1285, 1297),
+]
+# 物资模式：标题是花体字只读出「模」
+SUPPLY_PAGE = [("模", 1275, 90), ("已达上限", 2368, 101), ("DF-1-3", 512, 680), ("DF-1-4", 1130, 686)]
+# 往期活动地图：顶上是「活动剧情」
+PAST_MAP = [("SAKURA", 1270, 20), ("前进吧，王牌配送员！", 1280, 45), ("活动剧情", 1280, 82), ("MA-1-1", 500, 700)]
+
+
+class LimitedEventTest(unittest.TestCase):
+    def test_challenge_page_is_limited_event(self):
+        self.assertEqual(ns["limited_event_mode"](boxes(CHALLENGE_PAGE), H), "挑战模式")
+
+    def test_title_alone_is_enough(self):
+        page = [row for row in CHALLENGE_PAGE if "仅在" not in row[0]]
+        self.assertEqual(ns["limited_event_mode"](boxes(page), H), "挑战模式")
+
+    def test_notice_alone_is_enough(self):
+        page = [row for row in CHALLENGE_PAGE if row[0] != "挑战模式"]
+        self.assertEqual(ns["limited_event_mode"](boxes(page), H), "挑战模式")
+
+    def test_mode_buttons_on_event_home_do_not_count(self):
+        self.assertIsNone(ns["limited_event_mode"](boxes(EVENT_HOME), H))
+
+    def test_past_event_map_and_unreadable_title(self):
+        self.assertIsNone(ns["limited_event_mode"](boxes(PAST_MAP), H))
+        self.assertIsNone(ns["limited_event_mode"](boxes(SUPPLY_PAGE), H))
+
+    def test_back_to_map_marks_include_challenge_notice(self):
+        """打完一关回到挑战模式页，整屏 OCR 读不到关卡名，只能靠左下提示认出回到了选关页。"""
+        notice = next(b for b in boxes(CHALLENGE_PAGE) if "仅在" in b.name)
+        self.assertTrue(ns["challenge_notice_re"].search(notice.name))
+
+
+class LimitedEventSweepTest(unittest.TestCase):
+    """停在当期活动挑战模式上启动：只推这一页，推完不去往期活动列表（实录 2026-11-12 去找列表时在活动主页乱点跳过）。"""
+
+    def setUp(self):
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "EventMapTask")
+        names = ("_run_sweep", "push_limited_event")
+        body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in names]
+        self.methods = dict(ns)
+        exec(compile(ast.Module(body=body, type_ignores=[]), str(source), "exec"), self.methods)
+
+    def make_task(self, screen):
+        task = Mock()
+        task.width, task.height = W, H
+        task.crash_resume = False
+        task.config = {}
+        task.scan_maps.return_value = [(SimpleNamespace(name="DT-1-2"), {"DT-1-2"})]
+        task.ocr.side_effect = lambda *a, **k: boxes(screen)
+        task.clear_chapter.return_value = (1, ["DT-1-3"])
+        task.push_limited_event.side_effect = lambda mode: self.methods["push_limited_event"](task, mode)
+        return task
+
+    def test_limited_event_only_pushes_current_page(self):
+        task = self.make_task(CHALLENGE_PAGE)
+        self.methods["_run_sweep"](task)
+        task.prepare_chapter.assert_called_once()
+        task.clear_chapter.assert_called_once()
+        task.finish_chapter.assert_not_called()
+        task.enter_next_event.assert_not_called()
+        task.collect_event_rewards.assert_not_called()
+        task.open_event_list.assert_not_called()
+
+    def test_past_event_map_keeps_old_flow(self):
+        task = self.make_task(PAST_MAP)
+        task.finish_chapter.return_value = (0, [])
+        task.config = {"推完继续下一个活动": False}
+        self.methods["_run_sweep"](task)
+        task.push_limited_event.assert_not_called()
+        task.finish_chapter.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
