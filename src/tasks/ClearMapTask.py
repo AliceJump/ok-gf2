@@ -1,6 +1,7 @@
 import re
 import time
 from collections import Counter
+from typing import ClassVar
 
 import cv2
 from ok import Box, Logger
@@ -306,7 +307,7 @@ def revealed_new(before, after, direction, min_shift=40, same_tol=60):
 class ClearMapTask(ChapterRewardMixin, BaseGfTask):
     LINEUP_TASK = True  # 每关开战前都整理阵容（切编队、补满；借助战看开关）
     BACK_TO_MAP = BACK_TO_MAP  # 打完 / 看完一关后「回到选关」的标志，子类可以加自己选关页上的字
-    MAP_MARKS = [map_re]  # 接管战斗时认「已经在选关页上」的标志（整屏 OCR）
+    MAP_MARKS: ClassVar[list] = [map_re]  # 接管战斗时认「已经在选关页上」的标志（整屏 OCR）
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
