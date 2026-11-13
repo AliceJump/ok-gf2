@@ -222,6 +222,16 @@ def button_kind(text):
     return None
 
 
+def panel_only(boxes, height):
+    """
+    面板上读到的字里去掉关卡卡片自己写的未解锁提示。面板里的提示在最底下按钮的位置（y >= BUTTON_MIN_Y），
+    当期活动挑战模式的卡片上也写着「需要完成前置关卡」（y≈0.67），伸进右半屏的卡片会混进来。
+    实录 2026-11-12 热寂悖论（2560x1440）：点开能打的 DT-1-1，读到 DT-1-4 卡片上的 (1594,964)，整页被判成未解锁；
+    锁着的 DT-1-2 面板里的提示在 (2078,1313)。
+    """
+    return [b for b in boxes if not (any(w in (b.name or "") for w in LOCKED_WORDS) and b.y < BUTTON_MIN_Y * height)]
+
+
 def classify_panel(has_boxes, locked_hint, special_reward, challenge, watch):
     """
     关卡面板文字 -> (状态, 动作按钮)。
@@ -409,7 +419,7 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
         面板是带动画弹出来的，「特殊奖励」往往比底部按钮先出现，所以看到奖励却没看到按钮时多读几帧再下结论。
         """
         self.click(card, after_sleep=1)
-        boxes = self.wait_ocr(box="right", match=PANEL_WORDS, time_out=3, log=True) or []
+        boxes = self.read_panel(time_out=3)
         status, action = self.panel_status(boxes)
         for _ in range(3):
             if status != "unknown":
@@ -426,10 +436,20 @@ class ClearMapTask(ChapterRewardMixin, BaseGfTask):
                 break
             self.sleep(0.6)
             self.next_frame()
-            boxes = self.ocr(box="right", match=PANEL_WORDS, log=True) or []
+            boxes = panel_only(self.ocr(box="right", match=PANEL_WORDS, log=True) or [], self.height)
             status, action = self.panel_status(boxes)
         self.debug_shot(f"panel_{name}", boxes)
         return status, action
+
+    def read_panel(self, time_out=3):
+        """读右侧面板上的字（去掉卡片上的未解锁提示，见 panel_only）；面板带动画弹出，读到为止，最多等 time_out 秒。"""
+        start = time.time()
+        while True:
+            self.next_frame()
+            boxes = panel_only(self.ocr(box="right", match=PANEL_WORDS, log=True) or [], self.height)
+            if boxes or time.time() - start >= time_out:
+                return boxes
+            self.sleep(0.3)
 
     def panel_status(self, boxes):
         """按面板上识别到的文字判断关卡状态；只看到「特殊奖励」没看到按钮算 unknown，不能当作未解锁。"""
