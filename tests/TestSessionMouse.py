@@ -305,6 +305,7 @@ ns = {
     "time": __import__("time"),
     "win32gui": FAKE_WIN32GUI,
     "attach_foreground": Mock(return_value=True),
+    "dismiss_shell_flyout": Mock(return_value=False),
 }
 STATE = {"kind": KIND_RDP, "settings": {}}
 exec(compile(ast.Module(body=[label_fn, cls], type_ignores=[]), str(source), "exec"), ns)
@@ -312,7 +313,14 @@ GfInteraction = ns["GfInteraction"]
 
 
 def make_interaction(
-    bound=True, foreground=True, origin=(0, 0), kind=KIND_RDP, settings=None, front_ok=True, attach_ok=True
+    bound=True,
+    foreground=True,
+    origin=(0, 0),
+    kind=KIND_RDP,
+    settings=None,
+    front_ok=True,
+    attach_ok=True,
+    flyout=False,
 ):
     FakeDevice.opens = bound
     FakeDevice.created = []
@@ -320,9 +328,13 @@ def make_interaction(
     capture = SimpleNamespace(get_abs_cords=lambda x, y: (origin[0] + x, origin[1] + y))
     window = Mock()
     window.is_foreground.return_value = foreground
-    window.bring_to_front.return_value = front_ok
+    if isinstance(front_ok, list):
+        window.bring_to_front.side_effect = front_ok
+    else:
+        window.bring_to_front.return_value = front_ok
     window.hwnd = 459332
     ns["attach_foreground"] = Mock(return_value=attach_ok)
+    ns["dismiss_shell_flyout"] = Mock(return_value=flyout)
     ns["logger"] = Mock()
     it = GfInteraction(capture, window)
     it.post_interaction = Mock()
@@ -358,10 +370,34 @@ class GfInteractionTest(unittest.TestCase):
         self.assertIn("Microsoft 帐户", message)
         self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
 
+    def test_shell_flyout_is_closed_with_esc_then_game_comes_front(self):
+        """实录 2026-11-16：「快速设置」面板占着前台，挂输入线程也切不动；按 Esc 关掉面板后游戏回前台。"""
+        it = make_interaction(foreground=False, front_ok=[False, True], flyout=True)
+        it.click(10, 20)
+        ns["dismiss_shell_flyout"].assert_called_once_with(66234)
+        self.assertEqual(it.hwnd_window.bring_to_front.call_count, 2)
+        ns["attach_foreground"].assert_not_called()
+        self.assertIn("系统面板", ns["logger"].warning.call_args.args[0])
+        self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_flyout_closed_but_game_still_behind_tries_attach(self):
+        it = make_interaction(foreground=False, front_ok=[False, False], flyout=True)
+        it.click(10, 20)
+        ns["attach_foreground"].assert_called_once_with(459332, 66234)
+        self.assertEqual(it.session_mouse.calls, [("click", 10, 20, 1)])
+
+    def test_ordinary_window_in_front_gets_no_esc_and_goes_to_attach(self):
+        it = make_interaction(foreground=False, front_ok=False)
+        it.click(10, 20)
+        ns["dismiss_shell_flyout"].assert_called_once_with(66234)
+        ns["attach_foreground"].assert_called_once_with(459332, 66234)
+        self.assertEqual(it.hwnd_window.bring_to_front.call_count, 1)
+
     def test_bring_to_front_success_skips_attach(self):
         it = make_interaction(foreground=False)
         it.click(10, 20)
         ns["attach_foreground"].assert_not_called()
+        ns["dismiss_shell_flyout"].assert_not_called()
 
     def test_unbound_device_falls_back_to_post_message(self):
         it = make_interaction(bound=False)
