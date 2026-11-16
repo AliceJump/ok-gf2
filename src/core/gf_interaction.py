@@ -15,7 +15,7 @@ import win32gui
 from ok.device.interaction_methods.genshin import GenshinInteraction
 from ok.util.logger import Logger
 
-from src.core.foreground import attach_foreground
+from src.core.foreground import attach_foreground, dismiss_shell_flyout
 from src.core.input_config import INPUT_OPTION_NAME
 from src.core.input_env import choose_input, input_key
 from src.core.session_mouse import BTN_LEFT, BUTTON_OF_KEY, SessionMouseDevice, current_kind
@@ -83,12 +83,19 @@ class GfInteraction(GenshinInteraction):
         ok 的 bring_to_front 直接 SetForegroundWindow，被前台锁挡住时挂到前台窗口的输入线程上再切。
         实录 2026-11-05：热更新重启游戏后，资源管理器的「Microsoft 帐户」提示窗（Shell_OOBEProxy，全屏、什么都没画）
         占着前台盖在游戏上，截图里只看到标题页，「点击开始」全点在这个窗口上，2 分钟没进主页，一键日常报错停下。
+        前台是「快速设置」这类系统面板时两种办法都切不动，先按 Esc 关掉面板（实录 2026-11-16，见 dismiss_shell_flyout）。
         """
         if self.hwnd_window.is_foreground():
             return True
         ok = self.hwnd_window.bring_to_front()
         if not ok:
             foreground = win32gui.GetForegroundWindow()
+            if dismiss_shell_flyout(foreground):
+                logger.warning(f"系统面板占着前台（{window_label(foreground)}），按 Esc 关掉后再切回游戏")
+                time.sleep(0.5)
+                ok = self.hwnd_window.is_foreground() or self.hwnd_window.bring_to_front()
+                foreground = win32gui.GetForegroundWindow()
+        if not ok:
             ok = attach_foreground(self.hwnd_window.hwnd, foreground)
             if not ok:
                 logger.warning(f"游戏窗口提到前台失败，仍用会话鼠标点击（前台：{window_label(foreground)}）")
