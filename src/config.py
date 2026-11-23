@@ -47,7 +47,7 @@ config = {
             "github": "https://github.com/alicejump/ok-gf2",
             "discord": "https://discord.gg/vVyCatEBgA",
             "sponsor": "https://www.paypal.com/ncp/payment/JWQBH7JZKNGCQ",
-            "qq_group": "https://qm.qq.com/q/NcWHQU6q8k",
+            "qq_group": "https://qm.qq.com/q/oKHdK7P8lO",
             "faq": "https://github.com/alicejump/ok-gf2",
         },
         "zh_CN": {
