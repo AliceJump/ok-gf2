@@ -113,7 +113,8 @@ If you encounter issues, check the following in order:
 
 ## 💬 Join Us
 
-* **QQ Group**: `1033950808` (answer: `老王同学OK`)
+* **Community**: [QQ groups and Discord](https://ok-script.com/en/community/?project=ok-gf2) (links are maintained in [community_links.yml](community_links.yml)).
+* **QQ Group**: [后日方舟 · 940581952](https://qm.qq.com/q/NcWHQU6q8k) (answer: `终末地`)
 
 This project is built on [ok-script](https://github.com/ok-oldking/ok-script), which is easy to maintain. Developers are
 welcome to build their own automation projects with ok-script.
